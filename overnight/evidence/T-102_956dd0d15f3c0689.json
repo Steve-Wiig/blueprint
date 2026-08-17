@@ -1,0 +1,1 @@
+[{"check": "secrets", "passed": true, "detail": "no secrets"}, {"check": "min_length", "passed": true, "detail": "56 lines"}]

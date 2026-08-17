@@ -1,0 +1,93 @@
+[
+  {
+    "id": "T-101",
+    "type": "implement_tool",
+    "target": "tools/wiki_sanitization_check.py",
+    "contract": "appendices/appendix_o_ci_tools.md",
+    "prompt_hint": "REWRITE this tool. It must detect ALL patterns from Appendix O.16 and Section 34.1: AWS keys, GitHub tokens (ghp_), Bearer/JWT tokens, OpenSSH private key headers, Slack tokens, api_key= query params, password= query params. Include a --dry-run flag with test payloads. Include the full allowlist for sha256 hashes and UUIDs.",
+    "priority": 1,
+    "status": "open"
+  },
+  {
+    "id": "T-102",
+    "type": "hallucination_audit",
+    "target": "overnight/audits/hallucination_report_v2.md",
+    "contract": "_frontmatter.md",
+    "prompt_hint": "IMPORTANT: Before making any claim about missing sections, search the ENTIRE provided text for that section header. Only report a section as missing if you have verified its header string does NOT appear anywhere in the document. Do not claim truncation unless the sentence is grammatically incomplete.",
+    "priority": 2,
+    "status": "open",
+    "context_override": "full"
+  },
+  {
+    "id": "T-103",
+    "type": "implement_tool",
+    "target": "engine/sanitization_pipeline.py",
+    "contract": "sections/s34_sanitization_quarantine.md",
+    "prompt_hint": "Implement the two-pass sanitization pipeline from Section 34.1. Pass 1: regex redaction for all patterns in REGEX_RULES. Pass 2: Shannon entropy detection with field-aware handling. Must support preserve_allowlisted, redact_inline, quarantine_ref, and reject actions. Use the template from Appendix P.9.",
+    "priority": 3,
+    "status": "open"
+  },
+  {
+    "id": "T-104",
+    "type": "implement_tool",
+    "target": "engine/queue_manager.py",
+    "contract": "sections/s35_async_ingestion_backpressure.md",
+    "prompt_hint": "Implement the triage queue manager from Section 35. Include: severity prioritization, worker claim with FOR UPDATE SKIP LOCKED, lease-based heartbeats, stale job reaper, and backpressure shedding. Use SQL patterns from Appendix P.1 through P.4.",
+    "priority": 4,
+    "status": "open"
+  },
+  {
+    "id": "T-105",
+    "type": "implement_tool",
+    "target": "engine/hash_chain_sealer.py",
+    "contract": "sections/s37_hash_chain_audit.md",
+    "prompt_hint": "Implement the asynchronous hash-chain sealer from Section 37.5 Pattern C. Use a separate audit_chain table. Acquire pg_advisory_xact_lock(37001). Process rows in deterministic ORDER BY row_ts ASC, row_id ASC. Use the template from Appendix P.10.",
+    "priority": 5,
+    "status": "open"
+  },
+  {
+    "id": "T-106",
+    "type": "implement_tool",
+    "target": "orchestrator/context_stitcher.py",
+    "contract": "sections/s30_orchestration_memory.md",
+    "prompt_hint": "Implement the context stitcher from Section 30.5. Query case_embeddings for top-k similar cases within max_age_days. Wrap results in <memory_context> tags. Record memory_context in handoff metadata. Use pgvector cosine distance.",
+    "priority": 6,
+    "status": "open"
+  },
+  {
+    "id": "T-107",
+    "type": "generate_sql",
+    "target": "memory/schema/partitioned_case_embeddings.sql",
+    "contract": "sections/s36_vector_memory_lifecycle.md",
+    "prompt_hint": "Generate the full partitioned case_embeddings DDL from Section 36 and Appendix P.5. Include monthly partitions, HNSW index on active partition only, and the partition pruning query pattern from Section 36.3.",
+    "priority": 7,
+    "status": "open"
+  },
+  {
+    "id": "T-108",
+    "type": "generate_sql",
+    "target": "memory/schema/audit_chain.sql",
+    "contract": "sections/s37_hash_chain_audit.md",
+    "prompt_hint": "Generate the audit_chain table DDL from Section 37.5 Pattern C and Appendix P.6. Include the advisory lock usage comment, deterministic ordering index, and the append-only role grants that exclude UPDATE/DELETE.",
+    "priority": 8,
+    "status": "open"
+  },
+  {
+    "id": "T-109",
+    "type": "expand_runbook",
+    "target": "overnight/spike_plans/spike_03_embedding_correctness.md",
+    "contract": "sections/s32_deployment_readiness.md",
+    "prompt_hint": "Write a detailed lab test plan for Spike 3: Embedding correctness (R-006). Include: model hash verification, dimension check, prefix policy test, top-k recall test, and prefix idempotency test. Reference Appendix O.2 and O.3.",
+    "priority": 9,
+    "status": "open"
+  },
+  {
+    "id": "T-110",
+    "type": "expand_runbook",
+    "target": "overnight/spike_plans/spike_17_wiki_proof.md",
+    "contract": "sections/s38_knowledge_wiki.md",
+    "prompt_hint": "Write a detailed lab test plan for Spike 17: Operational Wiki proof (R-117). Include: mock Wiki page generation with fake secrets, sanitization verification, Git commit simulation, handoff ledger wiki_commit_ref recording, and backpressure shedding test. Reference Appendix O.16 and Appendix P.12.",
+    "priority": 10,
+    "status": "open"
+  }
+]

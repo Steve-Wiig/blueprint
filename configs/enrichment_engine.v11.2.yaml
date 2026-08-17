@@ -1,0 +1,10 @@
+enrichment_engine:
+  table_name: enrichment_jobs
+  scheduler_interval_seconds: 60
+  max_concurrent_jobs: 4
+  timeout_seconds: 300
+  retry_policy:
+    max_attempts: 3
+    backoff_factor: 2.0
+    strategy: exponential
+  quota_enforcement_enabled: true

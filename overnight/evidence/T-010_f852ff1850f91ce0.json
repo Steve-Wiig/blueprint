@@ -1,0 +1,1 @@
+[{"check": "syntax", "passed": true, "detail": "syntax valid"}, {"check": "imports", "passed": true, "detail": "clean"}, {"check": "secrets", "passed": true, "detail": "no secrets"}, {"check": "min_length", "passed": true, "detail": "62 lines"}]

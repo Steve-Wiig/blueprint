@@ -1,0 +1,50 @@
+adapter_routing:
+  version: 11.6.0
+  registry_table: model_registry
+  verification_policy:
+    enforce_strict: true
+    hash_algorithm: sha256
+  routing_table:
+    - task_type: ioc_extraction
+      adapter_id: adapter_ner_v4
+      status: active
+      verify_sha256: 8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4
+      fallback_chain:
+        - adapter_id: adapter_ner_v3
+          version_compat: >=3.2.0
+          verify_sha256: a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2
+        - adapter_id: adapter_regex_fallback
+          version_compat: >=1.0.0
+          verify_sha256: f2e1d0c9b8a7z6y5x4w3v2u1t0s9r8q7p6o5n4m3l2k1j0i9h8g7f6e5d4c3b2a1
+    - task_type: log_anomaly_detection
+      adapter_id: adapter_anomaly_v2
+      status: active
+      verify_sha256: 7d9a2f1b8c3e4d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a
+      fallback_chain:
+        - adapter_id: adapter_stat_baseline
+          version_compat: >=2.0.0
+          verify_sha256: c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8
+    - task_type: triage_classification
+      adapter_id: adapter_triage_canary
+      status: canary
+      verify_sha256: 5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8
+      fallback_chain:
+        - adapter_id: adapter_triage_stable
+          version_compat: >=11.5.0
+          verify_sha256: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+    - task_type: remediation_scripting
+      adapter_id: adapter_remedy_v1
+      status: retired
+      verify_sha256: 4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b
+      fallback_chain:
+        - adapter_id: adapter_manual_override
+          version_compat: >=0.0.0
+          verify_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+    - task_type: semantic_recall_query
+      adapter_id: adapter_vector_v1
+      status: active
+      verify_sha256: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+      fallback_chain:
+        - adapter_id: adapter_keyword_search
+          version_compat: >=1.0.0
+          verify_sha256: 5d41402abc4b2a76b9719d911017c59223707765103683076587425423854372

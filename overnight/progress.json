@@ -1,0 +1,83 @@
+{
+  "iterations": [
+    {
+      "task_id": "T-301",
+      "status": "passed",
+      "best_score": 10
+    },
+    {
+      "task_id": "T-302",
+      "status": "passed",
+      "best_score": 10
+    },
+    {
+      "task_id": "T-303",
+      "status": "passed",
+      "best_score": 10
+    },
+    {
+      "task_id": "T-304",
+      "status": "passed",
+      "best_score": 10
+    },
+    {
+      "task_id": "T-305",
+      "status": "passed",
+      "best_score": 10
+    },
+    {
+      "task_id": "T-306",
+      "status": "passed",
+      "best_score": 10
+    },
+    {
+      "task_id": "T-307",
+      "status": "passed",
+      "best_score": 10
+    },
+    {
+      "task_id": "T-308",
+      "status": "passed",
+      "best_score": 7
+    },
+    {
+      "task_id": "T-309",
+      "status": "passed",
+      "best_score": 5
+    },
+    {
+      "task_id": "T-310",
+      "status": "passed",
+      "best_score": 5
+    },
+    {
+      "task_id": "T-311",
+      "status": "passed",
+      "best_score": 6
+    },
+    {
+      "task_id": "T-312",
+      "status": "passed",
+      "best_score": 9
+    },
+    {
+      "task_id": "T-313",
+      "status": "passed",
+      "best_score": 9
+    },
+    {
+      "task_id": "T-314",
+      "status": "passed",
+      "best_score": 9
+    },
+    {
+      "task_id": "T-315",
+      "status": "passed",
+      "best_score": 9
+    }
+  ],
+  "summary": {
+    "completed": 15,
+    "failed": 0
+  }
+}

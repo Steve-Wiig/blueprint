@@ -1,0 +1,15 @@
+orchestration_memory:
+  database:
+    host: localhost
+    port: 5432
+    dbname: soc_orchestrator
+    user: ${DB_USER_PLACEHOLDER}
+  retention:
+    retention_days: 90
+    archive_path: /archive/iocs
+    partition_scheme: monthly
+  semantic_recall:
+    vector_dimension: 768
+    top_k_cases: 5
+  lifecycle:
+    max_memory_age_days: 90
