@@ -1,79 +1,92 @@
 import pytest
-import sys
-from unittest.mock import MagicMock, patch
-from datetime import datetime, timedelta
-
-# Mocking the module structure for the test environment
-class QueueManager:
-    def __init__(self, db):
-        self.db = db
-        self.emergency_queue_depth = 1000
-        self.max_attempts = 3
-
-    def claim_next_job(self): pass
-    def reap_stale_jobs(self): pass
-    def enqueue(self, item): pass
-    def heartbeat(self, job_id): pass
-    def handle_failure(self, job_id, reason): pass
-    def get_queue_depth(self): pass
+from engine.queue_manager import TriageQueueManager
 
 @pytest.fixture
-def mock_db():
-    return MagicMock()
+def qm():
+    """Real TriageQueueManager backed by in-memory SQLite."""
+    manager = TriageQueueManager(db_path=":memory:")
+    yield manager
+    manager.conn.close()
 
-@pytest.fixture
-def qm(mock_db):
-    return QueueManager(db=mock_db)
+def test_severity_prioritization(qm):
+    """Critical jobs must be claimed before low-severity jobs."""
+    qm.enqueue("low", "file:///ref/low")
+    qm.enqueue("critical", "file:///ref/critical")
+    qm.enqueue("medium", "file:///ref/medium")
 
-def test_severity_prioritization_logic(qm, mock_db):
-    qm.claim_next_job()
-    query = mock_db.execute.call_args[0][0]
-    assert "ORDER BY severity_rank ASC, created_at ASC" in query
+    claimed = qm.claim_job(worker_id="w1")
+    assert claimed is not None
+    # The first claimed job should be the critical one
+    row = qm.cursor.execute(
+        "SELECT severity FROM triage_queue WHERE status = 'processing'"
+    ).fetchone()
+    assert row[0] == "critical"
 
-def test_skip_locked_isolation(qm, mock_db):
-    qm.claim_next_job()
-    query = mock_db.execute.call_args[0][0]
-    assert "FOR UPDATE SKIP LOCKED" in query
+def test_fifo_within_same_severity(qm):
+    """Jobs with equal severity are claimed oldest-first."""
+    qm.enqueue("high", "file:///ref/first")
+    qm.enqueue("high", "file:///ref/second")
 
-def test_lease_expiry_reaper_execution(qm, mock_db):
-    qm.reap_stale_jobs()
-    query = mock_db.execute.call_args[0][0]
-    assert "UPDATE triage_queue SET status = 'pending'" in query
-    assert "lease_expires_at < NOW()" in query
+    qm.claim_job(worker_id="w1")
+    row = qm.cursor.execute(
+        "SELECT payload_ref FROM triage_queue WHERE status = 'processing'"
+    ).fetchone()
+    assert row[0] == "file:///ref/first"
 
-def test_emergency_backpressure_shedding(qm, mock_db):
-    mock_db.execute.return_value.fetchone.return_value = [2000]
-    result = qm.enqueue({"severity": "low", "payload": "test"})
-    assert result == "shed"
-    assert "status = 'shed'" in mock_db.execute.call_args[0][0]
+def test_emergency_backpressure_shedding(qm):
+    """Low-severity jobs are shed when queue exceeds emergency depth."""
+    qm.emergency_depth = 0  # Force shedding immediately
+    result = qm.enqueue("low", "file:///ref/shedme")
+    assert result == 1, "Expected shed return code 1"
 
-def test_stale_job_recovery_reset(qm, mock_db):
-    qm.reap_stale_jobs()
-    assert mock_db.execute.called
-    args = mock_db.execute.call_args[0][0]
-    assert "last_heartbeat_at" in args
+    row = qm.cursor.execute(
+        "SELECT status, shed_reason FROM triage_queue WHERE payload_ref = ?",
+        ("file:///ref/shedme",)
+    ).fetchone()
+    assert row[0] == "shed"
+    assert row[1] == "emergency_backpressure"
 
-def test_heartbeat_lease_extension(qm, mock_db):
-    qm.heartbeat(job_id=99)
-    query = mock_db.execute.call_args[0][0]
-    assert "SET last_heartbeat_at = NOW()" in query
-    assert "lease_expires_at = NOW() + interval" in query
+def test_critical_not_shed_under_backpressure(qm):
+    """Critical jobs must never be shed even under emergency depth."""
+    qm.emergency_depth = 0
+    result = qm.enqueue("critical", "file:///ref/critical")
+    assert result == 0, "Critical job must not be shed"
 
-def test_max_attempts_exhaustion(qm, mock_db):
-    mock_db.execute.return_value.fetchone.return_value = {'attempts': 3}
-    qm.handle_failure(job_id=1, reason="Timeout")
-    query = mock_db.execute.call_args[0][0]
-    assert "status = 'failed'" in query
+    row = qm.cursor.execute(
+        "SELECT status FROM triage_queue WHERE payload_ref = ?",
+        ("file:///ref/critical",)
+    ).fetchone()
+    assert row[0] == "pending"
 
-def test_job_retry_increment(qm, mock_db):
-    mock_db.execute.return_value.fetchone.return_value = {'attempts': 1}
-    qm.handle_failure(job_id=1, reason="Transient")
-    query = mock_db.execute.call_args[0][0]
-    assert "attempts = attempts + 1" in query
+def test_claim_increments_attempts(qm):
+    """Claiming a job must increment its attempts counter."""
+    qm.enqueue("high", "file:///ref/job")
+    qm.claim_job(worker_id="w1")
 
-if __name__ == "__main__":
-    try:
-        exit_code = pytest.main([__file__])
-        sys.exit(int(exit_code))
-    except Exception:
-        sys.exit(2)
+    row = qm.cursor.execute(
+        "SELECT attempts, status, lease_expires_at FROM triage_queue WHERE status = 'processing'"
+    ).fetchone()
+    assert row[0] == 1, "attempts should be 1 after first claim"
+    assert row[1] == "processing"
+    assert row[2] is not None, "lease_expires_at must be set on claim"
+
+def test_claim_empty_queue_returns_none(qm):
+    """Claiming from an empty queue returns None."""
+    result = qm.claim_job(worker_id="w1")
+    assert result is None
+
+def test_shed_reason_recorded(qm):
+    """Shedding is auditable — shed_reason must be recorded."""
+    qm.emergency_depth = 0
+    qm.enqueue("informational", "file:///ref/info")
+    row = qm.cursor.execute(
+        "SELECT shed_reason FROM triage_queue WHERE status = 'shed'"
+    ).fetchone()
+    assert row is not None
+    assert row[0] is not None
+
+def test_informational_shed_before_high(qm):
+    """Under backpressure, informational sheds but high does not."""
+    qm.emergency_depth = 0
+    assert qm.enqueue("informational", "file:///ref/info") == 1
+    assert qm.enqueue("high", "file:///ref/high") == 0

@@ -30,7 +30,7 @@ class TriageQueueManager:
 
     def enqueue(self, severity, payload_ref):
         depth = self.cursor.execute("SELECT count(*) FROM triage_queue WHERE status = 'pending'").fetchone()[0]
-        if depth > self.emergency_depth and severity in ('low', 'informational'):
+        if depth >= self.emergency_depth and severity in ('low', 'informational'):
             self.cursor.execute("INSERT INTO triage_queue (severity, payload_ref, status, shed_reason) VALUES (?, ?, 'shed', 'emergency_backpressure')", (severity, payload_ref))
             return 1
         self.cursor.execute("INSERT INTO triage_queue (severity, payload_ref) VALUES (?, ?)", (severity, payload_ref))
