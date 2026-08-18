@@ -1,0 +1,255 @@
+{
+  "summary": {
+    "total": 59,
+    "passed": 41,
+    "warnings": 16,
+    "failed": 2
+  },
+  "results": {
+    "module_imports": {
+      "bulk_audit.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "memory/retention.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "memory/embeddings.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "engine/intake_wazuh.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "engine/sanitization_pipeline.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "engine/slm_triage_worker.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "engine/quota_ledger.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "engine/queue_manager.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "engine/enrichment_scheduler.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "engine/ioc_extractor.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "engine/intake_eve.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "engine/hash_chain_sealer.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tests/test_sanitization_entropy.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tests/test_queue_manager.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tests/test_embedding_prefix_idempotency.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tests/conftest.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tests/test_hash_chain_sealer.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "orchestrator/context_stitcher.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "orchestrator/model_registry.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tools/external_credential_permission_check.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tools/queue_backpressure_check.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tools/embedding_prefix_idempotency_check.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tools/sanitization_field_policy_check.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tools/sanitization_redaction_check.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tools/changelog_completeness_check.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tools/memory_schema_migrate_check.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tools/vector_partition_index_check.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tools/hash_chain_verify.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tools/queue_stale_recovery_check.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tools/wiki_sanitization_check.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tools/payload_ref_integrity_check.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tools/hash_chain_concurrency_check.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tools/dynamic_vram_budget_check.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tools/embedding_prefix_check.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "tools/sanitization_entropy_check.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "engine/writeback/so_cases.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "engine/writeback/wazuh_proposals.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "engine/writeback/pfsense_alias.py": {
+        "status": "PASS",
+        "detail": "Import successful"
+      },
+      "engine/writeback/thehive.py": {
+        "status": "FAIL",
+        "detail": "cannot import name 'sanitize_case_data' from 'engine.sanitization_pipeline' (/home/swiig/Documents/b"
+      }
+    },
+    "ci_tools_dry_run": {
+      "external_credential_permission_check.py": {
+        "status": "FAIL",
+        "detail": "Exit 1: No output"
+      },
+      "queue_backpressure_check.py": {
+        "status": "WARN",
+        "detail": "Exit 2: CONFIG/ENV expected without live lab"
+      },
+      "embedding_prefix_idempotency_check.py": {
+        "status": "WARN",
+        "detail": "No --dry-run support"
+      },
+      "sanitization_field_policy_check.py": {
+        "status": "WARN",
+        "detail": "Exit 2: CONFIG/ENV expected without live lab"
+      },
+      "sanitization_redaction_check.py": {
+        "status": "WARN",
+        "detail": "No --dry-run support"
+      },
+      "changelog_completeness_check.py": {
+        "status": "WARN",
+        "detail": "Exit 2: CONFIG/ENV expected without live lab"
+      },
+      "memory_schema_migrate_check.py": {
+        "status": "WARN",
+        "detail": "Exit 2: CONFIG/ENV expected without live lab"
+      },
+      "vector_partition_index_check.py": {
+        "status": "WARN",
+        "detail": "Exit 3: CONFIG/ENV expected without live lab"
+      },
+      "hash_chain_verify.py": {
+        "status": "WARN",
+        "detail": "No --dry-run support"
+      },
+      "queue_stale_recovery_check.py": {
+        "status": "WARN",
+        "detail": "Exit 2: CONFIG/ENV expected without live lab"
+      },
+      "wiki_sanitization_check.py": {
+        "status": "PASS",
+        "detail": "Exit code 0"
+      },
+      "payload_ref_integrity_check.py": {
+        "status": "WARN",
+        "detail": "No --dry-run support"
+      },
+      "hash_chain_concurrency_check.py": {
+        "status": "PASS",
+        "detail": "Exit code 0"
+      },
+      "dynamic_vram_budget_check.py": {
+        "status": "WARN",
+        "detail": "No --dry-run support"
+      },
+      "embedding_prefix_check.py": {
+        "status": "WARN",
+        "detail": "No --dry-run support"
+      },
+      "sanitization_entropy_check.py": {
+        "status": "WARN",
+        "detail": "No --dry-run support"
+      }
+    },
+    "sql_validation": {
+      "memory/schema/partitioned_case_embeddings.sql": {
+        "status": "WARN",
+        "detail": "8 potential issues"
+      },
+      "memory/schema/audit_chain.sql": {
+        "status": "WARN",
+        "detail": "14 potential issues"
+      },
+      "memory/schema/orchestration_memory.sql": {
+        "status": "WARN",
+        "detail": "8 potential issues"
+      }
+    },
+    "pytest_results": {
+      "Full suite": {
+        "status": "PASS",
+        "detail": "26 tests passed"
+      }
+    },
+    "cross_module_dependencies": {}
+  }
+}

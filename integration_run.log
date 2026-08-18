@@ -1,0 +1,105 @@
+LOCAL-SOC-SLM Blueprint Integration Verifier
+======================================================================
+
+## MODULE IMPORT VERIFICATION
+======================================================================
+  ✅ bulk_audit.py: Import successful
+  ✅ memory/retention.py: Import successful
+  ✅ memory/embeddings.py: Import successful
+  ❌ engine/intake_wazuh.py: [Errno 2] No such file or directory: '/var/log/local-soc/intake.log'
+  ✅ engine/sanitization_pipeline.py: Import successful
+  ❌ engine/slm_triage_worker.py: No module named 'requests'
+  ✅ engine/quota_ledger.py: Import successful
+  ✅ engine/queue_manager.py: Import successful
+  ✅ engine/enrichment_scheduler.py: Import successful
+  ✅ engine/ioc_extractor.py: Import successful
+  ❌ engine/intake_eve.py: [Errno 2] No such file or directory: '/var/log/soc/intake.log'
+  ✅ engine/hash_chain_sealer.py: Import successful
+  ✅ tests/test_sanitization_entropy.py: Import successful
+  ✅ tests/test_queue_manager.py: Import successful
+  ✅ tests/test_embedding_prefix_idempotency.py: Import successful
+  ✅ tests/conftest.py: Import successful
+  ✅ tests/test_hash_chain_sealer.py: Import successful
+  ✅ orchestrator/context_stitcher.py: Import successful
+  ✅ orchestrator/model_registry.py: Import successful
+  ❌ tools/external_credential_permission_check.py: No module named 'requests'
+  ❌ tools/queue_backpressure_check.py: No module named 'requests'
+  ✅ tools/embedding_prefix_idempotency_check.py: Import successful
+  ✅ tools/sanitization_field_policy_check.py: Import successful
+  ✅ tools/sanitization_redaction_check.py: Import successful
+  ✅ tools/changelog_completeness_check.py: Import successful
+  ✅ tools/memory_schema_migrate_check.py: Import successful
+  ✅ tools/vector_partition_index_check.py: Import successful
+  ✅ tools/hash_chain_verify.py: Import successful
+  ✅ tools/queue_stale_recovery_check.py: Import successful
+  ✅ tools/wiki_sanitization_check.py: Import successful
+  ✅ tools/payload_ref_integrity_check.py: Import successful
+  ✅ tools/hash_chain_concurrency_check.py: Import successful
+  ✅ tools/dynamic_vram_budget_check.py: Import successful
+  ✅ tools/embedding_prefix_check.py: Import successful
+  ✅ tools/sanitization_entropy_check.py: Import successful
+  ❌ engine/writeback/so_cases.py: No module named 'requests'
+  ✅ engine/writeback/wazuh_proposals.py: Import successful
+  ✅ engine/writeback/pfsense_alias.py: Import successful
+  ❌ engine/writeback/thehive.py: No module named 'requests'
+
+## CI TOOLS DRY-RUN VERIFICATION
+======================================================================
+  ❌ external_credential_permission_check.py: Exit 1: Traceback (most recent call last):
+  File "/home/swiig/Documents/blueprint/tools/external_credential
+  ❌ queue_backpressure_check.py: Exit 1: Traceback (most recent call last):
+  File "/home/swiig/Documents/blueprint/tools/queue_backpressure_
+  ⚠️ embedding_prefix_idempotency_check.py: No --dry-run support
+  ❌ sanitization_field_policy_check.py: Exit 2: usage: sanitization_field_policy_check.py [-h] --schema SCHEMA [--dry-run]
+sanitization_field_policy
+  ⚠️ sanitization_redaction_check.py: No --dry-run support
+  ❌ changelog_completeness_check.py: Exit 2: No output
+  ❌ memory_schema_migrate_check.py: Exit 2: No output
+  ⚠️ vector_partition_index_check.py: ENV_NOT_AVAILABLE (expected)
+  ⚠️ hash_chain_verify.py: No --dry-run support
+  ❌ queue_stale_recovery_check.py: Exit 2: No output
+  ✅ wiki_sanitization_check.py: Exit code 0
+  ⚠️ payload_ref_integrity_check.py: No --dry-run support
+  ✅ hash_chain_concurrency_check.py: Exit code 0
+  ⚠️ dynamic_vram_budget_check.py: No --dry-run support
+  ⚠️ embedding_prefix_check.py: No --dry-run support
+  ⚠️ sanitization_entropy_check.py: No --dry-run support
+
+## SQL SYNTAX VERIFICATION
+======================================================================
+  ⚠️ memory/schema/partitioned_case_embeddings.sql: 8 potential issues
+  ⚠️ memory/schema/audit_chain.sql: 14 potential issues
+  ⚠️ memory/schema/orchestration_memory.sql: 8 potential issues
+
+## PYTEST SUITE VERIFICATION
+======================================================================
+  ✅ Full suite: 26 tests passed
+
+======================================================================
+INTEGRATION VERIFICATION REPORT
+======================================================================
+
+Total checks: 59
+✅ Passed: 35
+⚠️  Warnings: 11
+❌ Failed: 13
+
+## FAILURES (13)
+  [module_imports] engine/intake_wazuh.py: [Errno 2] No such file or directory: '/var/log/local-soc/intake.log'
+  [module_imports] engine/slm_triage_worker.py: No module named 'requests'
+  [module_imports] engine/intake_eve.py: [Errno 2] No such file or directory: '/var/log/soc/intake.log'
+  [module_imports] tools/external_credential_permission_check.py: No module named 'requests'
+  [module_imports] tools/queue_backpressure_check.py: No module named 'requests'
+  [module_imports] engine/writeback/so_cases.py: No module named 'requests'
+  [module_imports] engine/writeback/thehive.py: No module named 'requests'
+  [ci_tools_dry_run] external_credential_permission_check.py: Exit 1: Traceback (most recent call last):
+  File "/home/swiig/Documents/blueprint/tools/external_credential
+  [ci_tools_dry_run] queue_backpressure_check.py: Exit 1: Traceback (most recent call last):
+  File "/home/swiig/Documents/blueprint/tools/queue_backpressure_
+  [ci_tools_dry_run] sanitization_field_policy_check.py: Exit 2: usage: sanitization_field_policy_check.py [-h] --schema SCHEMA [--dry-run]
+sanitization_field_policy
+  [ci_tools_dry_run] changelog_completeness_check.py: Exit 2: No output
+  [ci_tools_dry_run] memory_schema_migrate_check.py: Exit 2: No output
+  [ci_tools_dry_run] queue_stale_recovery_check.py: Exit 2: No output
+
+Detailed report saved to: /home/swiig/Documents/blueprint/integration_report.json

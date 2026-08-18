@@ -2,7 +2,7 @@ import argparse
 import sys
 import requests
 import json
-from sanitization_pipeline import sanitize_case_data
+from engine.sanitization_pipeline import sanitize_payload
 
 def main():
     parser = argparse.ArgumentParser(description="TheHive Case Writeback Adapter v11.6.0")
@@ -18,7 +18,7 @@ def main():
     except json.JSONDecodeError:
         sys.exit(2)
 
-    sanitized_data = sanitize_case_data(raw_data)
+    sanitized_data = sanitize_payload(raw_data)
     
     if args.mode == 'draft':
         sanitized_data['status'] = 'Open'
