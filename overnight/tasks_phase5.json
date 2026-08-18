@@ -1,0 +1,130 @@
+[
+  {
+    "id": "T-401",
+    "type": "implement_tool",
+    "target": "tools/dynamic_vram_budget_check.py",
+    "prompt_hint": "Add --dry-run support to dynamic_vram_budget_check.py. Output ONLY valid code. No markdown fences.",
+    "priority": 1,
+    "status": "open"
+  },
+  {
+    "id": "T-402",
+    "type": "implement_tool",
+    "target": "tools/embedding_prefix_check.py",
+    "prompt_hint": "Add --dry-run support to embedding_prefix_check.py. Output ONLY valid code. No markdown fences.",
+    "priority": 2,
+    "status": "open"
+  },
+  {
+    "id": "T-403",
+    "type": "implement_tool",
+    "target": "tools/embedding_prefix_idempotency_check.py",
+    "prompt_hint": "Add --dry-run support to embedding_prefix_idempotency_check.py. Output ONLY valid code. No markdown fences.",
+    "priority": 3,
+    "status": "open"
+  },
+  {
+    "id": "T-404",
+    "type": "implement_tool",
+    "target": "tools/hash_chain_verify.py",
+    "prompt_hint": "Add --dry-run support to hash_chain_verify.py. Output ONLY valid code. No markdown fences.",
+    "priority": 4,
+    "status": "open"
+  },
+  {
+    "id": "T-405",
+    "type": "implement_tool",
+    "target": "tools/payload_ref_integrity_check.py",
+    "prompt_hint": "Add --dry-run support to payload_ref_integrity_check.py. Output ONLY valid code. No markdown fences.",
+    "priority": 5,
+    "status": "open"
+  },
+  {
+    "id": "T-406",
+    "type": "implement_tool",
+    "target": "tools/sanitization_entropy_check.py",
+    "prompt_hint": "Add --dry-run support to sanitization_entropy_check.py. Output ONLY valid code. No markdown fences.",
+    "priority": 6,
+    "status": "open"
+  },
+  {
+    "id": "T-407",
+    "type": "implement_tool",
+    "target": "tools/sanitization_redaction_check.py",
+    "prompt_hint": "Add --dry-run support to sanitization_redaction_check.py. Output ONLY valid code. No markdown fences.",
+    "priority": 7,
+    "status": "open"
+  },
+  {
+    "id": "T-408",
+    "type": "generate_config",
+    "target": "engine/__init__.py",
+    "prompt_hint": "Add __init__.py to engine/ package. Output ONLY valid code. No markdown fences.",
+    "priority": 8,
+    "status": "open"
+  },
+  {
+    "id": "T-409",
+    "type": "generate_config",
+    "target": "memory/__init__.py",
+    "prompt_hint": "Add __init__.py to memory/ package. Output ONLY valid code. No markdown fences.",
+    "priority": 9,
+    "status": "open"
+  },
+  {
+    "id": "T-410",
+    "type": "generate_config",
+    "target": "orchestrator/__init__.py",
+    "prompt_hint": "Add __init__.py to orchestrator/ package. Output ONLY valid code. No markdown fences.",
+    "priority": 10,
+    "status": "open"
+  },
+  {
+    "id": "T-411",
+    "type": "generate_config",
+    "target": "tools/__init__.py",
+    "prompt_hint": "Add __init__.py to tools/ package. Output ONLY valid code. No markdown fences.",
+    "priority": 11,
+    "status": "open"
+  },
+  {
+    "id": "T-412",
+    "type": "generate_config",
+    "target": "tests/__init__.py",
+    "prompt_hint": "Add __init__.py to tests/ package. Output ONLY valid code. No markdown fences.",
+    "priority": 12,
+    "status": "open"
+  },
+  {
+    "id": "T-413",
+    "type": "generate_config",
+    "target": "requirements.txt",
+    "prompt_hint": "Add requirements.txt with pinned dependencies. Output ONLY valid code. No markdown fences.",
+    "priority": 13,
+    "status": "open"
+  },
+  {
+    "id": "T-414",
+    "type": "generate_config",
+    "target": ".env.example",
+    "prompt_hint": "Add .env.example with required environment variables. Output ONLY valid code. No markdown fences.",
+    "priority": 14,
+    "status": "open"
+  },
+  {
+    "id": "T-415",
+    "type": "generate_config",
+    "target": "requirements.txt",
+    "prompt_hint": "Generate a requirements.txt file with pinned versions for: psycopg2-binary, numpy, pyyaml, pytest, sentence-transformers, requests. Use >= for minimum versions. Output ONLY the file content.",
+    "priority": 15,
+    "status": "open"
+  },
+  {
+    "id": "T-416",
+    "type": "generate_config",
+    "target": ".env.example",
+    "prompt_hint": "Generate a .env.example file documenting all required environment variables: GEMINI_API_KEY, LAB_URL, WAZUH_USER, WAZUH_TOKEN, PFSENSE_USER, PFSENSE_TOKEN, VRAM_BUDGET_MB. Include comments explaining each. Output ONLY the file content.",
+    "priority": 16,
+    "status": "open"
+  }
+]

@@ -1,54 +1,53 @@
-Starting Overnight Loop...
-[2026-08-17 04:54:09 UTC] === OVERNIGHT LOOP START (GEMINI) ===
-[2026-08-17 04:54:09 UTC] --- T-101: implement_tool ---
-[2026-08-17 04:54:15 UTC]   Wrote 1917 chars
-[2026-08-17 04:54:15 UTC]   Verification: passed (passed)
-[2026-08-17 04:54:22 UTC] --- T-102: hallucination_audit ---
-[2026-08-17 04:54:26 UTC]   Wrote 3030 chars
-[2026-08-17 04:54:26 UTC]   Verification: passed (passed)
-[2026-08-17 04:54:33 UTC] --- T-103: implement_tool ---
-[2026-08-17 04:54:44 UTC]   Wrote 3075 chars
-[2026-08-17 04:54:44 UTC]   Verification: passed (passed)
-[2026-08-17 04:54:51 UTC] --- T-104: implement_tool ---
-[2026-08-17 04:54:56 UTC]   Wrote 3653 chars
-[2026-08-17 04:54:56 UTC]   Verification: passed (passed)
-[2026-08-17 04:55:03 UTC] --- T-105: implement_tool ---
-[2026-08-17 04:55:10 UTC]   Wrote 2630 chars
-[2026-08-17 04:55:10 UTC]   Verification: passed (passed)
-[2026-08-17 04:55:17 UTC] --- T-106: implement_tool ---
-[2026-08-17 04:55:29 UTC]   Wrote 2618 chars
-[2026-08-17 04:55:29 UTC]   Verification: passed (passed)
-[2026-08-17 04:55:36 UTC] --- T-107: generate_sql ---
-[2026-08-17 04:55:42 UTC]   Wrote 1337 chars
-[2026-08-17 04:55:42 UTC]   Verification: passed (passed)
-[2026-08-17 04:55:49 UTC] --- T-108: generate_sql ---
-[2026-08-17 04:55:53 UTC]   Wrote 766 chars
-[2026-08-17 04:55:53 UTC]   Verification: passed (passed)
-[2026-08-17 04:56:00 UTC] --- T-109: expand_runbook ---
-[2026-08-17 04:56:06 UTC]   Wrote 2222 chars
-[2026-08-17 04:56:06 UTC]   Verification: passed (passed)
-[2026-08-17 04:56:13 UTC] --- T-110: expand_runbook ---
-[2026-08-17 04:56:23 UTC]   Wrote 2402 chars
-[2026-08-17 04:56:23 UTC]   Verification: passed (passed)
-[2026-08-17 04:56:30 UTC] === LOOP COMPLETE ===
-# Overnight Report
-Generated: 2026-08-17 04:56
-
-## Summary
-- Attempted: 10
-- Passed: 10
-- Failed: 0
-
-## Results
-| ID | Type | Target | Status |
-|---|---|---|---|
-| T-101 | implement_tool | `tools/wiki_sanitization_check.py` | ✅ |
-| T-102 | hallucination_audit | `overnight/audits/hallucination_report_v2.md` | ✅ |
-| T-103 | implement_tool | `engine/sanitization_pipeline.py` | ✅ |
-| T-104 | implement_tool | `engine/queue_manager.py` | ✅ |
-| T-105 | implement_tool | `engine/hash_chain_sealer.py` | ✅ |
-| T-106 | implement_tool | `orchestrator/context_stitcher.py` | ✅ |
-| T-107 | generate_sql | `memory/schema/partitioned_case_embeddings.sql` | ✅ |
-| T-108 | generate_sql | `memory/schema/audit_chain.sql` | ✅ |
-| T-109 | expand_runbook | `overnight/spike_plans/spike_03_embedding_correctness.md` | ✅ |
-| T-110 | expand_runbook | `overnight/spike_plans/spike_17_wiki_proof.md` | ✅ |
+[2026-08-18 03:26:43 UTC] ============================================================
+[2026-08-18 03:26:43 UTC] OVERNIGHT VERIFICATION & DEVELOPMENT PIPELINE
+[2026-08-18 03:26:43 UTC] ============================================================
+[2026-08-18 03:26:43 UTC] Blueprint root: /home/swiig/Documents/blueprint
+[2026-08-18 03:26:43 UTC] Run LLM loop: False
+[2026-08-18 03:26:43 UTC] 
+[2026-08-18 03:26:43 UTC] ============================================================
+[2026-08-18 03:26:43 UTC] PHASE 1: FULL VERIFICATION SWEEP
+[2026-08-18 03:26:43 UTC] ============================================================
+[2026-08-18 03:26:43 UTC]   [1a] Checking module imports...
+[2026-08-18 03:26:52 UTC]     38/38 modules import OK
+[2026-08-18 03:26:52 UTC]   [1b] Running pytest suite...
+[2026-08-18 03:26:53 UTC]     26 passed, 0 failed, 0 errors
+[2026-08-18 03:26:53 UTC]   [1c] Running CI tool dry-runs...
+[2026-08-18 03:26:56 UTC]     6 pass, 7 expected, 3 fail
+[2026-08-18 03:26:56 UTC]   [1d] Validating YAML files...
+[2026-08-18 03:26:57 UTC]     4/4 YAML files valid
+[2026-08-18 03:26:57 UTC]   [1e] Checking SQL files...
+[2026-08-18 03:26:57 UTC]     3 SQL files checked
+[2026-08-18 03:26:57 UTC] 
+[2026-08-18 03:26:57 UTC] ============================================================
+[2026-08-18 03:26:57 UTC] PHASE 2: GAP ANALYSIS
+[2026-08-18 03:26:57 UTC] ============================================================
+[2026-08-18 03:26:57 UTC]   Identified 14 development gaps
+[2026-08-18 03:26:57 UTC]     - [add_dry_run] tools/dynamic_vram_budget_check.py
+[2026-08-18 03:26:57 UTC]     - [add_dry_run] tools/embedding_prefix_check.py
+[2026-08-18 03:26:57 UTC]     - [add_dry_run] tools/embedding_prefix_idempotency_check.py
+[2026-08-18 03:26:57 UTC]     - [add_dry_run] tools/hash_chain_verify.py
+[2026-08-18 03:26:57 UTC]     - [add_dry_run] tools/payload_ref_integrity_check.py
+[2026-08-18 03:26:57 UTC]     - [add_dry_run] tools/sanitization_entropy_check.py
+[2026-08-18 03:26:57 UTC]     - [add_dry_run] tools/sanitization_redaction_check.py
+[2026-08-18 03:26:57 UTC]     - [add_init] engine/__init__.py
+[2026-08-18 03:26:57 UTC]     - [add_init] memory/__init__.py
+[2026-08-18 03:26:57 UTC]     - [add_init] orchestrator/__init__.py
+[2026-08-18 03:26:57 UTC] 
+[2026-08-18 03:26:57 UTC] ============================================================
+[2026-08-18 03:26:57 UTC] PHASE 3: TASK GENERATION
+[2026-08-18 03:26:57 UTC] ============================================================
+[2026-08-18 03:26:57 UTC]   Generated 16 tasks -> /home/swiig/Documents/blueprint/overnight/tasks_phase5.json
+[2026-08-18 03:26:57 UTC] 
+[2026-08-18 03:26:57 UTC] ============================================================
+[2026-08-18 03:26:57 UTC] PHASE 4: LLM LOOP (SKIPPED - RUN_LLM_LOOP=False)
+[2026-08-18 03:26:57 UTC] ============================================================
+[2026-08-18 03:26:57 UTC]   Set RUN_LLM_LOOP=True in this script to enable overnight generation.
+[2026-08-18 03:26:57 UTC] 
+[2026-08-18 03:26:57 UTC] ============================================================
+[2026-08-18 03:26:57 UTC] PHASE 5: MORNING REPORT
+[2026-08-18 03:26:57 UTC] ============================================================
+[2026-08-18 03:26:57 UTC]   Report written to /home/swiig/Documents/blueprint/overnight/morning_report.md
+[2026-08-18 03:26:57 UTC]   Evidence saved to /home/swiig/Documents/blueprint/overnight/evidence/overnight_20260818_032657.json
+[2026-08-18 03:26:57 UTC] 
+[2026-08-18 03:26:57 UTC] Total runtime: 14.2 seconds
+[2026-08-18 03:26:57 UTC] Done. Check morning_report.md for results.

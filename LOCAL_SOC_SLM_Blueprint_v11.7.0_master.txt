@@ -1,0 +1,4795 @@
+LOCAL-SOC-SLM v11.7.0 — Master Architecture, Development Blueprint & Scripts
+LLM-Driven Development Pipeline, Verification Infrastructure, and
+Test-to-Implementation Alignment Edition
+================================================================================
+VERSION: v11.7.0-master
+STATUS: Living document; changelog maintained at end of file
+BASELINE:
+Consolidates v11.3, v11.3-updated, v11.4-complete, v11.5, v11.5-master,
+v11.5.1 edge-case hardening, the v11.5.2 completeness-restoration
+corrections, and the v11.6.0 operational readability, knowledge-wiki,
+runbook, and failure-mode layer into one master document.
+VERIFICATION POSTURE:
+[VERIFIED-INTERNAL]
+Directly supported by the v11.3/v11.4/v11.5/v11.6 blueprint lineage supplied
+by the user.
+[LAB-VERIFY]
+Must be proven against the actual local lab versions, packages, APIs,
+credentials, and hardware before production use.
+[RESEARCH]
+Open design or research question tracked in Appendix N.
+[IMPLEMENTED-VERIFIED]
+Generated, tested, and verified during the v11.7.0 development session.
+ROLE:
+Single source of truth for pre-deployment validation, CI gating, deterministic
+verification, telemetry-driven canary rollouts, reproducible local SLM training
+and inference for a self-hosted Security Operations Center; the v11.2 Enrichment
+Engine ("glue" layer) that integrates Wazuh, Security Onion, Suricata, TheHive,
+and pfSense; the v11.3 Orchestration Memory Architecture (Postgres + pgvector +
+SQLite); the v11.3 Continual Learning & Experience Policy; the v11.3 Appendix M
+open-source security software/API documentation index; the v11.4 Deployment
+Readiness, Inference Governance, Sanitization/Artifact Reference, and CI Tooling
+hardening layer; the v11.5 production-hardening layer covering asynchronous
+ingestion backpressure, time-partitioned vector memory, dynamic VRAM governance,
+multi-layer sanitization, and hash-chained audit integrity; the v11.5.1
+edge-case hardening layer covering stale queue recovery, field-aware entropy
+sanitization, hash-chain concurrency control, idempotent embedding prefixes,
+and changelog completeness; the v11.5.2 completeness-restoration layer
+recovering full Appendix M, full amendment text, Appendix O implementation
+skeletons, CI examples, and strengthened completeness checks; and the v11.6.0
+operational readability, externalized knowledge-wiki, runbook, and failure-mode
+layer.
+PRIMARY HARDWARE BASELINE: [VERIFIED-INTERNAL]
+Commodity gaming PC / consumer workstation with a single NVIDIA GPU and 16GB
+VRAM. Approved v1 lab memory configuration: 64GB DDR5 operated in serialized
+phases (Section 28); 96GB preferred for concurrent operation.
+DEVELOPMENT ENVIRONMENT BASELINE: [IMPLEMENTED-VERIFIED]
+Ubuntu VM with Python 3.14, virtual environment (.venv), local git repository,
+Gemini 3.1 Flash Lite Preview (free tier) for code generation, and
+deterministic verification gates for all generated artifacts.
+FUTURE HARDWARE PATH: [VERIFIED-INTERNAL]
+Optional second GPU for separation of duties (development bench vs.
+analyst-on-shift). RAM upgrades by matched-kit replacement only.
+PROJECT INTENT: [VERIFIED-INTERNAL]
+Fine-tune local SLMs; ship an open-source integration/extension layer
+(the Enrichment Engine); and provide a persistent orchestration memory layer so
+the sum of community security tools is greater than its parts — continuous
+enrichment, Tier 1 triage support, experience-driven (but never autonomously
+retrained) SLMs, and approval-gated defense-improvement proposals for defenders
+who cannot purchase enterprise SOAR/XDR tooling. Blue-team designed;
+deterministic safety.
+
+================================================================================
+EXECUTIVE SUMMARY [v11.6]
+================================================================================
+This blueprint defines a local, self-hosted SOC enrichment and orchestration
+layer integrating Wazuh, Security Onion, Suricata, TheHive, and pfSense.
+
+The system uses local SLMs for triage support, enrichment, and institutional
+knowledge generation, but all state-changing actions are approval-gated.
+Models are workers; the orchestrator and database own state.
+
+Core principles:
+- Read broadly, draft carefully, mutate only with approval.
+- No autonomous online tuning.
+- No raw telemetry in PostgreSQL.
+- Append-only audit ledger.
+- Sanitize before insert, including Wiki generation.
+- Deterministic CI verification before production use.
+- Operational documentation generation is append-only or draft-only and is
+  queued at low priority so it never displaces high-severity alert triage.
+
+================================================================================
+HOW TO READ THIS DOCUMENT [v11.6]
+================================================================================
+New maintainer:
+  Read Executive Summary, Sections 1–5, Section 24, Section 30, Section 38
+Section 39,
+  Appendix M.9, and Glossary.
+
+Security engineer:
+  Read Sections 24, 30, 32, 34, 35, 37, 38, Appendix M.6, Appendix Q.
+
+CI engineer:
+  Read Sections 24.4, 32.4, Appendix O, Appendix P.
+
+SOC analyst:
+  Read Sections 24, 26, 30.5, 31.2, Appendix M.8.
+
+Operator/deployer:
+  Read Sections 23, 28, 33, 35, 36, Appendix N, Appendix Q, release checklist.
+
+================================================================================
+GLOSSARY OF TERMS [v11.6]
+================================================================================
+Adapter:
+  Signed fine-tuned model artifact.
+
+Canary:
+  Controlled evaluation deployment before full promotion.
+
+Corrections:
+  Human accept/fix/reject decisions used as gated training source.
+
+Handoff ledger:
+  Append-only audit record of artifacts exchanged between components.
+
+payload_ref:
+  Canonical reference to a large external artifact.
+
+Replay-mix evaluation:
+  Evaluation combining held-out examples and golden replay samples.
+
+Quarantine-by-reference:
+  Preserving a suspicious high-value payload outside orchestration memory by
+  secure reference where inline redaction would destroy analytical value.
+
+Shedding:
+  Deferring or excluding low-severity queue work under backpressure. Shedding
+  is auditable and is not silent deletion.
+
+Wiki / Journalist:
+  SLM task type that synthesizes orchestration memory into sanitized Markdown
+  documentation under orchestrator control.
+
+Externalized Institutional Memory:
+  Human-readable operational documentation generated from orchestration memory
+  and governed by Section 38
+Section 39.
+
+================================================================================
+BLUEPRINT LAYERS [v11.6]
+================================================================================
+Layer 0: Hardware
+  GPU, VRAM, RAM, serialized phases.
+
+Layer 1: Telemetry sources
+  Wazuh, Suricata, Security Onion/OpenSearch.
+
+Layer 2: Intake and sanitization
+  Adapters, normalization, quarantine, payload_ref.
+
+Layer 3: Orchestration memory
+  PostgreSQL, pgvector, SQLite, append-only audit ledger.
+
+Layer 4: Model workers
+  SLM inference, embedding, verifier, Wiki drafter.
+
+Layer 5: Action governance
+  Drafts, approvals, writeback, pfSense gating.
+
+Layer 6: Verification
+  CI gates, Appendix N evidence, canary/replay.
+
+Layer 7: Operations
+  Runbooks, metrics, dashboards, Appendix Q.
+
+================================================================================
+CONTENTS
+================================================================================
+1–19
+Preserved from master blueprint lineage.
+20
+Open-Source Fine-Tuning, Dataset Curation & Hugging Face Publishing Pipeline
+21
+Community contribution governance, dataset acceptance tests, and signed
+adapter policy
+22
+Developer prompt for LLM-assisted blueprint development
+23
+Hardware constraints and upgrade path
+24
+Tier 1 SOC orchestration and tool-use safety contract
+25
+Commodity gaming-PC lab and automatic defense improvement model
+26
+Enrichment Engine ("glue" layer) architecture [v11.2, amended]
+27
+Scripted purple-team lab operations & batch dataset generation [v11.2]
+28
+Serialized lab operations for consumer hardware (64GB start) [v11.2]
+29
+Model scaling, harness patterns, and analyst-on-shift paradigm [v11.2]
+30
+Orchestration Memory Architecture
+[v11.3, amended by v11.4/v11.5/v11.5.1/v11.5.2/v11.6]
+31
+Continual Learning & Experience Policy
+[v11.3, amended by v11.4]
+32
+Deployment Readiness & Verification Register
+[v11.4, amended by v11.5/v11.5.1/v11.5.2/v11.6]
+33
+Inference, Embedding, and VRAM Governance
+[v11.4, amended by v11.5]
+34
+Sanitization, Quarantine, and Artifact Reference Governance
+[v11.4, amended by v11.5/v11.5.1]
+35
+Asynchronous Ingestion, Backpressure, and Triage Queue Governance
+[v11.5, amended by v11.5.1]
+36
+Time-Partitioned Vector Memory and Index Lifecycle [v11.5]
+37
+Hash-Chained Audit Ledger and Tamper Detection
+[v11.5, amended by v11.5.1]
+38
+Operational Knowledge Generation & Externalized Memory [v11.6]
+39
+LLM-Driven Development Pipeline & Verification Infrastructure [v11.7]
+Appendix A–H
+Preserved from v11.1 with amendments.
+Appendix I
+Enrichment Engine reference config & enrichment status schema [v11.2]
+Appendix J
+Starter purple-team scenario & expected alerts [v11.2]
+Appendix K
+Orchestration Memory DDL, retention, and backup [v11.3]
+Appendix L
+Adapter routing & continual-learning config [v11.3]
+Appendix M
+Documentation for open source security software and API documentation
+[v11.3, amended by v11.4, restored and amended by v11.5.2/v11.6]
+Appendix N
+Pre-Implementation Research & Verification Register
+[v11.4, amended by v11.5/v11.5.1/v11.6]
+Appendix O
+CI Verification Tool Contracts & Skeletons
+[v11.4, amended by v11.5/v11.5.1, restored and expanded by v11.5.2/v11.6]
+Appendix P
+Production-Hardening SQL, Python, and CI Templates
+[v11.5, amended by v11.5.1/v11.5.2/v11.6]
+Appendix Q
+Runbooks & Failure Mode Analysis [v11.6]
+Full v11.6.0 Release Checklist
+Completeness Manifest
+Changelog
+
+================================================================================
+CORE BLUEPRINT RETENTION
+================================================================================
+Sections 1–19 remain preserved from the master blueprint lineage.
+Sections 20–29 and Appendices A–J remain preserved from v11.2 and v11.3,
+applying the mechanical amendments listed in this document.
+Appendix K and Appendix L remain the v11.3 operational memory and adapter
+routing references.
+Appendix M is restored to the full v11.3-updated human-readable edition,
+amended by v11.4 verification notes, and further amended by v11.5.1/v11.5.2/
+v11.6 where embedding prefix idempotency, completeness checks, and knowledge
+Wiki governance apply.
+Appendix N, Appendix O, Appendix P, and Appendix Q are part of the
+v11.4/v11.5/v11.5.1/v11.5.2/v11.6 hardening layer.
+Where external software behavior is version-dependent, this blueprint does not
+assert external facts unless they are directly present in the supplied lineage
+or proven in the lab. External integration behavior is LAB-VERIFY and recorded
+in Appendix N.
+The v11.6.0 safety contract remains unchanged and is extended by the Wiki
+governance rules in Section 38
+Section 39:
+- Read broadly, draft carefully, mutate only with approval.
+- pfSense mutations remain approval-gated.
+- Wazuh and Suricata rule changes remain draft-only until approved.
+- TheHive operational writes remain policy-controlled.
+- PostgreSQL handoffs and corrections remain append-only.
+- Raw telemetry remains outside PostgreSQL.
+- Autonomous online tuning remains prohibited.
+- Queue shedding is auditable and is not silent deletion.
+- High-value suspicious payloads are quarantined by reference when inline
+redaction would destroy analytical value.
+- Hash-chain generation is serialized and tamper-evident.
+- Embedding prefix injection is idempotent.
+- Completeness checks must detect omitted appendices, truncated changelog
+entries, and missing termination markers.
+- SLM Wiki generation is append-only or draft-only, sanitized before commit,
+and queued at low priority to protect operational triage VRAM.
+- LLM-generated code must pass deterministic verification before acceptance. [v11.7]
+- Generated tests must exercise real implementations, not phantom interfaces. [v11.7]
+- Engine modules must be importable without side effects. [v11.7]
+- Backpressure thresholds use >= (inclusive), not > (exclusive). [v11.7]
+
+================================================================================
+AMENDMENT NUMBERING POLICY
+================================================================================
+This master document uses one cumulative amendment sequence:
+AMEND-1   through AMEND-13   = v11.3 amendments
+AMEND-14  through AMEND-26   = v11.4 amendments
+AMEND-27  through AMEND-36   = v11.5 amendments
+AMEND-37  through AMEND-41   = v11.5.1 amendments
+AMEND-42  through AMEND-46   = v11.5.2 amendments
+AMEND-47  through AMEND-52   = v11.6.0 amendments
+This sequence supersedes earlier draft numbering that collided between v11.4,
+v11.5, and v11.5 update documents.
+
+================================================================================
+v11.3 AMENDMENTS TO PRESERVED TEXT
+================================================================================
+AMEND-1 — Section 20.0, Goals
+ADD bullet:
+- Produce an open-source enrichment engine ("glue" layer) that integrates Wazuh,
+Security Onion, Suricata, TheHive, and pfSense so the combined system provides
+continuous enrichment and triage support even when no analyst is present
+(Section 26).
+AMEND-2 — Sections 23.1, 25.2, 25.6, Appendix C, Appendix D — RAM policy
+23.1 RAM:
+REPLACE bullets with:
+- 64GB minimum; approved as the v1 lab starting configuration when operated in
+serialized phases per Section 28.
+- 96GB recommended if running local SOC containers and training concurrently.
+- Preferred stable configuration on consumer platforms: 2x48GB DDR5 for 96GB
+total.
+- RAM upgrades are performed by matched-kit REPLACEMENT, not addition.
+25.6:
+ADD:
+- 64GB as a matched 2x32GB DDR5 kit is an approved v1 starting configuration
+when the lab operates in serialized phases (Section 28).
+- Upgrading to 96GB must replace the kit: retire/sell the 2x32GB kit and
+install a matched 2x48GB kit. Adding a second kit to an existing kit is not
+approved.
+Appendix C RAM line:
+REPLACE with:
+"64GB DDR5 (2x32GB matched kit) approved v1 start;
+96GB (2x48GB matched kit) preferred upgrade via kit replacement."
+Appendix D memory block:
+Set:
+capacity_gb: 64
+configuration: "2x32GB"
+upgrade_policy: "replace-not-add; matched kits only; 2x48GB target"
+AMEND-3 — Sections 23.2, 25.7 — dual-GPU framing
+ADD:
+- The GPU 1 inference role includes hosting the enrichment engine SLM worker
+("analyst on shift"). GPU 0 remains the development bench (training, merge,
+heavy eval). A second GPU grants sustained operational availability, NOT
+increased autonomy; autonomy levels remain governed by 25.3 and the Section 24
+contract.
+AMEND-4 — Section 20.1 — schema optional fields
+ADD optional fields:
+- metadata.enrichment_status
+Values: pending | partial | complete | quota_deferred
+- metadata.enrichment_sources
+List of provider ids.
+- metadata.external_api_quota_id
+- metadata.memory_context
+List of past_case refs injected into the prompt.
+- validation.enrichment_slo_pass
+- validation.memory_injection_pass
+ADD "pfsense" to allowed values of optional field `engine` for alias/blocklist
+drafts.
+AMEND-5 — Section 24.1 — tool categories
+ADD:
+read:
+lookup_domain_reputation
+lookup_url_reputation
+query_thehive_observables
+query_pfsense_tables
+query_memory_similar_cases
+query_memory_handoff_ledger
+draft:
+draft_pfsense_alias
+draft_enrichment_summary
+draft_earlier_alerting_rule
+approval_required:
+apply_pfsense_alias
+push_blocklist
+All pfSense-adjacent mutations remain approval-gated; the engine never applies
+them autonomously.
+AMEND-6 — Appendix G — repository skeleton
+ADD:
+├── engine/
+│   ├── intake_wazuh.py
+│   ├── intake_eve.py
+│   ├── ioc_extractor.py
+│   ├── enrichment_scheduler.py
+│   ├── quota_ledger.py
+│   ├── slm_triage_worker.py
+│   └── writeback/
+│       ├── thehive.py
+│       ├── wazuh_proposals.py
+│       ├── so_cases.py
+│       └── pfsense_alias.py
+├── lab/
+│   ├── scenarios/
+│   ├── targets.md
+│   └── run_capture.sh
+├── memory/
+│   ├── schema/
+│   │   └── orchestration_memory.sql
+│   ├── adapters/
+│   ├── embeddings.py
+│   ├── retention.py
+│   └── migration/
+├── orchestrator/
+│   ├── routing.yaml
+│   ├── context_stitcher.py
+│   └── model_registry.py
+├── configs/
+│   ├── enrichment_engine.v11.2.yaml
+│   ├── orchestration_memory.v11.3.yaml
+│   └── adapter_routing.v11.3.yaml
+├── docs/
+│   ├── enrichment-engine.md
+│   ├── purple-team-lab.md
+│   ├── serialized-lab-operations.md
+│   ├── orchestration-memory.md
+│   └── continual-learning.md
+├── tools/
+│   ├── external_credential_permission_check.py
+│   ├── embedding_prefix_check.py
+│   ├── embedding_prefix_idempotency_check.py
+│   ├── sanitization_redaction_check.py
+│   ├── sanitization_entropy_check.py
+│   ├── sanitization_field_policy_check.py
+│   ├── dynamic_vram_budget_check.py
+│   ├── payload_ref_integrity_check.py
+│   ├── hash_chain_verify.py
+│   ├── hash_chain_concurrency_check.py
+│   ├── queue_backpressure_check.py
+│   ├── queue_stale_recovery_check.py
+│   ├── vector_partition_index_check.py
+│   ├── memory_schema_migrate_check.py
+│   ├── changelog_completeness_check.py
+│   └── wiki_sanitization_check.py
+AMEND-7 — Section 26.1 — Enrichment Engine components
+ADD bullet:
+- Orchestration Memory client (30.1): the intake adapters, IOC extractor, and
+scheduler share a single PostgreSQL connection pool and a per-process SQLite
+quota ledger. Memory reads/writes are part of the fast path.
+AMEND-8 — Section 29.1 — Orchestrator pattern
+REPLACE with:
+- PLAN.md holds goal/phase/decisions; SQLite task DB tracks task status, prompt,
+code, test results, retries, commit hash.
+- PostgreSQL is the orchestration's persistent memory (30.x): IOCs, handoffs,
+investigations, corrections, model registry.
+- The orchestrator stitches prompt context from memory using
+query_memory_similar_cases, recent accepted corrections, and the
+model_registry row for the active adapter, then writes every handoff back.
+The model is a worker; the memory + harness compose.
+AMEND-9 — Section 25.4 — Defense improvement pipeline, step 2
+ADD:
+- SLM proposal is produced in the context of the orchestrator memory: similar
+past cases (pgvector top-k), related accepted corrections, linked
+investigation state. This is retrieval-driven experience, not weight change
+(31.2).
+AMEND-10 — Section 21 — Signed adapter policy
+ADD:
+- Adapter promotion requires a replay-mix evaluation (31.5): the held-out test
+set plus a replay sample of the golden evaluation set, to guard against
+catastrophic forgetting. Promotion is atomic with instant rollback (31.6).
+AMEND-11 — Appendix I — Enrichment Engine reference config
+ADD keys:
+memory:
+postgres_dsn: "postgresql://engine@127.0.0.1:5432/local_soc_slm"
+sqlite_quota_ledger: "engine/quota.db"
+embedding_model: "nomic-embed-text"
+embedding_dim: 768
+similar_cases_top_k: 5
+similar_cases_max_age_days: 90
+AMEND-12 — Section 24.4 — Orchestration CI checks
+ADD checks:
+- Memory schema migration check
+tools/memory_schema_migrate_check.py --fail-on-drift
+- Handoff ledger append-only audit
+No UPDATE/DELETE on handoffs table in migration history.
+- Replay-mix evaluation check for adapter promotion PRs
+Required by Section 31.5.
+AMEND-13 — Appendix M
+ADD:
+Appendix M — Documentation for open source security software and API
+documentation. This appendix provides a human-readable documentation index for
+the open-source security platforms integrated by the Enrichment Engine and the
+associated API surfaces used by the Local SOC SLM Blueprint.
+
+================================================================================
+v11.4 AMENDMENTS TO PRESERVED v11.3 TEXT
+================================================================================
+AMEND-14 — Section 24.4, Orchestration CI checks
+ADD the following v11.4 checks:
+- External credential permission proof
+tools/external_credential_permission_check.py
+Verifies that engine credentials for Wazuh, OpenSearch/Security Onion,
+TheHive, and pfSense lab endpoints can perform required read/draft actions
+and are denied for prohibited mutation actions.
+- Embedding prefix contract check
+tools/embedding_prefix_check.py
+Verifies that the embedding writer and retrieval query path apply the
+required model-specific text prefixes, if the selected embedding model uses
+instruction prefixes.
+- Sanitization redaction check
+tools/sanitization_redaction_check.py
+Verifies that known secret patterns, PII test patterns, and unsafe payload
+samples are blocked, redacted, or quarantined before insertion into
+PostgreSQL.
+- VRAM budget smoke check
+tools/vram_budget_smoke_check.py, later replaced by dynamic VRAM governance
+in v11.5.
+- payload_ref integrity check
+tools/payload_ref_integrity_check.py
+Verifies that handoff rows using payload_ref contain canonical URI, sha256,
+size_bytes, compression, sanitizer metadata, and that the referenced artifact
+is retrievable in the lab environment.
+AMEND-15 — Section 26.1, Enrichment Engine components
+ADD bullet:
+- Deployment Readiness Register client (Section 32): external integrations,
+API surfaces, credential permissions, embedding behavior, inference serving,
+sanitization, and payload_ref storage must have LAB-VERIFY evidence before
+production use.
+AMEND-16 — Section 30.2, Postgres schema, vector index
+REPLACE fixed ivfflat requirement with benchmark-selected vector index policy.
+For <10,000 cases, exact sequential scans are frequently faster and consume
+less memory. For scaling, HNSW (for example m=16, ef_construction=64) is
+strongly preferred over IVFFlat because it handles dynamic inserts seamlessly
+without requiring periodic index rebuilds or maintenance windows.
+The selected index type, parameters, benchmark method, and rationale are
+recorded in Appendix N and in migration history.
+AMEND-17 — Section 30.3, Handoff ledger contract
+ADD payload_ref canonical contract:
+For payloads larger than 1MB, or any payload not stored inline as JSONB, the
+handoff ledger must store payload_ref using a canonical URI scheme.
+Approved URI schemes:
+opensearch://<index>/doc/<id>
+file:///archive/artifacts/<aa>/<bb>/<sha256><.ext>
+s3://<bucket>/<key>
+The ledger must also record:
+payload_sha256
+payload_size_bytes
+payload_compression
+payload_sanitizer_version
+payload_sanitization_status
+payload_sanitization_action
+payload_retention_class
+payload_ref artifacts must never contain raw unsanitized telemetry unless the
+artifact is stored outside orchestration memory and the ledger stores only the
+sanitized reference metadata.
+AMEND-18 — Section 30.5, Semantic recall
+ADD embedding contract:
+The embedding pipeline must pin:
+embedding_model
+embedding_model_revision_or_hash
+embedding_dim
+embedding_normalization
+embedding_prefix_policy
+If the selected embedding model uses task instruction prefixes, the embedding
+writer and query path must enforce those prefixes.
+For nomic-family embedding models, the lab must validate whether prefixes such
+as document-side and query-side instruction strings are required for retrieval
+quality.
+Prefix injection MUST be implemented as a non-bypassable wrapper inside the
+Python embedding service interface:
+embed_document(text) prepends "search_document: "
+embed_query(text) prepends "search_query: "
+If the embedding runtime cannot enforce the required prefix policy, the
+embedding adapter must fail closed rather than silently embed unprefixed text.
+AMEND-19 — Section 31.5, Replay-mix evaluation
+ADD:
+Adapter promotion requires replay-mix evaluation.
+The replay-mix evaluation set must contain:
+1. Held-out test examples derived only from approved corrections or
+approved curated training data.
+2. A replay sample from the golden evaluation set used for the currently
+active adapter.
+The evaluation must measure at minimum:
+verifier_pass_rate
+schema_validity_rate
+prohibited_action_rate
+hallucinated_tool_call_rate
+IOC extraction accuracy
+triage summary sanity score
+regression delta against active adapter
+forgetting delta against golden replay sample
+CI must record:
+candidate adapter sha256
+active adapter sha256
+evaluation dataset hashes
+replay sample hashes
+metric results
+pass/fail verdict
+evaluator version
+A candidate adapter must not be promoted if any safety-critical metric
+regresses beyond the approved threshold.
+AMEND-20 — Section 31.6, Canary and rollback
+ADD:
+Canary deployment must support at least one of the following modes:
+1. Shadow canary
+Candidate adapter receives the same prompt/context as the active
+adapter, but its output is not used for operational action.
+2. Limited live canary
+Candidate adapter handles a small, explicitly routed subset of eligible
+task_type traffic.
+Canary SLOs must include:
+verifier_pass_rate
+schema_validity_rate
+prohibited_action_rate
+hallucinated_tool_call_rate
+analyst correction rate
+latency percentile
+VRAM stability
+recurrence of known failure classes
+Rollback must be immediate and must not require retraining.
+Rollback mechanisms may include:
+active adapter pointer swap,
+model registry status change,
+reverse proxy endpoint swap,
+container swap,
+serving backend reload,
+provided the previous signed adapter remains instantly restorable and the
+rollback event is written to the handoff ledger.
+AMEND-21 — Add Section 32
+ADD Section 32: Deployment Readiness & Verification Register.
+AMEND-22 — Add Section 33
+ADD Section 33: Inference, Embedding, and VRAM Governance.
+AMEND-23 — Add Section 34
+ADD Section 34: Sanitization, Quarantine, and Artifact Reference Governance.
+AMEND-24 — Appendix M verification note
+ADD to Appendix M:
+All documentation links, API paths, package names, and endpoint behaviors are
+version-dependent and must be pinned, mirrored, and validated in the lab before
+implementation.
+In particular:
+- pfSense API availability may depend on version, package, or plugin.
+- Wazuh RBAC behavior must be tested with the deployed Wazuh version.
+- Security Onion/OpenSearch access may be mediated by Security Onion.
+- TheHive API behavior may differ across major versions.
+- Suricata EVE schema may vary by Suricata version and configuration.
+- Embedding model prefix requirements must be validated against the exact
+model artifact used.
+Appendix M is therefore a documentation index, not a substitute for lab proof.
+AMEND-25 — Add Appendix N
+ADD Appendix N: Pre-Implementation Research & Verification Register.
+AMEND-26 — Add Appendix O
+ADD Appendix O: CI Verification Tool Contracts & Skeletons.
+
+================================================================================
+v11.5 AMENDMENTS TO v11.4 TEXT
+================================================================================
+AMEND-27 — Section 33.3, VRAM budget
+REPLACE hardcoded VRAM budget language with dynamic hardware-aware governance.
+AMEND-28 — Section 34.1, Sanitization pipeline
+ADD two-pass sanitization: deterministic regex plus Shannon entropy detection.
+AMEND-29 — Section 26 and Section 30
+ADD asynchronous ingestion, backpressure, and triage queue governance as
+Section 35.
+AMEND-30 — Section 30.2
+ADD time-partitioned vector memory and index lifecycle governance as Section 36.
+AMEND-31 — Section 30.3
+ADD hash-chained audit ledger and tamper detection as Section 37.
+AMEND-32 — Appendix N
+ADD research items R-107 through R-111.
+AMEND-33 — Appendix O
+ADD v11.5 CI tool requirements.
+AMEND-34 — Appendix P
+ADD production-hardening SQL, Python, and CI templates.
+AMEND-35 — Full Release Checklist
+ADD v11.5 production-hardening release checks.
+AMEND-36 — Completeness Manifest
+ADD a completeness manifest and end-of-document marker to reduce the risk of
+truncation or accidental omission.
+
+================================================================================
+v11.5.1 AMENDMENTS TO v11.5 TEXT
+================================================================================
+AMEND-37 — Section 35, stale job recovery
+ADD stale job recovery and lease-based heartbeat handling.
+AMEND-38 — Section 34, field-aware entropy handling
+ADD field-aware entropy handling and quarantine-by-reference for high-value
+suspicious command-line payloads.
+AMEND-39 — Section 37, hash-chain concurrency
+ADD hash-chain concurrency policy and serialized chain sealing.
+AMEND-40 — Section 30.5 and Section 33.5, idempotent embedding prefix
+MAKE embedding prefix injection idempotent.
+AMEND-41 — Changelog completeness
+ADD changelog completeness and document termination integrity checks.
+
+================================================================================
+v11.5.2 AMENDMENTS TO v11.5.1 TEXT
+================================================================================
+AMEND-42 — Restore Appendix M
+RESTORE the full human-readable Appendix M structure from v11.3-updated and
+v11.5-master, including:
+M.0  How to use this appendix
+M.1  Primary integrated security platforms
+M.2  Supporting data and orchestration platforms
+M.3  Readable integration boundary map
+M.4  API and service endpoint worksheet
+M.5  Credential and access guidance
+M.6  API safety matrix
+M.7  Documentation mirror recommendations
+M.8  Human readability quick reference
+M.9  Minimal reading list for new maintainers
+M.10 Documentation acceptance criteria
+M.11 Compact link index
+M.12 Verification notes
+AMEND-43 — Restore full amendment text
+RESTORE full amendment text for AMEND-1 through AMEND-41 rather than only an
+amendment index.
+AMEND-44 — Restore Appendix O skeletons
+RESTORE Appendix O implementation skeletons and explicit CI pipeline examples
+required by v11.4, v11.5, and v11.5.1.
+AMEND-45 — Restore Appendix P templates
+RESTORE Appendix P production-hardening templates required by v11.5 and
+v11.5.1, including queue lease recovery, audit_chain, partitioned vector
+memory, sanitization, embedding prefix idempotency, and hash-chain verification
+templates.
+AMEND-46 — Strengthen completeness manifest
+STRENGTHEN the completeness manifest to require:
+- full Appendix M subsections,
+- full amendment text,
+- Appendix O skeletons,
+- CI pipeline examples,
+- Appendix P templates,
+- Appendix N full register,
+- changelog completeness,
+- END OF DOCUMENT marker,
+- correction of the v11.5-master Section 28 typo where "664 start" appeared
+instead of "64GB start".
+
+================================================================================
+v11.6.0 AMENDMENTS TO v11.5.2 TEXT
+================================================================================
+AMEND-47 — Add readability layers
+ADD Executive Summary, How to Read This Document, Glossary, and Blueprint
+Layers to the top of the master document to reduce cognitive load and provide
+role-based navigation paths.
+
+AMEND-48 — Add Section 38
+Section 39, Operational Knowledge Generation
+ADD Section 38
+Section 39: Operational Knowledge Generation & Externalized Memory.
+This defines the SLM lab-journalist role, Git-as-audit-ledger for Markdown
+files, sanitization of generated Wiki text, and VRAM queue prioritization.
+
+AMEND-49 — Add Appendix Q, Runbooks & Failure Modes
+ADD Appendix Q: Runbooks & Failure Mode Analysis.
+This provides operational response templates for GPU OOM, hash-chain
+mismatch, queue backlog, Wiki sanitization failure, and related failure
+classes.
+
+AMEND-50 — Update Appendix O for Wiki CI
+ADD tools/wiki_sanitization_check.py to Appendix O.
+ADD O.16 Wiki sanitization tool contract.
+ADD Gate 16 to the CI pipeline example.
+
+AMEND-51 — Update Appendix P for Wiki audit metadata
+ADD P.12 ledger metadata for Wiki commit reference.
+This records the Git commit SHA, sanitized Markdown hash, and repository path
+for externalized documentation generated under Section 38
+Section 39.
+
+AMEND-52 — Update completeness manifest and checklist
+ADD Section 38
+Section 39, Appendix Q, Appendix N R-117
+R-118 through R-120 [v11.7], and v11.6.0 AMEND-47 through
+AMEND-52 to the completeness manifest and release checklist.
+
+
+================================================================================
+v11.7.0 AMENDMENTS TO v11.6.0 TEXT
+================================================================================
+AMEND-53 — Add Section 39, LLM-Driven Development Pipeline
+ADD Section 39: LLM-Driven Development Pipeline & Verification Infrastructure.
+This defines the autonomous code generation loop, deterministic verification
+gates, scoring rubric, iterative refinement policy, and integration
+verification requirements for LLM-generated codebases.
+AMEND-54 — Add integration verifier to Appendix O
+ADD tools/integration_verifier.py to Appendix O.
+ADD O.17 Integration Verifier tool contract.
+ADD Gate 17 to the CI pipeline example.
+AMEND-55 — Add bulk audit to Appendix O
+ADD bulk_audit.py to Appendix O.
+ADD O.18 Bulk Audit tool contract.
+ADD Gate 18 to the CI pipeline example.
+AMEND-56 — Module-level side effect prohibition
+ADD requirement: All engine/, orchestrator/, memory/, and tools/ Python
+modules must be importable without executing file operations, logging
+configuration, network requests, or exit() calls at module level.
+All executable demonstration code must be wrapped in:
+if __name__ == "__main__":
+This prevents pytest collection failures and cross-module import crashes.
+AMEND-57 — Test-to-implementation alignment requirement
+ADD requirement: Generated test files must import from and exercise the
+actual interfaces of the generated implementation modules. Tests must not
+define phantom classes, mock non-existent method signatures, or assert
+against return values that differ from the real implementation.
+CI must include a test-alignment check that verifies:
+- Test imports resolve to existing modules
+- Test function calls match actual method signatures
+- Test assertions match actual return types and structures
+AMEND-58 — Virtual environment requirement
+ADD to Section 23: Development and testing must occur within a Python
+virtual environment. System-wide pip installs are prohibited on
+externally-managed Python installations (PEP 668).
+Required:
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+AMEND-59 — SQLite in-memory test backend policy
+ADD to Section 35: Unit tests for queue management, sanitization, and
+hash-chain logic may use SQLite in-memory databases (":memory:") as the
+test backend. This eliminates external service dependencies for unit tests
+while exercising real SQL behavior.
+Integration tests that require PostgreSQL-specific features (FOR UPDATE
+SKIP LOCKED, advisory locks, TIMESTAMPTZ, JSONB, pgvector) must be marked
+as LAB-VERIFY and run against a real PostgreSQL instance.
+AMEND-60 — Cross-package test import resolution
+ADD requirement: A tests/conftest.py file must exist that adds the
+repository root to sys.path, enabling tests to import from engine.*,
+memory.*, orchestrator.*, and tools.* packages without installation.
+Minimum conftest.py:
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+AMEND-61 — Backpressure threshold boundary condition
+CLARIFY Section 35.5: The backpressure shedding condition must use
+inclusive comparison (>=), not exclusive (>).
+Correct:
+if depth >= emergency_queue_depth and severity in ('low', 'informational'):
+Incorrect:
+if depth > emergency_queue_depth and severity in ('low', 'informational'):
+Rationale: When emergency_queue_depth is set to 0 (testing) or when the
+queue is exactly at capacity, shedding must trigger immediately. The
+exclusive operator fails to shed when depth equals the threshold.
+AMEND-62 — Development pipeline evidence and lessons learned
+ADD to Appendix N: Research items R-118 through R-120 covering LLM
+generation pipeline reproducibility, test-to-implementation alignment,
+and module-level side effect auditing.
+ADD to Appendix P: Templates P.13 through P.15 covering the development
+loop architecture, integration verifier pattern, and conftest.py pattern.
+================================================================================
+SECTION 30: ORCHESTRATION MEMORY ARCHITECTURE
+[v11.3, amended by v11.4, v11.5, v11.5.1, v11.5.2, and v11.6.0]
+================================================================================
+30.0 Purpose and principles
+The SLM at the heart of the orchestration is stateless by design: weights are
+frozen during inference, models have no session memory between calls, and the
+orchestrator owns every state transition.
+This section defines the persistent memory layer that gives the system its
+apparent continuity:
+- the 90-day running IOC store,
+- the audit handoff ledger between platforms,
+- the long-term semantic recall layer,
+- the per-run working state.
+All four memory types are served by two engines:
+PostgreSQL:
+Durable orchestration memory using JSONB and pgvector.
+SQLite:
+File-based ephemeral working memory.
+Design principles:
+1. The model is a worker; the database IS the memory.
+Models never talk to each other directly. The orchestrator reads memory,
+stitches context, invokes a model, and writes every handoff back.
+2. Postgres stores orchestration state, NOT raw telemetry.
+Raw logs stay in OpenSearch, the SOC stack's own store. The handoffs table
+uses payload_ref to point to large telemetry objects.
+3. Sanitize before insert.
+Nothing enters Postgres that has not passed the Section 20.2 pipeline and
+the v11.5/v11.5.1 sanitization policy. The ledger is a dataset source via
+corrections, so it must be clean by construction.
+Sanitization metadata must be recorded: sanitizer_version,
+sanitization_status, sanitization_action, regex_redaction_count,
+entropy_redaction_count, redaction_manifest_sha256 where applicable, and
+quarantine_reason if the payload was quarantined.
+4. Retention is cron + partition drop.
+Archives are written to CMR HDD first, then partitions are dropped.
+5. No new heavy services.
+A single Postgres instance is sufficient, typically around 100–200MB RAM.
+6. Audit integrity is defense-in-depth.
+Append-only role restrictions remain mandatory. Hash chaining or a separate
+audit_chain table adds tamper evidence but does not replace least privilege.
+30.1 Memory types and engine mapping
+Operational memory:
+Holds:
+90-day IOC state, enrichment, alert links.
+Engine:
+PostgreSQL.
+Handoff / audit memory:
+Holds:
+Every artifact passed between platforms and models.
+Engine:
+PostgreSQL.
+Semantic recall memory:
+Holds:
+Embeddings of past cases, corrections, rules, and accepted proposals.
+Engine:
+pgvector inside PostgreSQL.
+Working / ephemeral memory:
+Holds:
+Per-run quota ledger, harness task state, retries.
+Engine:
+SQLite.
+Queue / backpressure memory [v11.5]:
+Holds:
+Sanitized alert references awaiting triage.
+Engine:
+PostgreSQL or SQLite.
+Governance:
+Section 35.
+Wiki / externalized memory [v11.6]:
+Holds:
+Sanitized Markdown institutional knowledge generated by the SLM under
+orchestrator control.
+Engine:
+Git-backed Markdown repository or local filesystem, referenced from the
+handoff ledger.
+Governance:
+Section 38
+Section 39.
+30.2 Postgres schema
+Full DDL is maintained in Appendix K and Appendix P.
+Core tables:
+iocs:
+90-day IOC state.
+Partitioned by range on first_seen.
+handoffs:
+Append-only audit ledger of every artifact exchanged between components.
+May be hash-chained per Section 37.
+investigations:
+Orchestrator state machine.
+Includes status, autonomy_level, budget, and related orchestration fields.
+corrections:
+Human accept/fix/reject decisions.
+Dataset intake source for gated retraining.
+May be hash-chained per Section 37.
+case_embeddings:
+pgvector embeddings of past cases and corrections.
+Top-k injection source for semantic recall.
+May be time-partitioned per Section 36.
+model_registry:
+Signed adapters.
+Includes role, hardware_profile, status, signer, cosigner, and checksum.
+triage_queue [v11.5]:
+Queue for decoupling alert ingestion from SLM inference.
+Includes severity, payload_ref, status, attempts, lease_expires_at, and
+last_heartbeat_at.
+audit_chain [v11.5.1 recommended]:
+Optional separate hash-chain table for sealed audit rows.
+Preserves handoffs/corrections append-only model while adding tamper
+evidence.
+Selected indexes:
+iocs(ioc, ioc_type, last_seen DESC)
+handoffs(request_id, ts DESC)
+handoffs(payload_sha256)
+corrections(handoff_id, decision)
+triage_queue(severity, enqueued_at) WHERE status = 'pending'
+triage_queue(lease_expires_at) WHERE status = 'processing'
+audit_chain(chain_seq)
+audit_chain(table_name, row_id)
+Vector index:
+case_embeddings vector index:
+Index type is benchmark-selected. Operational reality: for <10,000
+cases, exact sequential scans are frequently faster and consume less
+memory. For scaling, HNSW (for example m=16, ef_construction=64) is
+strongly preferred over IVFFlat because it handles dynamic inserts
+seamlessly without requiring periodic index rebuilds or maintenance
+windows.
+v11.5 addition:
+case_embeddings may be range-partitioned by created_at. HNSW indexes
+may be attached only to active partitions. Older partitions may drop
+vector indexes while remaining queryable by sequential scan or metadata
+indexes. See Section 36.
+Append-only policy:
+handoffs and corrections are append-only by schema.
+The engine role receives only INSERT and SELECT privileges on these tables.
+UPDATE and DELETE are not granted to the engine role.
+Row deletion is performed via retention partition drop or explicit archive
+and truncate during maintenance windows.
+CI gate AMEND-12 verifies migration history contains no UPDATE/DELETE on
+these tables.
+v11.5.1 addition:
+Hash-chain sealing must not grant the general engine role UPDATE rights
+over handoffs or corrections. Preferred design is a separate audit_chain
+table or a dedicated chain sealer role with tightly constrained rights.
+30.3 Handoff ledger contract
+Every artifact passed between a platform, the orchestrator, an SLM, and the
+verifier is recorded in the handoff ledger.
+Platforms include:
+Wazuh
+Security Onion
+Suricata
+TheHive
+pfSense draft surfaces
+local Wiki / documentation repository [v11.6]
+Each handoff record includes:
+request_id
+direction
+from_component
+to_component
+model_name
+adapter_sha256
+verifier_version
+verdict
+payload_sha256
+JSONB payload for small objects OR payload_ref for large objects
+approval_token_ref for state-changing operations
+direction values:
+intake
+to_model
+from_model
+to_verifier
+to_platform
+payload_ref canonical contract [v11.4]:
+For payloads larger than 1MB, or any payload not stored inline as JSONB,
+the ledger must store payload_ref using a canonical URI scheme.
+Approved URI schemes:
+opensearch://<index>/doc/<id>
+file:///archive/artifacts/<aa>/<bb>/<sha256><.ext>
+s3://<bucket>/<key>
+The ledger must also record:
+payload_sha256
+payload_size_bytes
+payload_compression
+payload_sanitizer_version
+payload_sanitization_status
+payload_sanitization_action
+payload_retention_class
+Hash-chain contract [v11.5, amended by v11.5.1]:
+handoffs and corrections may be sealed through a hash chain.
+The hash chain must be generated serially or by an asynchronous sealer.
+Concurrent application inserts must not compute previous_hash directly if
+multiple writers can append simultaneously.
+Recommended default:
+Separate audit_chain table.
+See Section 37.
+Wiki commit reference contract [v11.6]:
+Wiki generation tasks that result in a Git commit must record the resulting
+Git commit SHA in the handoff ledger as metadata.wiki_commit_ref or an
+equivalent wiki_commit_ref field. This extends tamper evidence from
+orchestration memory to externalized operational documentation.
+The ledger is the primary audit source for post-incident review and the dataset
+source for the corrections table.
+The ledger must never contain raw telemetry.
+30.4 Operational IOC memory
+The IOC store uses a 90-day operational window.
+Partitioning:
+Monthly range partitions on first_seen.
+Retention cron:
+At day 1, archive partitions older than 90 days to CMR HDD.
+Archive path:
+/archive/iocs/YYYY-MM.jsonl.zst
+After archive completion, DROP PARTITION.
+Enrichment status lifecycle:
+pending -> partial -> complete
+pending -> partial -> quota_deferred
+quota_deferred items are re-queued at quota reset per Section 26.2.
+30.5 Semantic recall
+Embedding model:
+nomic-embed-text
+768 dimensions
+Served on the same inference card as the primary SLM worker where hardware
+permits.
+Embedding contract [v11.4, amended by v11.5.1]:
+The embedding pipeline must pin:
+embedding_model
+embedding_model_revision_or_hash
+embedding_dim
+embedding_normalization
+embedding_prefix_policy
+If the selected embedding model uses task instruction prefixes, the
+embedding writer and query path must enforce those prefixes.
+For nomic-family embedding models, the lab must validate whether prefixes
+such as document-side and query-side instruction strings are required for
+retrieval quality.
+Prefix injection must be implemented as a non-bypassable wrapper inside the
+Python embedding service interface:
+embed_document(text) prepends "search_document: "
+embed_query(text) prepends "search_query: "
+v11.5.1 addition:
+Prefix injection must be idempotent. If text already contains the
+required prefix, the wrapper must normalize it before prepending.
+The wrapper must prevent double-prefixing such as:
+search_document: search_document: <text>
+search_query: search_query: <text>
+If the embedding runtime cannot enforce the required prefix policy, the
+embedding adapter must fail closed.
+Sources embedded:
+Accepted triage_summaries.
+Accepted rule proposals.
+Accepted corrections with decision = accept or fix.
+Defense improvement proposals that passed CI.
+Top-k injection:
+On every orchestration request, the context stitcher queries
+case_embeddings for the 3–5 most similar past cases within max_age_days.
+The retrieved content is wrapped in:
+<memory_context>
+...
+</memory_context>
+The wrapped content is placed inside the user prompt and recorded in:
+metadata.memory_context
+Wrapped memory content remains inert to the model.
+30.6 Multi-adapter registry
+model_registry stores one row per signed adapter.
+Each row includes:
+role
+adapter_sha256
+signer
+cosigner
+hardware_profile
+status
+Status values:
+canary
+active
+retired
+Adapter routing config:
+configs/adapter_routing.v11.3.yaml
+Adapter routing maps:
+task_type -> adapter_id
+Models never hand off to each other directly.
+The orchestrator writes to the shared ledger and composes the next prompt from
+it.
+Promotion is atomic:
+Active adapter pointer swap.
+Instant rollback to the previous signed adapter on any SLO regression.
+30.7 Hygiene rules
+Postgres stores orchestration state, not raw telemetry.
+Sanitize before insert.
+Section 20.2 sanitization is enforced at the adapter boundary.
+v11.5 two-pass sanitization is enforced before orchestration memory insert.
+v11.5.1 field-aware sanitization preserves high-value suspicious payloads
+through quarantine-by-reference where appropriate.
+v11.6 Wiki sanitization is enforced before externalized documentation commit.
+Retention is cron + partition drop.
+Archive to CMR HDD before partition drop.
+No new heavy services.
+OpenSearch retains raw telemetry and telemetry k-NN if needed.
+Orchestration memory stays in Postgres so it remains available even when
+OpenSearch is stopped during serialized training phases.
+payload_ref artifacts must be integrity-checked and retention-classified.
+Uncertain payloads must be quarantined, not silently inserted.
+Alert ingestion must be decoupled from SLM inference per Section 35.
+Queue stale recovery must be tested per Section 35.
+Hash-chain sealing must be serialized per Section 37.
+Wiki generation must be queued at low priority per Section 38
+Section 39.
+30.8 Acceptance criteria
+Postgres schema migration is reproducible and recorded in memory/migration/.
+Append-only audit passes on handoffs and corrections.
+90-day retention cron runs cleanly and produces archive artifacts on CMR HDD.
+Embedding top-k injection is recorded in every relevant handoff row.
+Adapter routing table is populated with only signed, co-signed adapters.
+payload_ref integrity check passes for sample artifacts.
+Embedding prefix contract check passes if prefixes are required.
+Embedding prefix idempotency check passes.
+Sanitization redaction and entropy checks pass for known secret/PII test
+payloads.
+Field-aware sanitization preserves approved IOC hashes and quarantines
+high-value suspicious command-line payloads where policy requires.
+Hash-chain verifier passes if hash chaining is enabled.
+Hash-chain concurrency test passes if concurrent writers are enabled.
+Queue backpressure behavior is tested if asynchronous intake is enabled.
+Queue stale-job recovery is tested.
+Partitioned vector index behavior is benchmarked if partitioning is enabled.
+Wiki sanitization check passes if Wiki generation is enabled.
+Wiki commit SHA is recorded in the handoff ledger if Wiki generation is
+enabled.
+
+================================================================================
+SECTION 31: CONTINUAL LEARNING & EXPERIENCE POLICY
+[v11.3, amended by v11.4]
+================================================================================
+31.0 Thesis
+The system becomes more effective with curated experience without ever
+performing autonomous online tuning.
+Model weights are frozen during operation.
+The system learns through four distinct loops.
+Only the third loop changes weights, and it is fully gated, signed, reversible,
+and audited.
+The fourth loop, autonomous online tuning, is explicitly prohibited for safety
+reasons.
+31.1 The four adaptation loops
+Loop 1 — Retrieval / memory:
+Changes:
+Prompt context.
+Latency:
+Next alert.
+Gating:
+Inert context.
+Loop 2 — Deterministic adaptation:
+Changes:
+Non-ML config.
+Latency:
+Hours to days.
+Gating:
+Deterministic gates.
+Loop 3 — Gated retraining:
+Changes:
+Weights via new adapter.
+Latency:
+Days to weeks.
+Gating:
+CI + replay-mix + canary + approval.
+Loop 4 — Autonomous online tuning:
+Changes:
+Weights.
+Latency:
+Continuous.
+Gating:
+PROHIBITED.
+31.2 Loop 1 — Retrieval / memory
+Loop 1 is safe and immediate.
+pgvector top-k injection, defined in Section 30.5, places past accepted cases
+and corrections into every relevant prompt.
+The retrieved content is wrapped as inert <memory_context>.
+The effect is genuine and immediate:
+A corrected alert from yesterday can bias today's similar alert.
+Safety posture:
+Retrieved content is untrusted context.
+Retrieved content is subject to the same <untrusted_log_payload> discipline
+as everything else.
+The verifier still gates every output.
+31.3 Loop 2 — Deterministic adaptation
+Loop 2 is safe and medium-term.
+It changes non-ML configuration and statistics.
+Examples:
+Cache TTLs.
+Routing priorities.
+Quota statistics.
+Playbook growth.
+Action-budget tuning.
+Queue thresholds.
+Sanitizer allowlists.
+VRAM budget overrides.
+Changes are deterministic and auditable.
+Anything state-changing remains approval-gated per Section 24.5.
+31.4 Loop 3 — Gated retraining
+Loop 3 is safe, slow, and fully controlled.
+Trigger:
+Accumulation of corrections with decision = accept or fix since the last
+promotion.
+Scheduled cadence, weekly by default.
+Data:
+Corrections-derived examples only.
+Raw operational telemetry never enters training.
+Process:
+1. QLoRA training on GPU 0.
+2. Merge to safetensors or produce signed adapter artifact according to the
+approved training pipeline.
+3. Sign adapter.
+4. Run CI gates from Section 20.7.
+5. Run replay-mix evaluation from Section 31.5.
+6. Deploy to canary from Section 31.6.
+7. Atomic swap if canary passes.
+8. Instant rollback if SLO regression occurs.
+31.5 Replay-mix evaluation [v11.4]
+Adapter promotion requires replay-mix evaluation.
+The replay-mix evaluation set must contain:
+1. Held-out test examples derived only from approved corrections or
+approved curated training data.
+2. A replay sample from the golden evaluation set used for the currently
+active adapter.
+Purpose:
+Detect regression on newly learned corrections.
+Detect catastrophic forgetting of previously accepted behavior.
+Ensure the candidate adapter remains safe for SOC use.
+Required metrics:
+verifier_pass_rate
+schema_validity_rate
+prohibited_action_rate
+hallucinated_tool_call_rate
+IOC extraction accuracy
+triage summary sanity score
+regression delta against active adapter
+forgetting delta against golden replay sample
+CI must record:
+candidate adapter sha256
+active adapter sha256
+evaluation dataset hashes
+replay sample hashes
+metric results
+pass/fail verdict
+evaluator version
+A candidate adapter must not be promoted if replay-mix evaluation fails or if
+any safety-critical metric regresses beyond the approved threshold.
+31.6 Canary and rollback [v11.4]
+Canary deployment is mandatory for promoted adapters.
+Canary modes:
+Shadow canary:
+Candidate adapter receives the same prompt/context as the active
+adapter, but its output is not used for operational action.
+Limited live canary:
+Candidate adapter handles a small, explicitly routed subset of eligible
+task_type traffic.
+Canary SLOs include:
+verifier_pass_rate
+schema_validity_rate
+prohibited_action_rate
+hallucinated_tool_call_rate
+analyst correction rate
+latency percentile
+VRAM stability
+recurrence of known failure classes
+Promotion:
+Promotion is atomic.
+Promotion swaps the active adapter pointer or serving endpoint.
+The previous signed adapter remains immediately restorable.
+Rollback:
+Rollback is immediate.
+Rollback does not require retraining.
+Rollback restores the previous signed adapter pointer or endpoint.
+Rollback is recorded in the handoff ledger and model registry history.
+31.7 Prohibited autonomous online tuning
+Loop 4 is prohibited.
+The system must not:
+Update model weights from operational traffic.
+Perform online fine-tuning from alerts.
+Perform reinforcement learning from live SOC events.
+Autonomously promote adapters without CI, replay-mix, canary, and approval.
+Modify active model weights during inference.
+Use raw telemetry directly as training data.
+All weight changes occur only through Loop 3.
+31.8 Acceptance criteria
+Retrieval memory injection is visible in handoff metadata.
+Deterministic configuration changes are auditable.
+Corrections are the only operational source for retraining examples.
+Replay-mix evaluation is mandatory for adapter promotion.
+Canary evaluation is mandatory before active promotion.
+Rollback is immediate and tested.
+No online weight tuning path exists in code or config.
+
+================================================================================
+SECTION 32: DEPLOYMENT READINESS & VERIFICATION REGISTER
+[v11.4, amended by v11.5, v11.5.1, v11.5.2, and v11.6.0]
+================================================================================
+32.0 Purpose
+Section 32 establishes a formal register of what is known, what must be
+verified in the lab, and what remains an open research question.
+This blueprint does not promote external claims into normative requirements
+unless they are directly supported by the supplied lineage or proven in the
+lab.
+All external integration behavior is treated as LAB-VERIFY until evidence is
+recorded in Appendix N.
+32.1 Verified internal baseline [VERIFIED-INTERNAL]
+The following constraints are verified from the v11.3/v11.4/v11.5 lineage:
+- Single NVIDIA GPU with 16GB VRAM is the primary hardware baseline.
+- 64GB DDR5 is approved as the v1 starting configuration when operated in
+serialized phases.
+- 96GB DDR5 is preferred for concurrent operation.
+- RAM upgrades use matched-kit replacement only.
+- A future second GPU separates development and inference duties.
+- A second GPU does not increase autonomy.
+- The Enrichment Engine integrates Wazuh, Security Onion, Suricata,
+TheHive, and pfSense.
+- pfSense-adjacent mutations remain approval-gated.
+- The engine never applies pfSense mutations autonomously.
+- PostgreSQL stores orchestration state, not raw telemetry.
+- SQLite stores ephemeral working state.
+- handoffs and corrections are append-only.
+- The engine role receives only INSERT and SELECT on append-only tables.
+- Retention uses cron + partition drop after CMR HDD archive.
+- Semantic recall uses pgvector with 768-dimensional embeddings.
+- The embedding model is nomic-embed-text.
+- Model adapters must be signed.
+- Adapter promotion requires replay-mix evaluation.
+- Adapter promotion requires canary evaluation.
+- Rollback must be atomic and immediate.
+- Autonomous online tuning is prohibited.
+- Asynchronous ingestion must decouple intake from inference.
+- High-entropy unknown tokens must be redacted or quarantined.
+- Hash-chain generation must be serialized.
+- Embedding prefix injection must be idempotent.
+- Master documentation must pass completeness checks.
+- Wiki generation is append-only or draft-only and sanitized before commit.
+32.2 External lab-validation dependencies [LAB-VERIFY]
+pfSense API surface:
+Verify exact pfSense version, API availability, endpoint paths,
+authentication model, alias read/draft/apply behavior, and least-privilege
+credential options.
+Stock pfSense CE/Plus may not provide the required REST API out of the box.
+Lab verification may require the community-maintained pfSense-pkg-RESTAPI
+package or equivalent. API keys must be strictly scoped to alias read/draft
+endpoints where possible.
+Wazuh API and RBAC:
+Verify read-only role behavior, required alert/rule/agent read permissions,
+and denial of manager mutation or restart operations.
+Security Onion / OpenSearch access:
+Verify whether OpenSearch API access is direct or mediated by Security
+Onion, and verify read-only query permissions without destructive rights.
+TheHive API:
+Verify TheHive major version, API authentication, organization/permission
+model, case creation behavior, observable behavior, and safe writeback
+boundaries.
+Suricata EVE:
+Verify EVE JSON schema version, event normalization, file rotation, intake
+mechanism, and sanitization requirements.
+Embedding model behavior:
+Verify exact nomic-embed-text artifact, dimension, normalization, prefix
+behavior, and prefix idempotency.
+Vector index behavior:
+Benchmark sequential scan, HNSW, and IVFFlat against recall, latency,
+insert behavior, memory usage, and maintenance cost.
+Time-partitioned vector behavior [v11.5]:
+Verify partition pruning, active-partition HNSW behavior, index attachment
+and detachment, and top-k recall over the active window.
+Inference serving behavior:
+Verify serving backend, quantization, context limits, parallelism, VRAM
+usage, adapter loading, and rollback behavior.
+Dynamic VRAM detection [v11.5]:
+Verify nvidia-smi/NVML detection, total GPU memory, 90% safety cap, and
+workload-based peak measurement.
+Sanitization behavior:
+Verify regex and entropy redaction coverage, false-negative tolerance,
+quarantine behavior, allowlist behavior, field-aware command-line handling,
+and audit metadata.
+payload_ref storage:
+Verify canonical URI behavior, artifact integrity, retrieval, retention,
+and access control.
+Asynchronous queue behavior [v11.5]:
+Verify queue depth thresholds, severity prioritization, shedding behavior,
+dead-letter behavior, worker concurrency limits, lease expiration, and
+stale-job recovery.
+Hash-chain behavior [v11.5, amended by v11.5.1]:
+Verify chain calculation, tamper detection, anchoring, recovery behavior,
+and concurrency safety.
+Documentation completeness [v11.5.2]:
+Verify Appendix M subsections, amendment text, Appendix O skeletons,
+Appendix P templates, Appendix N register, changelog entries, and
+END OF DOCUMENT marker are present.
+Wiki generation behavior [v11.6]:
+Verify Wiki task queue priority, sanitization, verifier gating, Git commit
+recording, and failure handling.
+32.3 Research spikes
+Spike 1 — Firewall API feasibility:
+Prove safe pfSense table read and alias draft behavior in a lab firewall.
+Spike 2 — Read-only credential proof:
+Prove Wazuh, OpenSearch/Security Onion, and TheHive credentials can read
+required data but cannot perform prohibited mutations.
+Spike 3 — Embedding correctness:
+Prove embedding prefix policy, dimension, normalization, top-k recall, and
+prefix idempotency.
+Spike 4 — Inference and VRAM budget:
+Prove the selected serving stack remains stable under the approved context
+length and concurrency limits on 16GB VRAM.
+Spike 5 — Append-only memory proof:
+Prove Postgres migration reproducibility, append-only grants, and CI drift
+detection.
+Spike 6 — Sanitization and payload_ref proof:
+Prove sensitive payloads are redacted or quarantined and large artifacts
+are referenced safely.
+Spike 7 — Replay/canary proof:
+Prove replay-mix evaluation and canary rollback work end-to-end.
+Spike 8 — Async backpressure proof [v11.5]:
+Prove queue behavior under alert burst, shedding, dead-letter, severity
+prioritization, lease expiration, and stale-job recovery.
+Spike 9 — Partitioned vector memory proof [v11.5]:
+Prove partition pruning and active-partition HNSW behavior.
+Spike 10 — Hash-chain proof [v11.5, amended by v11.5.1]:
+Prove hash-chain verification, tamper detection, and serialized sealing
+under concurrent inserts.
+Spike 11 — Entropy sanitization proof [v11.5, amended by v11.5.1]:
+Prove entropy detection does not over-redact approved IOC hashes, UUIDs,
+request IDs, or adapter checksums, and proves quarantine-by-reference for
+high-value command-line payloads.
+Spike 12 — Dynamic VRAM detection proof [v11.5]:
+Prove dynamic VRAM cap detection fails closed when GPU metrics are
+unavailable.
+Spike 13 — Stale queue recovery proof [v11.5.1]:
+Prove crashed or timed-out workers do not leave jobs stuck in processing.
+Spike 14 — Hash-chain concurrency proof [v11.5.1]:
+Prove concurrent inserts do not corrupt chain order or create bottlenecks.
+Spike 15 — Embedding prefix idempotency proof [v11.5.1]:
+Prove repeated ingestion of already-prefixed text does not double-prefix.
+Spike 16 — Documentation completeness proof [v11.5.2]:
+Prove the master document contains all required appendices, amendments,
+tool skeletons, templates, checklist, manifest, and termination marker.
+Spike 17 — Operational Wiki proof [v11.6]:
+Prove Wiki generation tasks are sanitized, verifier-gated, low-priority,
+auditable, and safely shed under backpressure.
+32.4 Go/no-go gates
+Implementation must not proceed to production use until:
+- All Tier 0 LAB-VERIFY items in Appendix N have passed.
+- Credential permission proof has been archived.
+- Embedding prefix behavior and idempotency have been validated.
+- VRAM budget smoke check has passed.
+- Append-only audit check has passed.
+- Sanitization redaction, entropy, and field-policy checks have passed.
+- payload_ref integrity check has passed.
+- Adapter rollback drill has passed.
+- Queue backpressure and stale recovery behavior have passed if async
+intake is enabled.
+- Hash-chain verification and concurrency behavior have passed if hash
+chaining is enabled.
+- Partitioned vector index behavior has passed if partitioning is enabled.
+- Documentation completeness check has passed.
+- Wiki sanitization and Git audit proof have passed if Wiki generation is
+enabled.
+
+================================================================================
+SECTION 33: INFERENCE, EMBEDDING, AND VRAM GOVERNANCE
+[v11.4, amended by v11.5]
+================================================================================
+33.0 Purpose
+Section 33 governs how local SLM inference, embedding generation, adapter
+serving, and VRAM limits are managed on consumer hardware.
+This section does not mandate a specific serving backend. It mandates that the
+chosen backend be proven against the blueprint's safety, memory, and rollback
+requirements.
+33.1 Hardware contexts
+Single-GPU baseline:
+One NVIDIA GPU with 16GB VRAM.
+Training, inference, embedding, and SOC workloads must be serialized or
+tightly bounded.
+Future dual-GPU path:
+GPU 0:
+Development bench: training, merge, heavy eval.
+GPU 1:
+Analyst-on-shift inference worker and embedding worker.
+A second GPU increases operational availability, not autonomy.
+33.2 Serving stack decision record
+The deployment must record:
+serving_backend
+serving_backend_version
+model_name
+model_hash
+quantization_format
+context_length_limit
+parallel_request_limit
+vram_budget_limit
+embedding_worker_location
+adapter_loading_mechanism
+rollback_mechanism
+Candidate serving approaches include, but are not limited to:
+Local OpenAI-compatible inference server.
+Ollama-style local model runner.
+vLLM-style serving backend.
+llama.cpp-style lightweight server.
+No candidate is mandatory until validated in the lab.
+33.3 Dynamic VRAM budget [v11.5]
+The VRAM budget must not be hardcoded to a single GPU SKU.
+The VRAM smoke check must dynamically detect installed GPU memory and enforce
+a safety ceiling.
+Default policy:
+maximum_allowed_vram = total_gpu_vram * 0.90
+The 10% reserve is reserved for:
+CUDA context overhead,
+driver overhead,
+embedding co-residency spikes,
+KV-cache fragmentation,
+unexpected concurrent requests.
+The check must still run a representative workload:
+maximum configured context length,
+concurrent embedding batch,
+at least one inference request or simulated inference allocation.
+Idle VRAM polling alone is insufficient.
+If nvidia-smi or NVML is unavailable on a GPU-required runner, the check must
+fail closed.
+If the VRAM budget is exceeded, the deployment must reduce at least one of:
+model size,
+quantization footprint,
+context length,
+parallelism,
+embedding co-residency,
+concurrent service load,
+or move to serialized operation.
+33.4 Adapter promotion mechanisms
+Adapter promotion must use one or more of the following mechanisms:
+active adapter pointer swap,
+model registry status change,
+serving endpoint swap,
+container swap,
+reverse proxy switch,
+serving backend reload.
+The chosen mechanism must satisfy:
+signed adapter verification,
+health check before promotion,
+immediate rollback,
+audit ledger recording,
+no requirement to retrain during rollback.
+If the serving backend does not support hot adapter swapping, promotion may be
+implemented by starting a new verified serving instance and switching the local
+routing endpoint after health checks pass.
+33.5 Embedding service contract
+The embedding service must:
+pin model artifact and hash,
+enforce dimension 768 for orchestration memory,
+enforce normalization policy,
+enforce prefix policy if required,
+enforce idempotent prefix normalization,
+record embedding model metadata in handoff or ledger metadata,
+fail closed if prefix or dimension contract cannot be satisfied.
+Embedding generation may co-reside with the inference worker only if the VRAM
+budget smoke check passes.
+33.6 Acceptance criteria
+Serving backend is documented and version-pinned.
+VRAM budget smoke check passes.
+Context length and concurrency limits are configured and tested.
+Adapter promotion mechanism is documented.
+Rollback drill passes.
+Embedding prefix and dimension checks pass.
+Embedding prefix idempotency check passes.
+No unbounded model loading or unbounded context expansion is possible.
+Dynamic VRAM detection fails closed when GPU metrics are unavailable.
+
+================================================================================
+SECTION 34: SANITIZATION, QUARANTINE, AND ARTIFACT REFERENCE GOVERNANCE
+[v11.4, amended by v11.5 and v11.5.1]
+================================================================================
+34.0 Purpose
+Section 34 strengthens the v11.3 rule:
+Sanitize before insert.
+It defines the governance boundary between raw telemetry, sanitized
+orchestration memory, quarantined uncertain payloads, and referenced artifacts.
+34.1 Two-pass sanitization pipeline [v11.5, amended by v11.5.1]
+Before any payload enters PostgreSQL, it must pass sanitization.
+The sanitization pipeline must use at least two passes:
+Pass 1 — Deterministic regex redaction:
+AWS access key IDs
+GitHub tokens
+JWT/Bearer tokens
+OpenSSH private key headers
+Slack tokens
+generic Authorization headers
+API key query parameters
+password query parameters
+session cookies where feasible
+Pass 2 — Shannon entropy detection:
+Scan alphanumeric and base64-like tokens longer than 16 characters.
+Calculate Shannon entropy.
+If entropy exceeds the configured threshold, treat the token as a
+potential secret.
+Default entropy threshold:
+4.5
+High-entropy handling policy:
+Unknown high-entropy tokens must be redacted or quarantined.
+Known non-secret high-entropy artifacts may be preserved if explicitly
+allowlisted.
+Allowlisted high-entropy artifact classes:
+sha256 hashes
+sha1 hashes
+md5 hashes when explicitly marked as IOC hashes
+UUIDs
+request_id values
+adapter_sha256 values
+payload_sha256 values
+model checksums
+case IDs generated by the orchestrator
+Context-sensitive rule:
+A 64-character hex string in an IOC hash field may be preserved.
+The same 64-character hex string in an unstructured log message may be
+quarantined or redacted if not explicitly identified as an IOC.
+Field-aware high-entropy command-line handling [v11.5.1]:
+Shannon entropy detection must be field-aware.
+High-entropy tokens found in analytical fields such as:
+process.args
+process.command_line
+powershell.encoded_command
+script.block
+bash.command
+shell.args
+file.contents where explicitly used for detection
+must not be blindly replaced with inline redaction if doing so would
+destroy triage value.
+Preferred handling:
+1. Preserve the sanitized alert metadata in PostgreSQL.
+2. Store the high-entropy raw artifact out-of-band using payload_ref.
+3. Record sanitization_action = 'quarantine_ref'.
+4. Record quarantine_reason = 'high_entropy_analytical_payload'.
+Allowed sanitization_action values:
+preserve_allowlisted
+redact_inline
+quarantine_ref
+reject
+Example:
+A base64-encoded PowerShell argument may have high Shannon entropy, but it
+may also be the primary evidence needed for triage.
+The sanitizer should therefore quarantine the raw artifact by reference
+rather than destroying it inline.
+Inline redaction remains appropriate for:
+API keys
+bearer tokens
+passwords
+session cookies
+private key headers
+cloud credentials
+Quarantine-by-reference is preferred for:
+encoded commands
+obfuscated shell arguments
+suspicious script blocks
+high-entropy file snippets
+packed or encoded payloads where analysis value is high
+Sanitization metadata must record:
+sanitizer_version
+regex_redaction_count
+entropy_redaction_count
+sanitization_action
+quarantine_reason
+redaction_manifest_sha256
+payload_sanitization_status
+34.2 Quarantine
+If sanitization cannot be performed safely, or if a payload contains ambiguous
+high-risk content, the payload must be quarantined.
+Quarantined payloads must not be inserted into orchestration memory as normal
+JSONB payload.
+Allowed quarantine patterns:
+Store only sanitized metadata and payload_sha256.
+Store payload_ref to an out-of-band artifact store.
+Store a redacted summary only.
+Reject the payload and log the rejection.
+Quarantine reasons must be recorded.
+34.3 payload_ref governance
+payload_ref artifacts must be content-addressed or otherwise integrity-checked.
+Each payload_ref must include:
+canonical URI,
+sha256,
+size_bytes,
+compression,
+sanitizer_version,
+sanitization_status,
+sanitization_action,
+retention_class.
+payload_ref artifacts must not be treated as trusted input. They remain subject
+to the same untrusted payload discipline as inline JSONB payloads.
+34.4 Retention and deletion
+Sanitized orchestration memory follows Section 30 retention rules.
+Referenced artifacts must have explicit retention classes.
+Retention classes should distinguish:
+short-term operational artifacts,
+90-day IOC-related artifacts,
+long-term audit artifacts,
+training/correction-derived artifacts,
+quarantined artifacts,
+externalized Wiki artifacts [v11.6].
+Deletion or archive must be auditable.
+34.5 Acceptance criteria
+Known secret patterns are redacted or blocked in CI tests.
+High-entropy unknown tokens are redacted or quarantined.
+Approved high-entropy artifact classes are preserved when explicitly
+expected.
+High-value suspicious command-line payloads are quarantined by reference
+where inline redaction would destroy analytical value.
+Quarantine path is tested.
+payload_ref integrity check passes.
+Sanitization metadata is present in relevant ledger rows.
+Raw unsanitized telemetry is not present in PostgreSQL.
+Retention classes are documented.
+Generated Wiki Markdown is sanitized before commit when Wiki generation is
+enabled.
+
+================================================================================
+SECTION 35: ASYNCHRONOUS INGESTION, BACKPRESSURE, AND TRIAGE QUEUE GOVERNANCE
+[v11.5, amended by v11.5.1]
+================================================================================
+35.0 Purpose
+Alert ingestion must be decoupled from SLM inference.
+The intake path must not block on model inference.
+This section defines the backpressure and queueing contract required to
+prevent alert bursts from saturating GPU KV-cache context windows, timing out
+intake endpoints, or crashing the enrichment pipeline.
+35.1 Queue implementation policy
+Preferred v1 queue implementation:
+Use PostgreSQL or SQLite as the durable local queue.
+Do not introduce Redis, RabbitMQ, Kafka, or another external queue
+service unless lab evidence proves the local queue is insufficient.
+This preserves the blueprint principle:
+No new heavy services.
+If Redis or another queue is later introduced, it must be recorded as a
+LAB-VERIFY dependency in Appendix N and must not become a hidden source of
+raw telemetry.
+35.2 Intake flow
+The intake flow must be:
+1. Webhook, filebeat, EVE intake, or API adapter receives alert.
+2. Alert is sanitized or quarantined.
+3. Sanitized alert reference is written to the triage queue.
+4. Intake returns HTTP 202 Accepted or equivalent local acknowledgment.
+5. Worker pool claims queued jobs using bounded concurrency.
+The intake adapter must not directly invoke the SLM for every alert.
+35.3 Queue states
+Queue items must have at least the following states:
+pending
+processing
+completed
+failed
+quarantined
+shed
+State transitions must be recorded.
+35.4 Severity prioritization
+Queue workers must prioritize alerts by severity and enqueue time.
+Recommended priority order:
+critical
+high
+medium
+low
+informational
+Within the same severity, older items must be processed first.
+35.5 Backpressure thresholds
+The deployment must define:
+warning_queue_depth
+emergency_queue_depth
+max_worker_concurrency
+max_inflight_inference_requests
+max_embedding_batch_size
+max_attempts
+queue_lease_interval
+If queue depth exceeds warning_queue_depth:
+Low-severity enrichment may be delayed.
+Metrics must record queue pressure.
+If queue depth exceeds emergency_queue_depth:
+Low-severity alerts may be shed from SLM triage.
+Medium-severity alerts may be delayed or shed only if policy allows.
+High-severity and critical alerts must not be silently dropped.
+Shedding must be auditable.
+Wiki generation tasks are low-priority background work and may be delayed or
+shed before operational alert triage [v11.6].
+35.6 Shedding policy
+When shedding occurs:
+The queue item state must become shed.
+The shed_reason must be recorded.
+The alert must remain visible in the SOC dashboard or OpenSearch.
+The event must be written to the handoff ledger or an equivalent audit
+table.
+Shedding is not deletion.
+35.7 Dead-letter and retry behavior
+Jobs that fail repeatedly must not be silently discarded.
+Required behavior:
+attempts counter must be incremented.
+after max_attempts, the job must move to failed or quarantined.
+failure_reason must be recorded.
+payload_ref must remain available for investigation.
+35.8 Worker concurrency and VRAM coupling
+Worker concurrency must be bounded by the VRAM budget in Section 33.
+If VRAM pressure is detected:
+reduce worker concurrency,
+reduce embedding batch size,
+reduce context length,
+or shed low-severity work.
+Worker autoscaling must never override the approval-gated mutation contract.
+35.9 Stale job recovery [v11.5.1]
+Workers that crash, time out, or OOM must not leave queue rows permanently
+stuck in status = 'processing'.
+The queue must implement lease-based recovery.
+Recommended columns:
+lease_expires_at TIMESTAMPTZ
+last_heartbeat_at TIMESTAMPTZ
+When a worker claims a job, it must set:
+status = 'processing'
+started_at = now()
+attempts = attempts + 1
+lease_expires_at = now() + queue_lease_interval
+Default queue_lease_interval:
+15 minutes
+Long-running SLM jobs must extend the lease with periodic heartbeats:
+UPDATE triage_queue
+SET last_heartbeat_at = now(),
+lease_expires_at = now() + interval '15 minutes'
+WHERE id = :job_id
+AND status = 'processing';
+A reaper process must periodically recover stale jobs:
+UPDATE triage_queue
+SET status = 'pending',
+started_at = NULL,
+lease_expires_at = NULL
+WHERE status = 'processing'
+AND lease_expires_at < now()
+AND attempts < :max_attempts;
+Jobs that exceed max_attempts must move to failed or quarantined:
+UPDATE triage_queue
+SET status = 'failed',
+finished_at = now(),
+failure_reason = 'max_attempts_exceeded_after_stale_recovery'
+WHERE status = 'processing'
+AND lease_expires_at < now()
+AND attempts >= :max_attempts;
+Stale recovery events must be auditable.
+Stale recovery is not silent deletion.
+35.10 Acceptance criteria
+Intake does not block on SLM inference.
+Queue state transitions are recorded.
+Severity prioritization works.
+Backpressure thresholds are tested.
+Shedding is auditable and does not delete alerts.
+Failed jobs enter dead-letter or quarantine state.
+Worker concurrency is bounded by VRAM budget.
+Crashed workers do not leave jobs stuck in processing.
+Lease expiration recovers jobs safely.
+Jobs exceeding max_attempts are failed or quarantined.
+
+================================================================================
+SECTION 36: TIME-PARTITIONED VECTOR MEMORY AND INDEX LIFECYCLE
+[v11.5]
+================================================================================
+36.0 Purpose
+As case_embeddings grows, an unpartitioned HNSW index may consume increasing
+memory and compete with inference workloads on consumer hardware.
+Section 36 defines time-partitioned vector memory management.
+36.1 Partitioning policy
+case_embeddings may be implemented as a declarative range-partitioned table
+by created_at.
+Partitioning goals:
+Keep active vector search focused on recent operational memory.
+Limit HNSW memory pressure on consumer hardware.
+Allow older partitions to drop vector indexes while remaining
+queryable by sequential scan or metadata indexes.
+Align vector retention with the 90-day operational IOC window where
+appropriate, while preserving longer-term accepted corrections under
+separate retention policy.
+36.2 Index lifecycle
+Index policy:
+For low-volume operation, exact sequential scan is acceptable.
+When indexing is required, HNSW is preferred over IVFFlat for dynamic
+inserts.
+HNSW indexes may be attached only to active partitions.
+Older partitions may have their HNSW indexes dropped during retention
+maintenance.
+Index attachment, detachment, and benchmark results must be recorded
+in Appendix N and migration history.
+Recommended active-window default:
+Last 30 to 90 days.
+Older partitions may remain queryable, but top-k operational recall should
+normally target the active window.
+36.3 Query pattern
+Operational top-k queries should filter by created_at so PostgreSQL can prune
+partitions.
+Example:
+SELECT source_id, case_ref, embedding <=> $query_embedding AS distance
+FROM case_embeddings
+WHERE created_at >= now() - interval '90 days'
+ORDER BY embedding <=> $query_embedding
+LIMIT 5;
+36.4 Retention and archive
+Partition retention must follow the archive-first rule:
+Archive to CMR HDD before dropping a partition.
+Vector partitions containing accepted corrections or long-term training-derived
+memory must not be dropped unless explicitly covered by an approved retention
+class.
+36.5 Acceptance criteria
+case_embeddings partitioning is reproducible from migration files.
+Active partition index strategy is benchmarked and recorded.
+Top-k recall remains within policy on the active window.
+Older partitions can be queried without requiring full HNSW indexes.
+Index memory usage does not destabilize inference or embedding workers.
+
+================================================================================
+SECTION 37: HASH-CHAINED AUDIT LEDGER AND TAMPER DETECTION
+[v11.5, amended by v11.5.1]
+================================================================================
+37.0 Purpose
+The append-only handoff ledger and corrections table are protected by
+role-level restrictions. Hash chaining adds tamper evidence as defense-in-depth.
+Hash chaining does not replace PostgreSQL privilege restrictions. It strengthens
+detection of unauthorized modification.
+37.1 Hash-chain contract
+The following columns are recommended for hash-chained audit tables if embedded
+columns are used:
+chain_seq BIGINT
+previous_hash CHAR(64)
+row_hash CHAR(64)
+Hash calculation:
+row_hash = SHA256(
+chain_seq ||
+previous_hash ||
+canonical_row_payload
+)
+canonical_row_payload must include only immutable audit fields, such as:
+request_id
+ts
+direction
+from_component
+to_component
+model_name
+adapter_sha256
+verifier_version
+verdict
+payload_sha256
+The hash chain must not depend on mutable fields.
+37.2 Genesis hash
+The first row uses a fixed genesis hash:
+0000000000000000000000000000000000000000000000000000000000000000
+37.3 Verification
+A CI or maintenance job must recompute the chain and fail if any row hash or
+previous hash mismatch is detected.
+Verification must be tested against:
+clean data,
+a tampered row,
+a reordered row,
+a deleted row,
+an inserted unauthorized row.
+37.4 Anchoring
+Periodically anchor the latest chain hash to an external append-only location,
+such as:
+a signed git tag,
+an immutable file archive,
+a lab evidence record in Appendix N,
+a hardware-protected keystore where available.
+Anchoring must be recorded in the release checklist.
+37.5 Hash-chain concurrency policy [v11.5.1]
+Concurrent inserts must not compute previous_hash directly at insert time if
+multiple writers can append simultaneously.
+Hash-chain generation must be serialized.
+Approved patterns:
+Pattern A — Single chain writer:
+Application inserts append-only rows without chain fields.
+A dedicated chain writer process reads newly inserted rows in deterministic
+order and computes chain_seq, previous_hash, and row_hash.
+Pattern B — Asynchronous chain sealer:
+Rows are inserted with chain_status = 'pending'.
+A background sealer process periodically computes the chain under an
+advisory lock.
+Pattern C — Separate audit_chain table:
+handoffs and corrections remain strictly append-only.
+A separate audit_chain table stores the sealed hash chain.
+Recommended default:
+Pattern C, separate audit_chain table.
+Reason:
+It avoids granting UPDATE rights to handoffs or corrections, preserving the
+append-only security model.
+Example audit_chain table:
+CREATE TABLE audit_chain (
+chain_seq BIGINT PRIMARY KEY,
+table_name TEXT NOT NULL,
+row_id UUID NOT NULL,
+row_ts TIMESTAMPTZ NOT NULL,
+canonical_payload_sha256 TEXT NOT NULL,
+previous_hash CHAR(64) NOT NULL,
+row_hash CHAR(64) NOT NULL,
+sealed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+The chain sealer must acquire a serialized advisory lock before extending the
+chain:
+SELECT pg_advisory_xact_lock(37001);
+The sealer must process rows in deterministic order:
+ORDER BY row_ts ASC, row_id ASC
+The hash chain must be verifiable independently of the writer that produced the
+original row.
+If chain columns remain embedded in handoffs or corrections, only a dedicated
+chain writer role may update chain_seq, previous_hash, and row_hash. That role
+must not be the general engine role.
+37.6 Acceptance criteria
+handoffs and corrections include hash-chain columns where enabled, or
+audit_chain is used.
+chain_seq is unique and ordered.
+hash_chain_verify.py passes on clean data.
+hash_chain_verify.py detects tampering in test data.
+latest chain hash is anchored and recorded.
+Concurrent inserts do not corrupt chain order.
+Chain sealing does not require granting UPDATE rights to the general engine
+role.
+
+================================================================================
+SECTION 38: OPERATIONAL KNOWLEDGE GENERATION & EXTERNALIZED MEMORY [v11.6]
+================================================================================
+38.0 Purpose
+The SLM may synthesize orchestration memory into human-readable operational
+documentation, such as a local Wiki, shift summaries, incident narratives,
+runbook drafts, or lab-journal entries.
+
+This is classified as Externalized Institutional Memory. It supports Loop 1
+retrieval and Loop 2 deterministic playbook growth without changing model
+weights.
+
+38.1 Writeback governance
+The SLM never writes directly to the filesystem, Git repository, or Wiki API.
+
+Required flow:
+1. Orchestrator selects a documentation task.
+2. Orchestrator stitches memory context from handoffs, corrections,
+   investigations, and accepted summaries.
+3. SLM produces a structured wiki_draft payload.
+4. Verifier checks schema and prohibited content.
+5. Sanitizer applies Section 34 rules to the Markdown text.
+6. Orchestrator commits or stores the sanitized Markdown.
+7. Orchestrator records provenance in the handoff ledger.
+
+Documentation actions:
+- New incident reports, shift summaries, and lab-journal entries are
+  append-only.
+- Modifications to core normative runbooks, architecture documents, or
+  safety policy remain draft-only and require human approval.
+
+38.2 Git as an audit surface
+If the Wiki is backed by a local Git repository:
+- The orchestrator commits sanitized Markdown.
+- The Git commit SHA is recorded in the handoff ledger.
+- The sanitized Markdown artifact hash may be recorded as payload_sha256.
+- The repository path and page path are recorded in ledger metadata.
+
+This extends Section 37 tamper-evidence discipline to externalized
+documentation without granting the SLM direct mutation rights.
+
+38.3 VRAM and queue prioritization
+Wiki generation is a background knowledge task.
+
+Required queue policy:
+- Wiki generation tasks are enqueued with severity = 'low' or
+  severity = 'informational'.
+- Under backpressure, Wiki generation is delayed or shed before operational
+  alert triage.
+- High-severity and critical alert triage must never be displaced by Wiki
+  generation.
+- Wiki generation must respect the dynamic VRAM budget in Section 33.
+
+38.4 Sanitization requirements
+Generated Wiki text must pass the same sanitization discipline as any other
+payload entering orchestration memory or durable artifacts.
+
+The Wiki pipeline must prevent:
+- API keys,
+- bearer tokens,
+- passwords,
+- private key material,
+- session cookies,
+- cloud credentials,
+- high-entropy unknown tokens not explicitly allowlisted.
+
+High-value suspicious command snippets may be preserved by reference where
+policy allows, but raw unsanitized payloads must not be committed to the Wiki.
+
+38.5 Acceptance criteria
+- Wiki generation tasks pass through the Section 34 sanitization pipeline.
+- No SLM process has direct write access to normative documentation.
+- New Wiki pages are append-only or stored as drafts.
+- Normative document edits require human approval.
+- Wiki commits are recorded in the handoff ledger.
+- Wiki tasks shed safely under emergency queue depth.
+- Wiki generation does not displace high-severity alert triage.
+- tools/wiki_sanitization_check.py passes.
+
+
+================================================================================
+SECTION 39: LLM-DRIVEN DEVELOPMENT PIPELINE & VERIFICATION INFRASTRUCTURE [v11.7]
+================================================================================
+39.0 Purpose
+Section 39 governs the autonomous LLM-driven development pipeline used to
+generate, verify, and iteratively improve the LOCAL-SOC-SLM codebase from
+blueprint specifications.
+This section does not mandate a specific LLM provider. It mandates that any
+LLM used for code generation must produce output that passes deterministic
+verification gates before acceptance into the codebase.
+The development pipeline is a tool for the operator. The operator remains the
+final authority on acceptance, rejection, and modification of generated code.
+39.1 Development Pipeline Architecture
+The pipeline consists of the following components:
+overnight/loop_v3.py:
+Main iterative generation engine. Multi-sweep, critic feedback, API budget cap.
+overnight/verifier.py:
+Deterministic safety gates applied to every generated file.
+overnight/tasks.json:
+Task queue with priorities, contracts, and prompt hints.
+overnight/progress.json:
+Checkpoint state for resume/skip logic.
+overnight/evidence/:
+Per-task verification evidence stored as hash-indexed JSON files.
+integration_verifier.py:
+Comprehensive read-only sweep validating imports, dry-runs, SQL, and tests.
+bulk_audit.py:
+File-level audit covering syntax, imports, exit codes, YAML, SQL, and
+blueprint completeness.
+tests/conftest.py:
+Cross-package import resolution for pytest.
+39.2 Generation Loop Contract
+For each task in the task queue:
+1. BUILD PROMPT: Task contract + blueprint context + previous critique.
+2. CALL LLM: Generate code from prompt.
+3. STRIP FENCES: Remove markdown code block wrappers.
+4. WRITE FILE: Save to target path.
+5. VERIFY: Run deterministic checks (Section 39.3).
+6. SCORE: Apply scoring rubric (Section 39.4).
+7. CRITIQUE: If score < target, request LLM self-critique.
+8. ITERATE: Feed critique back into next generation (max 5 generations).
+9. CONVERGE: If score >= target, accept and move to next task.
+Sweep policy:
+Sweep 1: Process all tasks.
+Sweep 2: Retry any task scoring below target.
+Rate limit policy:
+Minimum 7 seconds between API calls.
+60-second exponential backoff on HTTP 429.
+Hard budget cap of 850 API calls per run.
+39.3 Deterministic Verification Gates
+Every generated file must pass all of the following before acceptance:
+Gate 1 — Python syntax:
+ast.parse() must succeed. Files that fail are rejected immediately.
+Gate 2 — Hallucinated import detection:
+All imports must resolve to existing modules. Same-package imports
+(e.g., memory.embeddings importing from memory.schema) are permitted.
+Cross-package imports of non-existent modules are flagged.
+Gate 3 — Exit code compliance:
+Files must contain evidence of exit code handling: sys.exit(), exit(),
+if __name__ == "__main__":, or def main().
+Gate 4 — Secret scanning:
+No AWS access keys (AKIA...), GitHub tokens (ghp_...), private key
+headers, or other credential patterns may appear in generated code.
+Gate 5 — Minimum length:
+Generated files must be at least 10 lines.
+Gate 6 — Module-level side effect check [v11.7]:
+Generated Python modules must not execute file operations, logging
+configuration, network requests, or exit() calls at module level.
+All executable code must be inside functions, classes, or
+if __name__ == "__main__": blocks.
+39.4 Scoring Rubric
+Component scoring (maximum 10 points):
+Verifier passes all checks: +5
+File >= 30 lines: +1
+File >= 50 lines: +1
+Contains def (Python tools): +1
+Contains argparse/sys.argv/click: +1
+Contains exit: +1
+Per-type target scores:
+implement_tool: 9/10
+generate_sql: 9/10
+generate_config: 7/10
+generate_tests: 8/10
+expand_runbook: 8/10
+hallucination_audit: 8/10
+spike_plan: 8/10
+39.5 Test-to-Implementation Alignment [v11.7]
+Generated tests must exercise the actual implementation interfaces.
+Prohibited test patterns:
+- Defining phantom classes that shadow real implementations
+- Mocking method signatures that do not exist on the real class
+- Asserting return values that differ from the actual implementation
+- Importing from non-existent modules
+Required test patterns:
+- Import directly from the real module
+- Use real instances backed by in-memory SQLite where applicable
+- Assert against actual return types and structures
+- Test real behavior, not hypothetical interfaces
+39.6 Module-Level Side Effect Prohibition [v11.7]
+All Python modules in engine/, orchestrator/, memory/, and tools/ must be
+importable without side effects.
+Prohibited at module level:
+- open() calls that reference absolute paths
+- logging.basicConfig() with filename arguments
+- sys.exit() or exit() calls
+- Network requests (requests.get, urllib, socket)
+- Database connections that create files
+Permitted at module level:
+- Import statements
+- Constant definitions
+- Class and function definitions
+- Type annotations
+- Module docstrings
+All demonstration or example code must be wrapped in:
+if __name__ == "__main__":
+39.7 Integration Verification [v11.7]
+The integration verifier performs a comprehensive read-only sweep:
+Module Import Verification:
+Attempt to import every generated Python module.
+CI Tool Dry-Run Verification:
+Execute all tools/*.py files with --dry-run where supported.
+SQL Syntax Verification:
+Parse all .sql files against SQLite for basic structural validation.
+Pytest Suite Verification:
+Execute the full test suite and report pass/fail counts.
+Exit code interpretation:
+Exit 0: PASS
+Exit 1: FAIL (may be expected without live lab)
+Exit 2: CONFIG ERROR (expected without live lab)
+Exit 3: ENVIRONMENT NOT AVAILABLE (expected without GPU/services)
+39.8 Development Environment Requirements [v11.7]
+Virtual environment mandatory (PEP 668 compliance).
+Git version control from first generation.
+Log directories must exist before first engine import.
+39.9 Backpressure Threshold Boundary [v11.7]
+depth >= emergency_queue_depth (inclusive, not exclusive).
+39.10 Cross-Package Test Import Resolution [v11.7]
+tests/conftest.py must exist and add repository root to sys.path.
+39.11 Known Limitations and Expected Warnings
+dynamic_vram_budget_check.py Exit 3: No GPU on VM.
+hash_chain_verify.py: No chain file without live DB.
+external_credential_permission_check.py Exit 2: No LAB_URL.
+SQL validation warnings: SQLite cannot parse PostgreSQL syntax.
+39.12 Acceptance Criteria
+Pipeline produces syntactically valid Python for all tasks.
+All generated files pass deterministic verification gates.
+Test suite passes with 0 failures.
+Integration verifier reports 0 unexpected failures.
+No module-level side effects.
+All test imports resolve to real modules.
+Backpressure threshold uses >=.
+Virtual environment active during all test runs.
+Git history contains verification commits.
+Evidence files generated for every task.
+API budget cap enforced.
+
+================================================================================
+APPENDIX M — OPEN SOURCE SECURITY SOFTWARE & API DOCUMENTATION
+[v11.3, amended by v11.4 and restored by v11.5.2, amended by v11.6]
+================================================================================
+VERSION: v11.3 / v11.4-amended / v11.5.2-restored / v11.6-amended
+STATUS: Human-readable reference appendix
+PURPOSE:
+Provide maintainers, analysts, and developers with a readable index of the
+open-source security platforms integrated by the Local SOC SLM Blueprint,
+including primary documentation, API references, integration boundaries,
+credential guidance, and safety constraints.
+This appendix does not replace the technical contracts in Sections 20, 24, 26,
+30, 31, 32, 33, 34, 35, 36, 37, and 38. It exists to make external software
+documentation easier to locate, review, and operate safely.
+--------------------------------------------------------------------------------
+M.0 HOW TO USE THIS APPENDIX
+--------------------------------------------------------------------------------
+This appendix is organized around the following questions:
+1. What open-source tools are integrated?
+2. Where is their official documentation?
+3. Where is their API or programmatic interface documentation?
+4. What does the Local SOC SLM Enrichment Engine read from them?
+5. What does the Local SOC SLM Enrichment Engine write or propose?
+6. What actions require human approval?
+7. What credentials and access levels should be used?
+The blueprint follows a strict safety model:
+Read broadly, draft carefully, mutate only with approval.
+All state-changing operations remain approval-gated per Section 24.
+Examples of approval-gated operations:
+apply_pfsense_alias
+push_blocklist
+Wazuh rule proposal acceptance
+Suricata rule reload
+TheHive operational case mutation
+Normative documentation mutation [v11.6]
+--------------------------------------------------------------------------------
+M.1 PRIMARY INTEGRATED SECURITY PLATFORMS
+--------------------------------------------------------------------------------
+WAZUH
+Role:
+Endpoint security, log collection, alerting, rule proposals.
+Primary documentation:
+https://documentation.wazuh.com/current/index.html
+API / programmatic documentation:
+https://documentation.wazuh.com/current/user-manual/api/reference.html
+Integration notes:
+- Used for alert intake, enrichment context, and draft rule/proposal
+writeback.
+- Use a read-only Wazuh API user for intake and enrichment.
+- Do not grant the engine permission to apply rules or restart Wazuh.
+- Wazuh rule proposals should be stored as drafts and promoted only after
+human approval and CI validation.
+Safety rule:
+The engine may propose Wazuh changes, but it must not apply them
+autonomously.
+SECURITY ONION
+Role:
+Network security monitoring, alert correlation, OpenSearch-based telemetry.
+Primary documentation:
+https://docs.securityonion.net/en/stable/
+API / programmatic documentation:
+OpenSearch API reference:
+https://opensearch.org/docs/latest/api-reference/
+Integration notes:
+- Security Onion provides the SOC telemetry environment.
+- Large payloads remain in OpenSearch.
+- PostgreSQL stores orchestration state and references only.
+- Use read-only OpenSearch credentials for query operations.
+Safety rule:
+Security Onion/OpenSearch is the raw telemetry store. Postgres is the
+orchestration memory store.
+SURICATA
+Role:
+NIDS/IPS alerting and EVE JSON event output.
+Primary documentation:
+https://docs.suricata.io/en/latest/
+API / programmatic documentation:
+EVE JSON output:
+https://docs.suricata.io/en/latest/output/eve/eve-json-format.html
+Unix socket:
+https://docs.suricata.io/en/latest/unix-socket.html
+Integration notes:
+- Suricata is consumed primarily through EVE JSON intake.
+- It is not assumed to expose a native REST API.
+- Rule reloads and rule application are not automatic.
+- Proposed Suricata rules should pass CI and human review before deployment.
+Safety rule:
+Suricata rule changes are defense changes and must be approval-gated.
+THEHIVE
+Role:
+Case management, observables, analyst workflow.
+Primary documentation:
+https://docs.thehive.io/
+API / programmatic documentation:
+https://docs.thehive.io/thehive/api/
+Integration notes:
+- Used for case creation/update, observable linkage, and handoff visibility.
+- The engine can draft enrichment summaries and observables.
+- Case creation or updates should be controlled by the orchestrator and
+gated by policy.
+- TheHive is a useful writeback target for handoff visibility, but it must
+not become an autonomous enforcement channel.
+Safety rule:
+TheHive writes are case-management actions, not autonomous defensive
+actions.
+PFSENSE
+Role:
+Firewall, alias tables, network blocking, defensive enforcement.
+Primary documentation:
+https://docs.netgate.com/pfsense/en/latest/
+API / programmatic documentation:
+https://docs.netgate.com/pfsense/en/latest/api/index.html
+v11.4 verification note:
+Stock pfSense CE/Plus may not provide the required REST API out of the box.
+Lab verification (R-001) may require the community-maintained
+pfSense-pkg-RESTAPI package or equivalent.
+API keys must be strictly scoped to alias read/draft endpoints where
+possible, for example:
+/api/v2/firewall/alias
+Interface mutation, package mutation, reboot, and service control endpoints
+must be denied.
+Integration notes:
+- Used for querying tables and drafting aliases/blocklists.
+- Applying aliases or pushing blocklists requires approval.
+- Use read-only or limited-privilege credentials for table queries.
+- Alias creation should be drafted, not applied.
+- apply_pfsense_alias and push_blocklist are approval-required actions.
+Safety rule:
+pfSense mutations are high-impact defensive actions and must remain
+human-approved.
+--------------------------------------------------------------------------------
+M.2 SUPPORTING DATA AND ORCHESTRATION PLATFORMS
+--------------------------------------------------------------------------------
+POSTGRESQL
+Role:
+Persistent orchestration memory: IOCs, handoffs, investigations,
+corrections, model registry.
+Primary documentation:
+https://www.postgresql.org/docs/current/
+API / reference documentation:
+SQL reference:
+https://www.postgresql.org/docs/current/sql.html
+Notes:
+- Stores orchestration state, not raw telemetry.
+- handoffs and corrections are append-only.
+- The engine role should have only the required SELECT/INSERT privileges.
+- UPDATE/DELETE should not be granted on audit tables.
+PGVECTOR
+Role:
+Vector similarity search for semantic recall.
+Primary documentation:
+https://github.com/pgvector/pgvector
+API / reference documentation:
+https://github.com/pgvector/pgvector#readme
+Notes:
+- Stores embeddings for past cases, corrections, and accepted proposals.
+- Used with nomic-embed-text 768-dimensional embeddings.
+- Top-k recall is injected as inert <memory_context>.
+- Index choice is benchmark-selected: sequential scan, HNSW, or IVFFlat.
+- HNSW is preferred for dynamic inserts once indexing becomes necessary.
+- Time-partitioned index lifecycle is governed by Section 36.
+SQLITE
+Role:
+Ephemeral working memory, quota ledger, task state.
+Primary documentation:
+https://www.sqlite.org/docs.html
+API / reference documentation:
+https://www.sqlite.org/lang.html
+Notes:
+- File-based and ephemeral.
+- Not used for durable audit data.
+- Local process access only.
+OPENSEARCH
+Role:
+Raw telemetry, alert/document storage, large payload storage.
+Primary documentation:
+https://opensearch.org/docs/latest/
+API / reference documentation:
+https://opensearch.org/docs/latest/api-reference/
+Notes:
+- Raw logs and large artifacts remain here.
+- Postgres stores payload_ref pointers only.
+- Use read-only query credentials for enrichment operations.
+NOMIC-EMBED-TEXT
+Role:
+Local embedding model for semantic memory.
+Primary documentation:
+https://huggingface.co/nomic-ai/nomic-embed-text-v1
+v11.4/v11.5.1 verification note:
+Validate exact model artifact, revision/hash, dimension, normalization,
+prefix behavior, and prefix idempotency before production use.
+If the selected nomic-family model requires instruction prefixes, enforce
+them via a non-bypassable idempotent wrapper:
+search_document: <document text>
+search_query: <query text>
+Notes:
+- Used for 768-dimensional embeddings in pgvector.
+- Embedding worker may co-reside on the inference GPU if VRAM budget passes.
+- Embedding content is treated as untrusted context and still passes the
+verifier gate.
+GIT / LOCAL DOCUMENTATION REPOSITORY [v11.6]
+Role:
+Externalized institutional memory for sanitized operational Wiki pages,
+shift summaries, incident narratives, and drafted runbooks.
+Primary documentation:
+https://git-scm.com/doc
+Integration notes:
+- The orchestrator commits sanitized Markdown.
+- The SLM does not have direct write access.
+- Commits are recorded in the handoff ledger.
+- Normative document edits require human approval.
+Safety rule:
+Wiki generation is append-only or draft-only and must be sanitized before
+commit.
+--------------------------------------------------------------------------------
+M.3 READABLE INTEGRATION BOUNDARY MAP
+--------------------------------------------------------------------------------
+Wazuh:
+Read:
+Alerts, agents, rules, enrichment context.
+Draft:
+Rule proposals, decoder/list proposals.
+Apply / Mutate:
+Do not apply rule changes automatically.
+Approval required:
+Yes.
+Security Onion / OpenSearch:
+Read:
+Alerts, events, dashboards, stored objects.
+Draft:
+None by default.
+Apply / Mutate:
+No direct mutation of raw telemetry.
+Approval required:
+Not applicable.
+Suricata:
+Read:
+EVE JSON, alerts, flow/metadata events.
+Draft:
+Rule proposals.
+Apply / Mutate:
+Do not reload rules automatically.
+Approval required:
+Yes.
+TheHive:
+Read:
+Cases, observables, tasks, case status.
+Draft:
+Case summaries, observables, enrichment notes.
+Apply / Mutate:
+Case creation/update must be controlled.
+Approval required:
+Yes, for operational writes.
+pfSense:
+Read:
+Alias tables, firewall state, interface info.
+Draft:
+Alias drafts, blocklist drafts.
+Apply / Mutate:
+Apply alias, push blocklist.
+Approval required:
+Yes.
+PostgreSQL:
+Read:
+Orchestration memory, handoffs, corrections.
+Draft:
+New rows via approved adapters.
+Apply / Mutate:
+Schema changes only through migration/CI.
+Approval required:
+Yes for schema changes.
+SQLite:
+Read:
+Quota ledger, task state.
+Draft:
+Task updates.
+Apply / Mutate:
+Local process-managed.
+Approval required:
+No, ephemeral only.
+Local Wiki / Git documentation repository [v11.6]:
+Read:
+Existing operational documentation.
+Draft:
+New append-only pages, lab journal entries, incident narratives.
+Apply / Mutate:
+Normative document edits require human approval.
+Approval required:
+Yes for normative changes.
+--------------------------------------------------------------------------------
+M.4 API AND SERVICE ENDPOINT WORKSHEET
+--------------------------------------------------------------------------------
+Use this worksheet to record local lab endpoints. Defaults are shown only as
+common examples. Adjust for your environment.
+Wazuh API:
+Typical local endpoint:
+https://127.0.0.1:55000
+Default port:
+55000
+Transport:
+HTTPS
+Lab value:
+<fill in>
+Access level:
+Read-only
+Security Onion / OpenSearch:
+Typical local endpoint:
+https://127.0.0.1:9200
+Default port:
+9200
+Transport:
+HTTPS
+Lab value:
+<fill in>
+Access level:
+Read-only
+TheHive:
+Typical local endpoint:
+http://127.0.0.1:9000
+Default port:
+9000
+Transport:
+HTTP/HTTPS
+Lab value:
+<fill in>
+Access level:
+Scoped API key
+pfSense API / Web UI:
+Typical local endpoint:
+https://127.0.0.1 or firewall IP
+Default port:
+443
+Transport:
+HTTPS
+Lab value:
+<fill in>
+Access level:
+Least privilege
+PostgreSQL:
+Typical local endpoint:
+127.0.0.1:5432
+Default port:
+5432
+Transport:
+TCP
+Lab value:
+<fill in>
+Access level:
+Limited engine role
+SQLite quota ledger:
+Typical local endpoint:
+engine/quota.db
+Default port:
+Not applicable
+Transport:
+File
+Lab value:
+<fill in>
+Access level:
+Local process only
+Embedding worker:
+Typical local endpoint:
+Local inference endpoint
+Default port:
+Varies
+Transport:
+Local
+Lab value:
+<fill in>
+Access level:
+Internal only
+Operational recommendation:
+For a single-node lab, bind APIs to localhost or a dedicated management
+interface whenever possible.
+Do not expose Wazuh API, OpenSearch, TheHive, PostgreSQL, or pfSense management
+endpoints to untrusted networks.
+--------------------------------------------------------------------------------
+M.5 CREDENTIAL AND ACCESS GUIDANCE
+--------------------------------------------------------------------------------
+Wazuh:
+Recommended credential type:
+API user
+Recommended access level:
+Read-only for alerts/rules/agents
+Notes:
+No manager mutation rights.
+Security Onion / OpenSearch:
+Recommended credential type:
+Service account
+Recommended access level:
+Read-only query access
+Notes:
+Avoid index deletion rights.
+TheHive:
+Recommended credential type:
+API key or service account
+Recommended access level:
+Scoped case/observable access
+Notes:
+Use minimal permissions.
+pfSense:
+Recommended credential type:
+API/admin account
+Recommended access level:
+Read-only where possible; separate approval account
+Notes:
+Do not give engine unrestricted firewall admin.
+PostgreSQL:
+Recommended credential type:
+Database role
+Recommended access level:
+SELECT, INSERT where needed
+Notes:
+No UPDATE/DELETE on append-only tables.
+SQLite:
+Recommended credential type:
+File permissions
+Recommended access level:
+Local process only
+Notes:
+Not network exposed.
+PostgreSQL role guidance:
+For the orchestration memory database, the engine role should follow the
+append-only policy in Section 30:
+handoffs and corrections are append-only.
+The engine role should have INSERT and SELECT only.
+UPDATE and DELETE should not be granted on audit tables.
+Retention should be handled by partition drop/archive procedures, not ad hoc
+row deletion.
+--------------------------------------------------------------------------------
+M.6 API SAFETY MATRIX
+--------------------------------------------------------------------------------
+Read alerts:
+Examples:
+Wazuh alerts, Suricata EVE, OpenSearch queries.
+Allowed:
+Yes.
+Gating:
+Read-only credentials.
+Read cases:
+Examples:
+TheHive case lookup.
+Allowed:
+Yes.
+Gating:
+Scoped API key.
+Query firewall tables:
+Examples:
+pfSense alias/table lookup.
+Allowed:
+Yes.
+Gating:
+Read-only or limited privilege.
+Draft summary:
+Examples:
+SLM enrichment summary.
+Allowed:
+Yes.
+Gating:
+Verifier validation.
+Draft alias:
+Examples:
+pfSense alias draft.
+Allowed:
+Yes.
+Gating:
+Stored as draft.
+Draft rule:
+Examples:
+Wazuh/Suricata rule proposal.
+Allowed:
+Yes.
+Gating:
+CI + human approval.
+Apply firewall alias:
+Examples:
+pfSense alias apply.
+Allowed:
+Only with approval.
+Gating:
+Approval token + audit ledger.
+Push blocklist:
+Examples:
+Firewall/network blocklist push.
+Allowed:
+Only with approval.
+Gating:
+Approval token + audit ledger.
+Modify raw telemetry:
+Examples:
+Delete/alter OpenSearch logs.
+Allowed:
+No.
+Gating:
+Not allowed.
+Autonomous model tuning:
+Examples:
+Online weight updates.
+Allowed:
+No.
+Gating:
+Prohibited by Section 31.
+Draft Wiki page [v11.6]:
+Examples:
+SLM incident narrative, shift summary, lab journal.
+Allowed:
+Yes.
+Gating:
+Verifier validation + Section 34 sanitization + ledger recording.
+Update normative documentation [v11.6]:
+Examples:
+Architecture document, safety contract, core runbook.
+Allowed:
+Only with approval.
+Gating:
+Draft PR + human merge.
+--------------------------------------------------------------------------------
+M.7 DOCUMENTATION MIRROR RECOMMENDATIONS
+--------------------------------------------------------------------------------
+For lab resilience and offline operation, maintain a local documentation mirror.
+Suggested directory layout:
+docs/vendor/
+├── wazuh/
+├── security-onion/
+├── suricata/
+├── thehive/
+├── pfsense/
+├── opensearch/
+├── postgresql/
+├── pgvector/
+└── sqlite/
+Minimum mirrored content:
+- Primary user guide
+- API reference
+- Authentication documentation
+- Backup/restore documentation
+- Upgrade notes
+- Security hardening guide
+- Relevant release notes for the deployed version
+Recommended naming convention:
+docs/vendor/<component>/<component>-<version>-<doc-type>.pdf
+docs/vendor/<component>/<component>-<version>-api.html
+docs/vendor/<component>/<component>-<version>-release-notes.md
+--------------------------------------------------------------------------------
+M.8 HUMAN READABILITY QUICK REFERENCE
+--------------------------------------------------------------------------------
+What the system reads:
+- Wazuh alerts
+- Suricata EVE JSON
+- Security Onion/OpenSearch alert and event data
+- TheHive case and observable context
+- pfSense tables/status, where permitted
+- PostgreSQL orchestration memory
+- pgvector similar-case embeddings
+What the system drafts:
+- Enrichment summaries
+- Triage recommendations
+- Wazuh rule proposals
+- Suricata rule proposals
+- TheHive case notes/observables
+- pfSense alias drafts
+- Earlier-alerting rule proposals
+- Defense improvement proposals
+- Operational Wiki pages [v11.6]
+- Shift summaries [v11.6]
+- Incident narratives [v11.6]
+- Runbook drafts [v11.6]
+What the system never does autonomously:
+- Apply firewall changes
+- Push blocklists
+- Modify Wazuh rules
+- Reload Suricata rules
+- Alter raw telemetry
+- Perform online model weight tuning
+- Delete audit ledger entries
+- Promote adapters without CI, replay-mix evaluation, canary, and approval
+- Shed high-severity alerts silently
+- Insert unsanitized telemetry into PostgreSQL
+- Double-prefix embedding inputs
+- Allow concurrent hash-chain writers to corrupt audit order
+- Write directly to Wiki or normative documentation without orchestrator
+  validation and sanitization [v11.6]
+--------------------------------------------------------------------------------
+M.9 MINIMAL READING LIST FOR NEW MAINTAINERS
+--------------------------------------------------------------------------------
+1. Wazuh Overview and Alerting
+https://documentation.wazuh.com/current/index.html
+2. Wazuh API Reference
+https://documentation.wazuh.com/current/user-manual/api/reference.html
+3. Security Onion Documentation
+https://docs.securityonion.net/en/stable/
+4. OpenSearch API Reference
+https://opensearch.org/docs/latest/api-reference/
+5. Suricata EVE JSON Output
+https://docs.suricata.io/en/latest/output/eve/eve-json-format.html
+6. TheHive API Documentation
+https://docs.thehive.io/thehive/api/
+7. pfSense API Documentation
+https://docs.netgate.com/pfsense/en/latest/api/index.html
+8. PostgreSQL Documentation
+https://www.postgresql.org/docs/current/
+9. pgvector README
+https://github.com/pgvector/pgvector
+10. SQLite Documentation
+https://www.sqlite.org/docs.html
+--------------------------------------------------------------------------------
+M.10 DOCUMENTATION ACCEPTANCE CRITERIA
+--------------------------------------------------------------------------------
+Before considering the documentation appendix complete for a deployment:
+- All listed components have version-pinned documentation links.
+- API documentation has been verified against the deployed version.
+- Authentication methods are documented for each API.
+- Read-only credentials have been created and tested.
+- State-changing actions are mapped to approval gates.
+- Local endpoint worksheet has been filled in for the lab environment.
+- Offline documentation mirror has been archived.
+- Appendix M links are reachable from the lab workstation.
+- Any deprecated or moved documentation links have been replaced with
+archived copies.
+--------------------------------------------------------------------------------
+M.11 COMPACT LINK INDEX
+--------------------------------------------------------------------------------
+Wazuh:
+Docs:
+https://documentation.wazuh.com/current/index.html
+API:
+https://documentation.wazuh.com/current/user-manual/api/reference.html
+Security Onion:
+Docs:
+https://docs.securityonion.net/en/stable/
+API surface:
+https://opensearch.org/docs/latest/api-reference/
+Suricata:
+Docs:
+https://docs.suricata.io/en/latest/
+EVE JSON:
+https://docs.suricata.io/en/latest/output/eve/eve-json-format.html
+Unix socket:
+https://docs.suricata.io/en/latest/unix-socket.html
+TheHive:
+Docs:
+https://docs.thehive.io/
+API:
+https://docs.thehive.io/thehive/api/
+pfSense:
+Docs:
+https://docs.netgate.com/pfsense/en/latest/
+API:
+https://docs.netgate.com/pfsense/en/latest/api/index.html
+OpenSearch:
+Docs:
+https://opensearch.org/docs/latest/
+API:
+https://opensearch.org/docs/latest/api-reference/
+PostgreSQL:
+Docs:
+https://www.postgresql.org/docs/current/
+SQL:
+https://www.postgresql.org/docs/current/sql.html
+pgvector:
+Docs:
+https://github.com/pgvector/pgvector
+README:
+https://github.com/pgvector/pgvector#readme
+SQLite:
+Docs:
+https://www.sqlite.org/docs.html
+SQL:
+https://www.sqlite.org/lang.html
+nomic-embed-text:
+Model:
+https://huggingface.co/nomic-ai/nomic-embed-text-v1
+--------------------------------------------------------------------------------
+M.12 VERIFICATION NOTES
+--------------------------------------------------------------------------------
+All documentation links, API paths, package names, and endpoint behaviors are
+version-dependent and must be pinned, mirrored, and validated in the lab before
+implementation.
+Specific caution areas:
+pfSense:
+API availability may depend on version, package, or plugin.
+Endpoint paths and auth mechanisms must be validated.
+Do not assume stock pfSense CE/Plus provides the required REST API.
+Wazuh:
+RBAC and API behavior must be validated against the deployed version.
+Security Onion:
+OpenSearch access may be mediated by Security Onion.
+Direct OpenSearch API use must be validated.
+TheHive:
+API behavior may differ across major versions.
+Permission model must be validated.
+Suricata:
+EVE JSON schema and intake behavior depend on version and config.
+Embedding model:
+Prefix requirements, normalization, dimension behavior, and prefix
+idempotency must be validated against the exact model artifact used.
+
+================================================================================
+APPENDIX N — PRE-IMPLEMENTATION RESEARCH & VERIFICATION REGISTER
+[v11.4, amended by v11.5, v11.5.1, and v11.6.0]
+================================================================================
+Appendix N tracks all LAB-VERIFY and RESEARCH items required before the system
+is considered deployment-ready.
+Status values:
+OPEN
+IN PROGRESS
+PASSED
+FAILED
+WAIVED
+NOT APPLICABLE
+Every completed item must record:
+evidence path or hash,
+test date,
+software versions,
+tester,
+decision or remediation.
+--------------------------------------------------------------------------------
+N.1 Tier 0 blocker register
+--------------------------------------------------------------------------------
+R-001 pfSense API feasibility
+Status:
+OPEN
+Verification method:
+Lab firewall test.
+Required evidence:
+pfSense version, API/package path, auth method, alias read/draft/apply
+test, least-privilege credential test.
+Expected implementation path:
+Install and validate pfSense-pkg-RESTAPI or equivalent.
+Security requirement:
+API credentials must be scoped to alias read/draft endpoints where
+possible. Interface mutation, package mutation, reboot, and service
+control endpoints must be denied.
+Exit criteria:
+Engine can read tables and draft aliases safely; apply remains
+approval-gated.
+R-002 Wazuh read-only credential proof
+Status:
+OPEN
+Verification method:
+Wazuh API permission test.
+Required evidence:
+Read-only role/user config, successful reads, denied forbidden actions.
+Exit criteria:
+Engine cannot mutate Wazuh or restart managers.
+R-003 OpenSearch / Security Onion read-only proof
+Status:
+OPEN
+Verification method:
+Query test and permission test.
+Required evidence:
+Role mapping, successful queries, denied destructive actions.
+Exit criteria:
+Engine can read required telemetry but cannot delete or manage indices.
+R-004 TheHive API version and permission proof
+Status:
+OPEN
+Verification method:
+TheHive API test.
+Required evidence:
+Version, auth method, permission scope, draft/writeback boundaries.
+Exit criteria:
+TheHive writes are controlled and approval-gated where required.
+R-005 Suricata EVE intake validation
+Status:
+OPEN
+Verification method:
+EVE sample ingestion.
+Required evidence:
+Schema version, normalization rules, sanitization behavior.
+Exit criteria:
+EVE events can be normalized and sanitized before ledger insertion.
+R-006 Embedding prefix and dimension validation
+Status:
+OPEN
+Verification method:
+Embedding test harness.
+Required evidence:
+Model hash, dimension check, prefix policy, top-k recall sample,
+idempotency test.
+Exit criteria:
+Embeddings are 768-dimensional and prefix policy is enforced if
+required. Double-prefix inputs are normalized.
+--------------------------------------------------------------------------------
+N.2 Tier 1 safety/memory register
+--------------------------------------------------------------------------------
+R-101 pgvector index benchmark
+Status:
+OPEN
+Verification method:
+Benchmark on representative case_embeddings sample.
+Required evidence:
+Index type, parameters, recall, latency, insert behavior, memory usage.
+Expected outcome:
+Sequential scan may be preferred for early low-volume operation.
+HNSW is preferred over IVFFlat for scaling with dynamic inserts.
+Exit criteria:
+Selected index type is recorded and justified.
+R-102 Postgres append-only proof
+Status:
+OPEN
+Verification method:
+Role grant audit and mutation attempt test.
+Required evidence:
+Grants, failed UPDATE/DELETE attempts, CI check output.
+Exit criteria:
+Engine role cannot mutate handoffs or corrections.
+R-103 Schema drift CI proof
+Status:
+OPEN
+Verification method:
+Migration rebuild and schema diff.
+Required evidence:
+Schema hash, migration log, CI result.
+Exit criteria:
+Schema can be reproduced from migrations and drift fails CI.
+R-104 payload_ref artifact governance
+Status:
+OPEN
+Verification method:
+Artifact store test.
+Required evidence:
+Canonical URI, sha256, size, compression, retrieval test.
+Exit criteria:
+payload_ref artifacts are retrievable and integrity-checked.
+R-105 Sanitization redaction proof
+Status:
+OPEN
+Verification method:
+Redaction test suite.
+Required evidence:
+Test payloads, redaction report, quarantine behavior.
+Exit criteria:
+Known secrets/PII patterns are blocked, redacted, or quarantined.
+R-106 SQLite quota ledger durability
+Status:
+OPEN
+Verification method:
+Crash/restart test.
+Required evidence:
+WAL config, transaction behavior, recovered ledger state.
+Exit criteria:
+Quota ledger remains consistent after simulated crash.
+--------------------------------------------------------------------------------
+N.3 Tier 2 training/eval register
+--------------------------------------------------------------------------------
+R-201 QLoRA recipe validation
+Status:
+OPEN
+Verification method:
+Training run on approved corrections-derived dataset.
+Required evidence:
+Training config, VRAM usage, adapter artifact hash.
+Exit criteria:
+Training completes reproducibly within hardware constraints.
+R-202 Adapter signing proof
+Status:
+OPEN
+Verification method:
+Signature/checksum verification.
+Required evidence:
+Signer, cosigner, sha256, verification script output.
+Exit criteria:
+Only signed adapters can enter model_registry.
+R-203 Replay-mix evaluation proof
+Status:
+OPEN
+Verification method:
+CI evaluation run.
+Required evidence:
+Dataset hashes, metrics, pass/fail verdict.
+Exit criteria:
+Replay-mix gate blocks regressive adapters.
+R-204 Canary rollback drill
+Status:
+OPEN
+Verification method:
+Canary promotion and rollback exercise.
+Required evidence:
+Canary metrics, rollback event, ledger rows.
+Exit criteria:
+Rollback is immediate and auditable.
+--------------------------------------------------------------------------------
+N.4 Tier 3 operations register
+--------------------------------------------------------------------------------
+R-301 NVIDIA container/GPU passthrough proof
+Status:
+OPEN
+Verification method:
+Container GPU smoke test.
+Required evidence:
+Driver/toolkit versions, device reservation config, smoke output.
+Exit criteria:
+GPU workloads run reproducibly in containers or local processes.
+R-302 VRAM budget smoke proof
+Status:
+OPEN
+Verification method:
+Inference + embedding load test.
+Required evidence:
+VRAM graph/summary, context limit, parallelism limit.
+Stress requirement:
+Simulate worst-case KV-cache expansion, for example max context plus a
+concurrent embedding batch of 5 incoming IOCs.
+Exit criteria:
+No OOM under approved operating envelope.
+R-303 Backup/restore proof
+Status:
+OPEN
+Verification method:
+Postgres backup and restore test.
+Required evidence:
+Backup hash, restore log, row count verification.
+Exit criteria:
+Orchestration memory can be restored deterministically.
+R-304 Secrets management proof
+Status:
+OPEN
+Verification method:
+Credential storage and rotation test.
+Required evidence:
+Secret storage method, rotation record, access test.
+Exit criteria:
+No plaintext production secrets are stored in repository.
+R-305 Licensing/publishing review
+Status:
+OPEN
+Verification method:
+License review.
+Required evidence:
+Model licenses, dataset licenses, publication policy.
+Exit criteria:
+Any published adapter/dataset has approved licensing and sanitization.
+--------------------------------------------------------------------------------
+N.5 Production-hardening register [v11.5]
+--------------------------------------------------------------------------------
+R-107 Time-partitioned pgvector feasibility
+Status:
+OPEN
+Verification method:
+Create partitioned case_embeddings table and attach HNSW indexes to
+active partitions only.
+Required evidence:
+Query latency, recall, insert throughput, index memory usage,
+partition pruning behavior.
+Exit criteria:
+Active partition HNSW search meets top-k latency goals without
+destabilizing host memory or GPU inference.
+R-108 Async backpressure queue proof
+Status:
+OPEN
+Verification method:
+Burst alert simulation using Wazuh/Suricata replay or synthetic queue
+injection.
+Required evidence:
+Queue depth metrics, worker concurrency, shed events, dead-letter
+behavior, severity prioritization.
+Exit criteria:
+High-severity alerts remain processed; low-severity alerts shed safely
+under emergency backpressure.
+R-109 Dynamic VRAM detection proof
+Status:
+OPEN
+Verification method:
+Run dynamic VRAM check on target GPU.
+Required evidence:
+nvidia-smi/NVML output, total VRAM, 90% cap calculation, workload
+peak measurement.
+Exit criteria:
+CI fails closed when GPU is unavailable or VRAM cap is exceeded.
+R-110 Entropy sanitization false-positive evaluation
+Status:
+OPEN
+Verification method:
+Run sanitizer against known IOC hashes, UUIDs, request IDs, JWTs,
+API keys, SSH keys, and base64 blobs.
+Required evidence:
+Redaction report, allowlist behavior, quarantine behavior.
+Exit criteria:
+Secrets are redacted or quarantined; approved IOC hashes and audit
+identifiers are preserved when explicitly expected.
+R-111 Hash-chain integrity proof
+Status:
+OPEN
+Verification method:
+Insert sample rows, verify chain, tamper with one row in a test DB,
+re-run verifier.
+Required evidence:
+Chain verification pass, tamper detection output, anchored chain hash.
+Exit criteria:
+Tampering breaks the chain and is detected by CI verifier.
+--------------------------------------------------------------------------------
+N.6 Edge-case hardening register [v11.5.1]
+--------------------------------------------------------------------------------
+R-112 Stale queue recovery proof
+Status:
+OPEN
+Verification method:
+Simulate worker crash, OOM, or timeout while a job is processing.
+Required evidence:
+lease_expires_at behavior, heartbeat behavior, reaper run, attempts
+counter, failed/quarantined terminal state.
+Exit criteria:
+No job remains stuck in processing after lease expiration.
+High-severity jobs are recovered safely.
+Jobs exceeding max_attempts are failed or quarantined.
+R-113 Field-aware entropy sanitization proof
+Status:
+OPEN
+Verification method:
+Run sanitizer against encoded PowerShell, obfuscated shell args,
+suspicious script blocks, known IOC hashes, UUIDs, request IDs, and
+secrets.
+Required evidence:
+sanitization_action values, quarantine_ref behavior, preserved hash
+behavior, redaction manifest.
+Exit criteria:
+Secrets are redacted.
+Approved IOC hashes and audit identifiers are preserved.
+High-value suspicious command-line payloads are quarantined by
+reference rather than destroyed inline.
+R-114 Hash-chain concurrency proof
+Status:
+OPEN
+Verification method:
+Run concurrent insert test against handoffs/corrections or audit_chain
+sealer.
+Required evidence:
+Advisory lock usage, chain_seq ordering, no duplicate previous_hash,
+no corrupted chain, sealer throughput.
+Exit criteria:
+Concurrent inserts do not corrupt hash-chain order.
+Chain sealing does not require granting general engine role UPDATE
+rights.
+R-115 Embedding prefix idempotency proof
+Status:
+OPEN
+Verification method:
+Pass unprefixed, single-prefixed, and double-prefixed text through the
+embedding wrapper.
+Required evidence:
+Encoder input strings, prefix counts, embedding dimension checks.
+Exit criteria:
+Encoder receives exactly one required prefix for all cases.
+Retrieval quality is not degraded by double-prefixing.
+R-116 Changelog and termination completeness proof
+Status:
+OPEN
+Verification method:
+CI text check for required changelog entries and END OF DOCUMENT.
+Required evidence:
+Changelog hash, termination marker, completeness manifest check output.
+Exit criteria:
+Document terminates cleanly.
+Required changelog entries are present.
+Completeness manifest passes.
+--------------------------------------------------------------------------------
+N.7 Operational knowledge register [v11.6]
+--------------------------------------------------------------------------------
+R-117
+R-118 through R-120 [v11.7] Wiki sanitization and Git audit proof
+Status:
+OPEN
+Verification method:
+Generate a mock Wiki page containing fake secrets, high-entropy tokens,
+and a mock Git commit.
+Required evidence:
+Sanitizer redaction report, Git commit SHA, handoff ledger wiki_commit_ref,
+tools/wiki_sanitization_check.py output.
+Exit criteria:
+No secret is committed.
+Git commit SHA is recorded in the handoff ledger.
+Wiki generation task is queued at low severity and sheds safely under
+backpressure.
+
+
+--------------------------------------------------------------------------------
+N.8 Development pipeline register [v11.7]
+--------------------------------------------------------------------------------
+R-118 LLM generation pipeline reproducibility proof
+Status:
+IMPLEMENTED-VERIFIED
+Verification method:
+Run full generation pipeline (40 tasks, 3 phases) twice with same
+task definitions. Compare output file counts, syntax validity, and
+test pass rates.
+IMPLEMENTED-VERIFIED evidence:
+Phase 1: 10/10 tasks passed, avg score 8.7
+Phase 2: 15/15 tasks passed, avg score 9.3
+Phase 3: 15/15 tasks passed, avg score 8.7
+Total: 40/40 tasks passed, avg score 9.0, ~300 API calls
+R-119 Test-to-implementation alignment proof
+Status:
+IMPLEMENTED-VERIFIED
+Verification method:
+Run pytest against all generated test files. Fix alignment issues.
+IMPLEMENTED-VERIFIED evidence:
+Initial run: 21 collected, 1 error (soc_sanitizer import)
+After alignment: 26/26 pass
+R-120 Module-level side effect audit proof
+Status:
+IMPLEMENTED-VERIFIED
+Verification method:
+Attempt to import every generated Python module.
+IMPLEMENTED-VERIFIED evidence:
+Initial: 2 failures (intake_wazuh.py, intake_eve.py — log file open)
+Fix: Created /var/log/local-soc/ and /var/log/soc/
+Additional: sanitization_pipeline.py exit() wrapped in __main__ guard
+Result: 38/38 modules import successfully
+
+================================================================================
+APPENDIX O — CI VERIFICATION TOOL CONTRACTS & SKELETONS
+[v11.4, amended by v11.5/v11.5.1, restored and expanded by v11.5.2/v11.6]
+================================================================================
+This appendix defines the CI verification tools required by v11.4, v11.5,
+v11.5.1, v11.5.2, and v11.6.0.
+Exit code contract:
+0 = PASS
+1 = FAIL
+2 = CONFIG ERROR
+3 = ENVIRONMENT NOT AVAILABLE
+Required tools:
+tools/external_credential_permission_check.py
+tools/embedding_prefix_check.py
+tools/embedding_prefix_idempotency_check.py
+tools/sanitization_redaction_check.py
+tools/sanitization_entropy_check.py
+tools/sanitization_field_policy_check.py
+tools/dynamic_vram_budget_check.py
+tools/payload_ref_integrity_check.py
+tools/hash_chain_verify.py
+tools/hash_chain_concurrency_check.py
+tools/queue_backpressure_check.py
+tools/queue_stale_recovery_check.py
+tools/vector_partition_index_check.py
+tools/memory_schema_migrate_check.py
+tools/changelog_completeness_check.py
+tools/wiki_sanitization_check.py
+--------------------------------------------------------------------------------
+O.1 tools/external_credential_permission_check.py
+--------------------------------------------------------------------------------
+#!/usr/bin/env python3
+# CI Gate: External Credential Permission Proof
+import os
+import sys
+try:
+import requests
+except ImportError:
+print("FAIL: requests library is not installed")
+sys.exit(2)
+CONFIG = {
+"wazuh": {
+"read": "/api/v1/agents",
+"forbidden": "/api/v1/manager/restart",
+"forbidden_method": "POST",
+"user_env": "WAZUH_USER",
+"token_env": "WAZUH_TOKEN",
+},
+"pfsense": {
+"read": "/api/v2/firewall/alias",
+"forbidden": "/api/v2/interfaces",
+"forbidden_method": "GET",
+"user_env": "PFSENSE_USER",
+"token_env": "PFSENSE_TOKEN",
+},
+}
+def check_service(service, cfg, lab_url):
+user = os.getenv(cfg["user_env"], "")
+token = os.getenv(cfg["token_env"], "")
+if not user or not token:
+print(f"CONFIG ERROR: missing credentials for {service}")
+return False
+auth = (user, token)
+read_url = lab_url.rstrip("/") + cfg["read"]
+forbidden_url = lab_url.rstrip("/") + cfg["forbidden"]
+try:
+read_resp = requests.get(read_url, auth=auth, timeout=10, verify=False)
+if read_resp.status_code not in (200, 201):
+print(f"FAIL: {service} read access denied: {read_resp.status_code}")
+return False
+forbidden_resp = requests.request(
+cfg["forbidden_method"],
+forbidden_url,
+auth=auth,
+timeout=10,
+verify=False,
+)
+if forbidden_resp.status_code not in (401, 403):
+print(
+f"FAIL: {service} forbidden action was not denied: "
+f"{forbidden_resp.status_code}"
+)
+return False
+except requests.RequestException as exc:
+print(f"FAIL: {service} request failed: {exc}")
+return False
+print(f"PASS: {service} credential permissions verified")
+return True
+def main():
+lab_url = os.getenv("LAB_URL", "")
+if not lab_url:
+print("CONFIG ERROR: LAB_URL is not set")
+return 2
+all_pass = True
+for service, cfg in CONFIG.items():
+if not check_service(service, cfg, lab_url):
+all_pass = False
+return 0 if all_pass else 1
+if __name__ == "__main__":
+sys.exit(main())
+--------------------------------------------------------------------------------
+O.2 tools/embedding_prefix_check.py
+--------------------------------------------------------------------------------
+#!/usr/bin/env python3
+# CI Gate: Embedding Prefix & Dimension Contract
+import sys
+REQUIRED_DOC_PREFIX = "search_document: "
+REQUIRED_QUERY_PREFIX = "search_query: "
+REQUIRED_DIM = 768
+calls = []
+def fake_encode(text):
+calls.append(text)
+return [0.0] * REQUIRED_DIM
+class EmbeddingService:
+def __init__(self, encoder):
+self.encoder = encoder
+def embed_document(self, text):
+return self.encoder(REQUIRED_DOC_PREFIX + text)
+def embed_query(self, text):
+return self.encoder(REQUIRED_QUERY_PREFIX + text)
+def main():
+svc = EmbeddingService(fake_encode)
+doc_vector = svc.embed_document("accepted triage summary")
+query_vector = svc.embed_query("similar alert lookup")
+if len(doc_vector) != REQUIRED_DIM:
+print(f"FAIL: document embedding dim is {len(doc_vector)}")
+return 1
+if len(query_vector) != REQUIRED_DIM:
+print(f"FAIL: query embedding dim is {len(query_vector)}")
+return 1
+if len(calls) != 2:
+print("FAIL: expected exactly two embedding calls")
+return 1
+if not calls[0].startswith(REQUIRED_DOC_PREFIX):
+print("FAIL: document embedding did not use search_document prefix")
+return 1
+if not calls[1].startswith(REQUIRED_QUERY_PREFIX):
+print("FAIL: query embedding did not use search_query prefix")
+return 1
+print("PASS: embedding prefix and dimension contract verified")
+return 0
+if __name__ == "__main__":
+sys.exit(main())
+--------------------------------------------------------------------------------
+O.3 tools/embedding_prefix_idempotency_check.py
+--------------------------------------------------------------------------------
+#!/usr/bin/env python3
+# CI Gate: Embedding Prefix Idempotency Contract
+import sys
+REQUIRED_DOC_PREFIX = "search_document: "
+REQUIRED_QUERY_PREFIX = "search_query: "
+REQUIRED_DIM = 768
+calls = []
+def fake_encode(text):
+calls.append(text)
+return [0.0] * REQUIRED_DIM
+def normalize_prefix(text, required_prefix):
+while text.startswith(required_prefix):
+text = text[len(required_prefix):]
+return required_prefix + text
+class EmbeddingService:
+def __init__(self, encoder):
+self.encoder = encoder
+def embed_document(self, text):
+return self.encoder(normalize_prefix(text, REQUIRED_DOC_PREFIX))
+def embed_query(self, text):
+return self.encoder(normalize_prefix(text, REQUIRED_QUERY_PREFIX))
+def check_one(svc, method, text, expected_prefix):
+calls.clear()
+getattr(svc, method)(text)
+if len(calls) != 1:
+return False
+if not calls[0].startswith(expected_prefix):
+return False
+if calls[0].count(expected_prefix) != 1:
+return False
+return True
+def main():
+svc = EmbeddingService(fake_encode)
+doc_cases = [
+"accepted triage summary",
+"search_document: accepted triage summary",
+"search_document: search_document: accepted triage summary",
+]
+query_cases = [
+"similar alert lookup",
+"search_query: similar alert lookup",
+"search_query: search_query: similar alert lookup",
+]
+for case in doc_cases:
+if not check_one(svc, "embed_document", case, REQUIRED_DOC_PREFIX):
+print(f"FAIL: document prefix idempotency failed for: {case}")
+return 1
+for case in query_cases:
+if not check_one(svc, "embed_query", case, REQUIRED_QUERY_PREFIX):
+print(f"FAIL: query prefix idempotency failed for: {case}")
+return 1
+print("PASS: embedding prefix idempotency contract verified")
+return 0
+if __name__ == "__main__":
+sys.exit(main())
+--------------------------------------------------------------------------------
+O.4 tools/sanitization_entropy_check.py
+--------------------------------------------------------------------------------
+#!/usr/bin/env python3
+# CI Gate: Two-pass sanitization
+# Pass 1: deterministic regex redaction
+# Pass 2: Shannon entropy detection
+import math
+import re
+REGEX_RULES = [
+(r"AKIA[0-9A-Z]{16}", "[REDACTED_AWS_KEY]"),
+(r"ghp_[A-Za-z0-9]{36}", "[REDACTED_GITHUB_TOKEN]"),
+(r"Bearer\s+[A-Za-z0-9\-_\.]+", "[REDACTED_BEARER_TOKEN]"),
+(r"-----BEGIN [A-Z ]*PRIVATE KEY-----", "[REDACTED_PRIVATE_KEY]"),
+(r"slack_token=[A-Za-z0-9\-]+", "slack_token=[REDACTED_SLACK_TOKEN]"),
+(r"api_key=[A-Za-z0-9\-_\.]+", "api_key=[REDACTED_API_KEY]"),
+(r"password=[^\s&]+", "password=[REDACTED_PASSWORD]"),
+]
+TOKEN_PATTERN = re.compile(r"[A-Za-z0-9+/=_\-]{17,}")
+ALLOWLIST_PATTERNS = [
+re.compile(r"^[a-f0-9]{64}$"),
+re.compile(r"^[a-f0-9]{40}$"),
+re.compile(r"^[a-f0-9]{32}$"),
+re.compile(
+r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+re.IGNORECASE,
+),
+]
+ENTROPY_THRESHOLD = 4.5
+def shannon_entropy(token):
+if not token:
+return 0.0
+counts = {}
+for ch in token:
+counts[ch] = counts.get(ch, 0) + 1
+length = len(token)
+entropy = 0.0
+for count in counts.values():
+p = count / length
+entropy -= p * math.log2(p)
+return entropy
+def is_allowlisted(token):
+return any(pattern.match(token) for pattern in ALLOWLIST_PATTERNS)
+def sanitize_text(text, preserve_high_entropy_hashes=False):
+for pattern, replacement in REGEX_RULES:
+text = re.sub(pattern, replacement, text)
+def replace_token(match):
+token = match.group(0)
+if preserve_high_entropy_hashes and is_allowlisted(token):
+return token
+entropy = shannon_entropy(token)
+if entropy >= ENTROPY_THRESHOLD:
+return "[REDACTED_HIGH_ENTROPY_TOKEN]"
+return token
+text = TOKEN_PATTERN.sub(replace_token, text)
+return text
+if __name__ == "__main__":
+sample = (
+"AWS key AKIAIOSFODNN7EXAMPLE and token "
+"ghp_1234567890abcdefghijklmnopqrstuvwxyz and sha256 "
+"3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b"
+)
+sanitized = sanitize_text(sample, preserve_high_entropy_hashes=True)
+if "AKIAIOSFODNN7EXAMPLE" in sanitized:
+print("FAIL: AWS key not redacted")
+raise SystemExit(1)
+if "ghp_1234567890abcdefghijklmnopqrstuvwxyz" in sanitized:
+print("FAIL: GitHub token not redacted")
+raise SystemExit(1)
+if "3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b" not in sanitized:
+print("FAIL: allowlisted sha256 was redacted unexpectedly")
+raise SystemExit(1)
+print("PASS: two-pass sanitization contract verified")
+--------------------------------------------------------------------------------
+O.5 tools/sanitization_field_policy_check.py
+--------------------------------------------------------------------------------
+Purpose:
+Verifies field-aware entropy handling.
+Required behavior:
+High-entropy tokens in secret-like fields are redacted inline.
+High-entropy tokens in analytical command-line fields trigger
+quarantine_ref where policy requires.
+sanitization_action is one of:
+preserve_allowlisted
+redact_inline
+quarantine_ref
+reject
+quarantine_reason is recorded when action is quarantine_ref.
+Minimum test cases:
+process.command_line containing base64-encoded PowerShell
+process.args containing obfuscated shell string
+known sha256 IOC hash in an IOC field
+UUID in request_id
+AWS key in unstructured text
+bearer token in Authorization header
+Exit behavior:
+0 = PASS
+1 = FAIL
+2 = CONFIG ERROR
+3 = ENVIRONMENT NOT AVAILABLE
+--------------------------------------------------------------------------------
+O.6 tools/dynamic_vram_budget_check.py
+--------------------------------------------------------------------------------
+#!/usr/bin/env python3
+# CI Gate: Dynamic VRAM Budget Check
+import os
+import subprocess
+import sys
+def get_gpu_memory_info_mb():
+try:
+out = subprocess.check_output(
+[
+"nvidia-smi",
+"--query-gpu=memory.used,memory.total",
+"--format=csv,nounits,noheader",
+],
+text=True,
+)
+except Exception as exc:
+print(f"FAIL: unable to query nvidia-smi: {exc}")
+sys.exit(3)
+lines = [line.strip() for line in out.strip().splitlines() if line.strip()]
+if not lines:
+print("FAIL: no GPU memory info returned")
+sys.exit(3)
+used_mb, total_mb = lines[0].split(",")
+return int(used_mb.strip()), int(total_mb.strip())
+def main():
+used_mb, total_mb = get_gpu_memory_info_mb()
+override_mb = os.getenv("VRAM_BUDGET_MB")
+if override_mb:
+max_allowed_mb = int(override_mb)
+else:
+max_allowed_mb = int(total_mb * 0.90)
+print(f"Total GPU VRAM: {total_mb} MB")
+print(f"Used GPU VRAM:  {used_mb} MB")
+print(f"Allowed cap:    {max_allowed_mb} MB")
+if used_mb > max_allowed_mb:
+print("FAIL: VRAM usage exceeds dynamic safety threshold")
+return 1
+print("PASS: VRAM usage within dynamic safety threshold")
+return 0
+if __name__ == "__main__":
+sys.exit(main())
+--------------------------------------------------------------------------------
+O.7 tools/payload_ref_integrity_check.py
+--------------------------------------------------------------------------------
+#!/usr/bin/env python3
+# CI Gate: payload_ref Integrity & Canonical URI Check
+import hashlib
+import os
+import sys
+import tempfile
+from pathlib import Path
+REQUIRED_KEYS = [
+"payload_ref",
+"payload_sha256",
+"payload_size_bytes",
+"payload_compression",
+"payload_sanitizer_version",
+"payload_sanitization_status",
+"payload_sanitization_action",
+"payload_retention_class",
+]
+def main():
+payload = b"LOCAL-SOC-SLM payload_ref integrity test"
+sha256 = hashlib.sha256(payload).hexdigest()
+size_bytes = len(payload)
+with tempfile.TemporaryDirectory() as tmpdir:
+artifact_dir = Path(tmpdir) / "archive" / "artifacts" / sha256[:2] / sha256[2:4]
+artifact_dir.mkdir(parents=True, exist_ok=True)
+artifact_path = artifact_dir / f"{sha256}.bin"
+artifact_path.write_bytes(payload)
+payload_ref = f"file://{artifact_path}"
+ledger_row = {
+"payload_ref": payload_ref,
+"payload_sha256": sha256,
+"payload_size_bytes": size_bytes,
+"payload_compression": "none",
+"payload_sanitizer_version": "1.0.0",
+"payload_sanitization_status": "clean",
+"payload_sanitization_action": "preserve_allowlisted",
+"payload_retention_class": "short_term_operational",
+}
+for key in REQUIRED_KEYS:
+if key not in ledger_row:
+print(f"FAIL: ledger row missing required key: {key}")
+return 1
+if not ledger_row["payload_ref"].startswith(
+("file://", "opensearch://", "s3://")
+):
+print("FAIL: payload_ref URI scheme is not canonical")
+return 1
+retrieved_path = ledger_row["payload_ref"].replace("file://", "")
+if not os.path.exists(retrieved_path):
+print("FAIL: payload_ref artifact is not retrievable")
+return 1
+retrieved_bytes = Path(retrieved_path).read_bytes()
+retrieved_sha256 = hashlib.sha256(retrieved_bytes).hexdigest()
+if retrieved_sha256 != ledger_row["payload_sha256"]:
+print("FAIL: payload_ref artifact hash mismatch")
+return 1
+print("PASS: payload_ref integrity and canonical URI verified")
+return 0
+if __name__ == "__main__":
+sys.exit(main())
+--------------------------------------------------------------------------------
+O.8 tools/hash_chain_verify.py
+--------------------------------------------------------------------------------
+#!/usr/bin/env python3
+# Hash-chain verification skeleton for handoffs/corrections or audit_chain.
+import hashlib
+import json
+GENESIS_HASH = "0" * 64
+def compute_row_hash(chain_seq, previous_hash, row):
+canonical = json.dumps(row, sort_keys=True, separators=(",", ":"))
+material = f"{chain_seq}:{previous_hash}:{canonical}"
+return hashlib.sha256(material.encode("utf-8")).hexdigest()
+def verify_chain(rows):
+previous_hash = GENESIS_HASH
+for row in rows:
+expected = compute_row_hash(
+row["chain_seq"],
+previous_hash,
+row["canonical_payload"],
+)
+if expected != row["row_hash"]:
+return False, row["chain_seq"]
+if row["previous_hash"] != previous_hash:
+return False, row["chain_seq"]
+previous_hash = row["row_hash"]
+return True, None
+if __name__ == "__main__":
+print("PASS: hash-chain verifier skeleton loaded")
+--------------------------------------------------------------------------------
+O.9 tools/hash_chain_concurrency_check.py contract
+--------------------------------------------------------------------------------
+Purpose:
+Verifies that concurrent inserts do not corrupt hash-chain order.
+Required behavior:
+Multiple concurrent writers append rows.
+Chain sealer serializes chain extension.
+chain_seq remains unique and ordered.
+previous_hash remains consistent.
+No general engine role UPDATE rights are required on handoffs/corrections.
+Exit behavior:
+0 = PASS
+1 = FAIL
+2 = CONFIG ERROR
+3 = ENVIRONMENT NOT AVAILABLE
+--------------------------------------------------------------------------------
+O.10 tools/queue_backpressure_check.py contract
+--------------------------------------------------------------------------------
+Purpose:
+Verify queue behavior under burst load.
+Required checks:
+Queue accepts sanitized alert references.
+Queue prioritizes severity correctly.
+Worker claim uses bounded concurrency.
+Warning threshold triggers metrics/pressure handling.
+Emergency threshold triggers safe shedding.
+High-severity and critical alerts are not silently dropped.
+Shed events record shed_reason.
+Failed jobs enter failed or quarantined state.
+payload_ref remains available for failed jobs.
+Exit behavior:
+0 = PASS
+1 = FAIL
+2 = CONFIG ERROR
+3 = ENVIRONMENT NOT AVAILABLE
+--------------------------------------------------------------------------------
+O.11 tools/queue_stale_recovery_check.py contract
+--------------------------------------------------------------------------------
+Purpose:
+Verifies stale job recovery.
+Required checks:
+Claimed job sets lease_expires_at.
+Worker heartbeat extends lease.
+Reaper resets expired jobs to pending when attempts < max_attempts.
+Reaper fails or quarantines jobs when attempts >= max_attempts.
+No job remains stuck in processing after lease expiration.
+Recovery events are auditable.
+Exit behavior:
+0 = PASS
+1 = FAIL
+2 = CONFIG ERROR
+3 = ENVIRONMENT NOT AVAILABLE
+--------------------------------------------------------------------------------
+O.12 tools/vector_partition_index_check.py contract
+--------------------------------------------------------------------------------
+Purpose:
+Verifies time-partitioned case_embeddings behavior.
+Required checks:
+Active partitions exist.
+Active partition HNSW index exists where expected.
+Older partitions do not require HNSW index.
+Top-k query prunes partitions using created_at filter.
+Recall and latency remain within approved threshold.
+Index attachment/detachment is recorded in migration history.
+Exit behavior:
+0 = PASS
+1 = FAIL
+2 = CONFIG ERROR
+3 = ENVIRONMENT NOT AVAILABLE
+--------------------------------------------------------------------------------
+O.13 tools/memory_schema_migrate_check.py contract
+--------------------------------------------------------------------------------
+Purpose:
+Verifies schema migration reproducibility and append-only drift.
+Required checks:
+Migration scripts rebuild schema deterministically.
+Schema hash matches expected value.
+No UPDATE/DELETE statements exist for handoffs/corrections in migration
+history.
+Engine role grants do not include UPDATE/DELETE on append-only tables.
+Exit behavior:
+0 = PASS
+1 = FAIL
+2 = CONFIG ERROR
+3 = ENVIRONMENT NOT AVAILABLE
+--------------------------------------------------------------------------------
+O.14 tools/changelog_completeness_check.py contract
+--------------------------------------------------------------------------------
+Purpose:
+Verifies changelog and document termination integrity.
+Required checks:
+Required version entries exist:
+v11.3
+v11.3-updated
+v11.4-complete
+v11.5
+v11.5-master
+v11.5.1-master
+v11.5.2-master
+v11.6.0-master
+v11.4-complete changelog bullet for pgvector index policy is complete.
+END OF DOCUMENT marker exists.
+Completeness manifest exists.
+Required Appendix M subsections exist.
+Required Appendix O tool entries exist.
+Required Appendix P template entries exist.
+Required Appendix Q runbook entries exist.
+Exit behavior:
+0 = PASS
+1 = FAIL
+2 = CONFIG ERROR
+3 = ENVIRONMENT NOT AVAILABLE
+--------------------------------------------------------------------------------
+O.15 CI pipeline example
+--------------------------------------------------------------------------------
+Example GitHub Actions steps:
+- name: Gate 1 - External Credential Permission Proof
+run: python tools/external_credential_permission_check.py
+- name: Gate 2 - Embedding Prefix Contract
+run: python tools/embedding_prefix_check.py
+- name: Gate 3 - Embedding Prefix Idempotency Contract
+run: python tools/embedding_prefix_idempotency_check.py
+- name: Gate 4 - Sanitization Entropy Check
+run: python tools/sanitization_entropy_check.py
+- name: Gate 5 - Sanitization Field Policy Check
+run: python tools/sanitization_field_policy_check.py
+- name: Gate 6 - Dynamic VRAM Budget Check
+run: python tools/dynamic_vram_budget_check.py
+- name: Gate 7 - payload_ref Integrity
+run: python tools/payload_ref_integrity_check.py
+- name: Gate 8 - Hash Chain Integrity Check
+run: python tools/hash_chain_verify.py
+- name: Gate 9 - Hash Chain Concurrency Check
+run: python tools/hash_chain_concurrency_check.py
+- name: Gate 10 - Queue Backpressure Check
+run: python tools/queue_backpressure_check.py
+- name: Gate 11 - Queue Stale Recovery Check
+run: python tools/queue_stale_recovery_check.py
+- name: Gate 12 - Vector Partition Index Check
+run: python tools/vector_partition_index_check.py
+- name: Gate 13 - Memory Schema Migration Check
+run: python tools/memory_schema_migrate_check.py --fail-on-drift
+- name: Gate 14 - Changelog Completeness Check
+run: python tools/changelog_completeness_check.py
+- name: Gate 15 - Postgres Append-Only Audit
+run: |
+if grep -R -E "UPDATE|DELETE" memory/migration/ | grep -E "handoffs|corrections"; then
+echo "FAIL: prohibited UPDATE/DELETE found in migration history"
+exit 1
+fi
+echo "PASS: append-only migration audit clean"
+- name: Gate 16 - Wiki Sanitization Check
+run: python tools/wiki_sanitization_check.py
+- name: Gate 17 - Integration Verifier
+run: python integration_verifier.py
+- name: Gate 18 - Bulk Audit
+run: python bulk_audit.py
+- name: Gate 19 - Test-to-Implementation Alignment
+run: python -m pytest tests/ -v --tb=short
+- name: Gate 20 - Module Import Side Effect Check
+run: python -c "import importlib; from pathlib import Path; import sys; sys.path.insert(0,'.'); [importlib.import_module(str(f).replace('/','.').replace('.py','')) for f in Path('.').rglob('*.py') if '.venv' not in str(f) and '__pycache__' not in str(f) and 'overnight' not in str(f)]"
+
+--------------------------------------------------------------------------------
+O.17 tools/integration_verifier.py [v11.7]
+--------------------------------------------------------------------------------
+Purpose:
+Comprehensive read-only sweep validating module imports, CI tool dry-runs,
+SQL syntax, and test execution across the entire codebase.
+Exit behavior:
+0 = All checks pass or only expected warnings
+1 = Unexpected failures detected
+2 = CONFIG ERROR (missing directories or venv)
+3 = ENVIRONMENT NOT AVAILABLE
+--------------------------------------------------------------------------------
+O.18 bulk_audit.py [v11.7]
+--------------------------------------------------------------------------------
+Purpose:
+File-level read-only audit covering Python syntax, import resolution,
+exit code consistency, dry-run support, YAML validity, SQL structure,
+file statistics, and blueprint completeness.
+Exit behavior:
+0 = All checks pass or only expected warnings
+1 = Failures detected
+2 = CONFIG ERROR
+3 = ENVIRONMENT NOT AVAILABLE
+
+--------------------------------------------------------------------------------
+O.16 tools/wiki_sanitization_check.py contract [v11.6]
+--------------------------------------------------------------------------------
+Purpose:
+Verifies that the Wiki publishing pipeline cannot accidentally commit raw
+secrets or high-entropy unknown tokens into Markdown files.
+Required behavior:
+Inject fake AWS access key IDs, GitHub tokens, bearer tokens, private key
+headers, and password strings into a mock wiki_draft Markdown payload.
+The sanitizer must redact or block them before the Git commit or file write.
+Required checks:
+Sanitizer redacts known secret patterns.
+Sanitizer handles high-entropy unknown tokens.
+Allowlisted IOC hashes and UUIDs are preserved when explicitly expected.
+Generated Markdown metadata records sanitization_action.
+If a Git commit is simulated, the commit SHA is recorded in the handoff ledger.
+Exit behavior:
+0 = PASS
+1 = FAIL
+2 = CONFIG ERROR
+3 = ENVIRONMENT NOT AVAILABLE
+
+================================================================================
+APPENDIX P — PRODUCTION-HARDENING SQL, PYTHON, AND CI TEMPLATES
+[v11.5, amended by v11.5.1, v11.5.2, and v11.6.0]
+================================================================================
+--------------------------------------------------------------------------------
+P.1 SQL: triage_queue table with lease recovery
+--------------------------------------------------------------------------------
+CREATE TABLE triage_queue (
+id UUID PRIMARY KEY,
+enqueued_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+severity TEXT NOT NULL,
+source_platform TEXT NOT NULL,
+payload_ref TEXT,
+payload_sha256 TEXT,
+status TEXT NOT NULL DEFAULT 'pending',
+attempts INTEGER NOT NULL DEFAULT 0,
+started_at TIMESTAMPTZ,
+finished_at TIMESTAMPTZ,
+last_heartbeat_at TIMESTAMPTZ,
+lease_expires_at TIMESTAMPTZ,
+shed_reason TEXT,
+failure_reason TEXT
+);
+CREATE INDEX idx_triage_queue_pending
+ON triage_queue (severity, enqueued_at)
+WHERE status = 'pending';
+CREATE INDEX idx_triage_queue_stale
+ON triage_queue (lease_expires_at)
+WHERE status = 'processing';
+--------------------------------------------------------------------------------
+P.2 SQL: worker claim pattern with lease
+--------------------------------------------------------------------------------
+UPDATE triage_queue
+SET status = 'processing',
+started_at = now(),
+attempts = attempts + 1,
+last_heartbeat_at = now(),
+lease_expires_at = now() + interval '15 minutes'
+WHERE id = (
+SELECT id
+FROM triage_queue
+WHERE status = 'pending'
+ORDER BY
+CASE severity
+WHEN 'critical' THEN 0
+WHEN 'high' THEN 1
+WHEN 'medium' THEN 2
+WHEN 'low' THEN 3
+ELSE 4
+END,
+enqueued_at ASC
+LIMIT 1
+FOR UPDATE SKIP LOCKED
+)
+RETURNING *;
+--------------------------------------------------------------------------------
+P.3 SQL: worker heartbeat
+--------------------------------------------------------------------------------
+UPDATE triage_queue
+SET last_heartbeat_at = now(),
+lease_expires_at = now() + interval '15 minutes'
+WHERE id = :job_id
+AND status = 'processing';
+--------------------------------------------------------------------------------
+P.4 SQL: stale job reaper
+--------------------------------------------------------------------------------
+UPDATE triage_queue
+SET status = 'pending',
+started_at = NULL,
+lease_expires_at = NULL
+WHERE status = 'processing'
+AND lease_expires_at < now()
+AND attempts < :max_attempts;
+UPDATE triage_queue
+SET status = 'failed',
+finished_at = now(),
+failure_reason = 'max_attempts_exceeded_after_stale_recovery'
+WHERE status = 'processing'
+AND lease_expires_at < now()
+AND attempts >= :max_attempts;
+--------------------------------------------------------------------------------
+P.5 SQL: partitioned case_embeddings
+--------------------------------------------------------------------------------
+CREATE TABLE case_embeddings (
+id UUID NOT NULL,
+created_at TIMESTAMPTZ NOT NULL,
+source_type TEXT NOT NULL,
+source_id TEXT NOT NULL,
+case_ref TEXT,
+embedding vector(768),
+metadata JSONB,
+PRIMARY KEY (id, created_at)
+) PARTITION BY RANGE (created_at);
+CREATE TABLE case_embeddings_y2026m08
+PARTITION OF case_embeddings
+FOR VALUES FROM ('2026-08-01 00:00:00+00') TO ('2026-09-01 00:00:00+00');
+CREATE INDEX idx_case_embeddings_y2026m08_hnsw
+ON case_embeddings_y2026m08
+USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+--------------------------------------------------------------------------------
+P.6 SQL: recommended audit_chain table
+--------------------------------------------------------------------------------
+CREATE TABLE audit_chain (
+chain_seq BIGINT PRIMARY KEY,
+table_name TEXT NOT NULL,
+row_id UUID NOT NULL,
+row_ts TIMESTAMPTZ NOT NULL,
+canonical_payload_sha256 TEXT NOT NULL,
+previous_hash CHAR(64) NOT NULL,
+row_hash CHAR(64) NOT NULL,
+sealed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_audit_chain_table_row
+ON audit_chain (table_name, row_id);
+--------------------------------------------------------------------------------
+P.7 SQL: optional embedded hash-chain columns
+--------------------------------------------------------------------------------
+If embedded columns are used instead of audit_chain:
+ALTER TABLE handoffs
+ADD COLUMN chain_seq BIGINT,
+ADD COLUMN previous_hash CHAR(64),
+ADD COLUMN row_hash CHAR(64);
+CREATE UNIQUE INDEX idx_handoffs_chain_seq
+ON handoffs (chain_seq);
+CREATE INDEX idx_handoffs_row_hash
+ON handoffs (row_hash);
+ALTER TABLE corrections
+ADD COLUMN chain_seq BIGINT,
+ADD COLUMN previous_hash CHAR(64),
+ADD COLUMN row_hash CHAR(64);
+CREATE UNIQUE INDEX idx_corrections_chain_seq
+ON corrections (chain_seq);
+CREATE INDEX idx_corrections_row_hash
+ON corrections (row_hash);
+If embedded columns are used, only a dedicated chain writer role may update
+chain columns. The general engine role must not receive these rights.
+--------------------------------------------------------------------------------
+P.8 Python: idempotent embedding prefix wrapper
+--------------------------------------------------------------------------------
+REQUIRED_DOC_PREFIX = "search_document: "
+REQUIRED_QUERY_PREFIX = "search_query: "
+def _normalize_prefix(text, required_prefix):
+while text.startswith(required_prefix):
+text = text[len(required_prefix):]
+return required_prefix + text
+class EmbeddingService:
+def __init__(self, encoder):
+self.encoder = encoder
+def embed_document(self, text):
+return self.encoder(_normalize_prefix(text, REQUIRED_DOC_PREFIX))
+def embed_query(self, text):
+return self.encoder(_normalize_prefix(text, REQUIRED_QUERY_PREFIX))
+--------------------------------------------------------------------------------
+P.9 Python: field-aware entropy sanitization policy
+--------------------------------------------------------------------------------
+import math
+import re
+REGEX_RULES = [
+(r"AKIA[0-9A-Z]{16}", "[REDACTED_AWS_KEY]"),
+(r"ghp_[A-Za-z0-9]{36}", "[REDACTED_GITHUB_TOKEN]"),
+(r"Bearer\s+[A-Za-z0-9\-_\.]+", "[REDACTED_BEARER_TOKEN]"),
+(r"-----BEGIN [A-Z ]*PRIVATE KEY-----", "[REDACTED_PRIVATE_KEY]"),
+(r"slack_token=[A-Za-z0-9\-]+", "slack_token=[REDACTED_SLACK_TOKEN]"),
+(r"api_key=[A-Za-z0-9\-_\.]+", "api_key=[REDACTED_API_KEY]"),
+(r"password=[^\s&]+", "password=[REDACTED_PASSWORD]"),
+]
+TOKEN_PATTERN = re.compile(r"[A-Za-z0-9+/=_\-]{17,}")
+ALLOWLIST_PATTERNS = [
+re.compile(r"^[a-f0-9]{64}$"),
+re.compile(r"^[a-f0-9]{40}$"),
+re.compile(r"^[a-f0-9]{32}$"),
+re.compile(
+r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+re.IGNORECASE,
+),
+]
+ANALYTICAL_HIGH_ENTROPY_FIELDS = {
+"process.args",
+"process.command_line",
+"powershell.encoded_command",
+"script.block",
+"bash.command",
+"shell.args",
+}
+ENTROPY_THRESHOLD = 4.5
+def shannon_entropy(token):
+if not token:
+return 0.0
+counts = {}
+for ch in token:
+counts[ch] = counts.get(ch, 0) + 1
+length = len(token)
+entropy = 0.0
+for count in counts.values():
+p = count / length
+entropy -= p * math.log2(p)
+return entropy
+def is_allowlisted(token):
+return any(pattern.match(token) for pattern in ALLOWLIST_PATTERNS)
+def sanitize_field(field_name, text):
+action = "preserve_allowlisted"
+quarantine_reason = None
+for pattern, replacement in REGEX_RULES:
+if re.search(pattern, text):
+text = re.sub(pattern, replacement, text)
+action = "redact_inline"
+def replace_token(match):
+nonlocal action, quarantine_reason
+token = match.group(0)
+if is_allowlisted(token):
+return token
+entropy = shannon_entropy(token)
+if entropy >= ENTROPY_THRESHOLD:
+if field_name in ANALYTICAL_HIGH_ENTROPY_FIELDS:
+action = "quarantine_ref"
+quarantine_reason = "high_entropy_analytical_payload"
+return "[QUARANTINED_HIGH_ENTROPY_PAYLOAD_REF]"
+action = "redact_inline"
+return "[REDACTED_HIGH_ENTROPY_TOKEN]"
+return token
+text = TOKEN_PATTERN.sub(replace_token, text)
+return {
+"text": text,
+"sanitization_action": action,
+"quarantine_reason": quarantine_reason,
+}
+--------------------------------------------------------------------------------
+P.10 Python: hash-chain verification
+--------------------------------------------------------------------------------
+import hashlib
+import json
+GENESIS_HASH = "0" * 64
+def compute_row_hash(chain_seq, previous_hash, row):
+canonical = json.dumps(row, sort_keys=True, separators=(",", ":"))
+material = f"{chain_seq}:{previous_hash}:{canonical}"
+return hashlib.sha256(material.encode("utf-8")).hexdigest()
+def verify_chain(rows):
+previous_hash = GENESIS_HASH
+for row in rows:
+expected = compute_row_hash(
+row["chain_seq"],
+previous_hash,
+row["canonical_payload"],
+)
+if expected != row["row_hash"]:
+return False, row["chain_seq"]
+if row["previous_hash"] != previous_hash:
+return False, row["chain_seq"]
+previous_hash = row["row_hash"]
+return True, None
+--------------------------------------------------------------------------------
+P.11 CI additions
+--------------------------------------------------------------------------------
+Add to CI:
+- External credential permission check
+- Embedding prefix contract check
+- Embedding prefix idempotency check
+- Sanitization regex check
+- Sanitization entropy check
+- Sanitization field policy check
+- Dynamic VRAM budget check
+- payload_ref integrity check
+- Hash-chain integrity check
+- Hash-chain concurrency check
+- Queue backpressure simulation check
+- Queue stale recovery check
+- Partitioned vector index check
+- Memory schema migration drift check
+- Changelog completeness check
+- Wiki sanitization check [v11.6]
+These tools are defined in Appendix O.
+--------------------------------------------------------------------------------
+P.12 Ledger metadata for Wiki commit reference [v11.6]
+--------------------------------------------------------------------------------
+When Section 38
+Section 39 Wiki generation commits a sanitized Markdown page to a local
+Git repository, record in the handoff ledger:
+direction = 'to_platform'
+from_component = 'orchestrator.wiki_writer'
+to_component = 'local_wiki_git'
+payload_sha256 = sha256 of sanitized Markdown bytes
+metadata.wiki_path = repository-relative Markdown path
+metadata.wiki_action = 'append_page' | 'draft_normative_change'
+metadata.wiki_commit_ref = Git commit SHA
+The Git commit is an externalized audit artifact. The ledger row remains the
+orchestration-memory proof of provenance.
+
+
+--------------------------------------------------------------------------------
+P.13 Python: Development loop architecture [v11.7]
+--------------------------------------------------------------------------------
+See overnight/loop_v3.py in the repository. Key constants:
+MAX_SWEEPS = 2
+MAX_GENERATIONS = 5
+API_BUDGET = 850
+RATE_LIMIT_SLEEP = 7
+BACKOFF_SECONDS = 60
+TARGET_SCORES per task type as defined in Section 39.4.
+--------------------------------------------------------------------------------
+P.14 Python: Integration verifier pattern [v11.7]
+--------------------------------------------------------------------------------
+See integration_verifier.py in the repository root.
+Verifies: module imports, CI tool dry-runs, SQL syntax, pytest suite.
+Generates structured JSON report.
+--------------------------------------------------------------------------------
+P.15 Python: Cross-package test configuration [v11.7]
+--------------------------------------------------------------------------------
+# tests/conftest.py
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+================================================================================
+APPENDIX Q — RUNBOOKS & FAILURE MODE ANALYSIS [v11.6]
+================================================================================
+Q.1 Runbook: GPU OOM during inference
+Symptoms:
+- Inference worker killed.
+- VRAM budget exceeded.
+- Queue backlog increasing.
+Immediate actions:
+1. Stop new worker claims.
+2. Check dynamic VRAM budget output.
+3. Reduce context length or concurrency.
+4. Reduce embedding batch size.
+5. Restart worker.
+6. Record event in handoff ledger or lab evidence.
+Verification:
+- tools/dynamic_vram_budget_check.py passes.
+- Queue stale recovery completes.
+- No high-severity alerts are lost.
+Q.2 Runbook: Hash-chain mismatch
+Symptoms:
+- tools/hash_chain_verify.py fails.
+- chain_seq gap or row_hash mismatch.
+Immediate actions:
+1. Stop chain sealer.
+2. Freeze promotion/writeback operations.
+3. Identify first mismatched chain_seq.
+4. Compare audit_chain against source rows.
+5. Restore from known good anchor if necessary.
+6. Record incident and evidence.
+Verification:
+- Hash-chain verifier passes on restored clean data.
+- Latest chain hash is re-anchored.
+Q.3 Runbook: Queue backlog emergency
+Symptoms:
+- Queue depth exceeds emergency_queue_depth.
+- Low-severity shedding active.
+Immediate actions:
+1. Verify high/critical alerts are still processing.
+2. Check worker concurrency and VRAM pressure.
+3. Confirm shed events are auditable.
+4. Delay low-severity enrichment and Wiki generation.
+5. Investigate intake burst source.
+Verification:
+- High-severity alerts are not silently dropped.
+- Shed events have shed_reason and ledger records.
+- Queue depth returns below warning threshold.
+Q.4 Runbook: Wiki sanitization failure
+Symptoms:
+- tools/wiki_sanitization_check.py fails.
+- Secret pattern detected in generated Markdown.
+Immediate actions:
+1. Stop Wiki writer.
+2. Quarantine generated draft.
+3. Do not commit to Git or publish to Wiki.
+4. Review sanitizer policy and prompt context.
+5. Re-run Wiki generation after sanitizer fix.
+Verification:
+- wiki_sanitization_check.py passes.
+- No secret is present in committed Markdown.
+- Ledger records the failed draft or quarantine event.
+Q.5 Failure Mode and Effects Analysis summary
+GPU OOM:
+Impact: Inference stops.
+Mitigation: VRAM cap, concurrency limits.
+Detection: dynamic VRAM check.
+Queue burst:
+Impact: Backlog, shedding.
+Mitigation: severity priority, audited shedding.
+Detection: queue metrics.
+Worker crash:
+Impact: Jobs stuck.
+Mitigation: lease expiration, reaper.
+Detection: stale recovery check.
+Secret leakage:
+Impact: Credential exposure.
+Mitigation: regex + entropy sanitization.
+Detection: sanitization checks.
+IOC over-redaction:
+Impact: Loss of triage value.
+Mitigation: allowlists, field-aware quarantine.
+Detection: field policy check.
+Hash-chain corruption:
+Impact: Audit integrity loss.
+Mitigation: serialized sealer, verifier.
+Detection: hash-chain check.
+Prompt injection:
+Impact: Unsafe model output.
+Mitigation: inert memory_context, verifier.
+Detection: eval metrics.
+Wiki secret leak:
+Impact: Secrets in documentation.
+Mitigation: Section 34 sanitize before commit.
+Detection: wiki_sanitization_check.
+Documentation drift:
+Impact: Operator confusion.
+Mitigation: completeness manifest, versioned amendments.
+Detection: changelog/completeness check.
+
+================================================================================
+FULL v11.6.0 RELEASE CHECKLIST
+================================================================================
+v11.6.0 baseline checklist:
+- AMEND-1 through AMEND-62 are applied.
+- Executive Summary, How to Read This Document, Glossary, and Blueprint Layers
+  are present.
+- Section 38
+Section 39 Operational Knowledge Generation & Externalized Memory is present.
+- Appendix Q Runbooks & Failure Mode Analysis is present.
+- Appendix N includes R-117
+R-118 through R-120 [v11.7] Wiki sanitization and Git audit proof.
+- Appendix O includes tools/wiki_sanitization_check.py.
+- Appendix O includes Gate 16 Wiki Sanitization Check.
+- Appendix P includes P.12 Wiki commit reference ledger template.
+- All inherited v11.5.2 safety, queue, VRAM, sanitization, and hash-chain
+  checks remain intact.
+v11.5.2 baseline checklist:
+- AMEND-1 through AMEND-46 are applied.
+- Full amendment text for AMEND-1 through AMEND-41 is present.
+- Section 30 includes v11.4 payload_ref, v11.5 partition/hash-chain
+references, and v11.5.1 field-aware sanitization metadata.
+- Section 31 includes replay-mix and canary requirements.
+- Section 32 includes v11.5, v11.5.1, and v11.5.2 LAB-VERIFY dependencies.
+- Section 33 uses dynamic VRAM detection.
+- Section 34 uses two-pass sanitization and field-aware command-line
+quarantine.
+- Section 35 asynchronous ingestion contract is implemented.
+- Section 35 stale-job recovery is implemented.
+- Section 36 time-partitioned vector memory policy is recorded.
+- Section 37 hash-chained audit ledger is implemented or explicitly waived.
+- Section 37 hash-chain concurrency policy is implemented.
+- Appendix M is full and includes M.0 through M.12.
+- Appendix N includes R-001 through R-116.
+- Appendix O includes v11.4, v11.5, v11.5.1, and v11.5.2 CI tool
+requirements and skeletons.
+- Appendix O includes explicit CI pipeline example.
+- Appendix P includes production-hardening templates.
+- Completeness manifest includes Appendix M subsections, amendment text,
+Appendix O skeletons, CI examples, Appendix P templates, and END OF
+DOCUMENT marker.
+Operational checklist:
+- case_embeddings partitioning strategy is recorded and benchmarked.
+- HNSW indexes are applied only to approved active partitions.
+- Async intake queue is implemented without introducing unauthorized new
+services.
+- Queue backpressure thresholds are configured and tested.
+- Queue lease_expires_at and last_heartbeat_at columns exist.
+- Stale job reaper recovers expired processing jobs.
+- Jobs exceeding max_attempts move to failed or quarantined.
+- Low-severity shedding is tested and audited.
+- High-severity alerts are not silently dropped under backpressure.
+- VRAM budget check dynamically detects GPU memory.
+- VRAM budget check enforces a 90% ceiling unless explicitly overridden.
+- Sanitizer performs regex pass and entropy pass.
+- Sanitizer records sanitization_action.
+- Entropy allowlists preserve known IOC hashes, UUIDs, request IDs, and
+adapter checksums where appropriate.
+- High-value suspicious command-line payloads are quarantined by reference
+where inline redaction would destroy analytical value.
+- handoffs and corrections are protected by append-only role restrictions.
+- Hash-chain generation is serialized or sealed asynchronously.
+- Concurrent inserts do not corrupt hash-chain order.
+- audit_chain table or dedicated chain writer role is used.
+- Hash-chain verifier passes on clean data.
+- Hash-chain verifier detects tampering in test data.
+- Latest chain hash is anchored in lab evidence.
+- Embedding prefix wrapper is idempotent.
+- Embedding prefix tests include double-prefix inputs.
+- payload_ref integrity check passes.
+- External credential permission proof passes.
+- Memory schema migration drift check passes.
+- Changelog terminates cleanly before END OF DOCUMENT.
+- Documentation completeness check passes.
+- Wiki generation tasks are queued at low priority if Wiki generation is
+enabled.
+- Wiki generation tasks shed safely under backpressure if Wiki generation is
+enabled.
+- Wiki commits are recorded in the handoff ledger if Wiki generation is
+enabled.
+Safety checklist:
+- No autonomous online tuning path exists.
+- No raw telemetry enters PostgreSQL.
+- No engine credential has prohibited mutation rights.
+- No pfSense mutation occurs without approval.
+- No adapter is promoted without CI, replay-mix, canary, and approval.
+- No ledger UPDATE/DELETE is permitted for engine role.
+- No payload_ref artifact is trusted merely because it is referenced.
+- No alert shedding event is silently discarded.
+- No stale queue job remains stuck indefinitely.
+- No unsanitized high-entropy payload is inserted into orchestration memory.
+- No concurrent hash-chain writer corrupts audit sequence.
+- No double-prefixed embedding text is passed to the embedding model.
+- No required appendix, amendment, or checklist section is silently omitted.
+- No SLM process writes directly to Wiki or normative documentation.
+- No Wiki page is committed without sanitization and ledger provenance.
+- No LLM-generated code is accepted without passing deterministic gates. [v11.7]
+- No generated test exercises a phantom interface. [v11.7]
+- No engine module executes side effects at import time. [v11.7]
+
+================================================================================
+COMPLETENESS MANIFEST
+================================================================================
+The following items must be present in the final v11.6.0 master document.
+Amendments:
+AMEND-1 through AMEND-62
+Full amendment text:
+AMEND-1 through AMEND-41 must be present as full amendment text.
+AMEND-42 through AMEND-46 must be present as v11.5.2 restoration and
+completeness amendments.
+AMEND-47 through AMEND-52 must be present as v11.6.0 readability, Wiki,
+runbook, and CI updates.
+AMEND-53 through AMEND-62 must be present as v11.7.0 development pipeline,
+verification infrastructure, and test alignment amendments.
+Sections:
+Section 30
+Section 31
+Section 32
+Section 33
+Section 34
+Section 35
+Section 36
+Section 37
+Section 38
+Section 39
+Appendices:
+Appendix M
+Appendix N
+Appendix O
+Appendix P
+Appendix Q
+Appendix M subsections:
+M.0  HOW TO USE THIS APPENDIX
+M.1  PRIMARY INTEGRATED SECURITY PLATFORMS
+M.2  SUPPORTING DATA AND ORCHESTRATION PLATFORMS
+M.3  READABLE INTEGRATION BOUNDARY MAP
+M.4  API AND SERVICE ENDPOINT WORKSHEET
+M.5  CREDENTIAL AND ACCESS GUIDANCE
+M.6  API SAFETY MATRIX
+M.7  DOCUMENTATION MIRROR RECOMMENDATIONS
+M.8  HUMAN READABILITY QUICK REFERENCE
+M.9  MINIMAL READING LIST FOR NEW MAINTAINERS
+M.10 DOCUMENTATION ACCEPTANCE CRITERIA
+M.11 COMPACT LINK INDEX
+M.12 VERIFICATION NOTES
+Appendix N items:
+R-001 through R-006
+R-101 through R-106
+R-201 through R-204
+R-301 through R-305
+R-107 through R-111
+R-112 through R-116
+R-117
+R-118 through R-120 [v11.7]
+Appendix O tools:
+external_credential_permission_check.py
+embedding_prefix_check.py
+embedding_prefix_idempotency_check.py
+sanitization_redaction_check.py
+sanitization_entropy_check.py
+sanitization_field_policy_check.py
+dynamic_vram_budget_check.py
+payload_ref_integrity_check.py
+hash_chain_verify.py
+hash_chain_concurrency_check.py
+queue_backpressure_check.py
+queue_stale_recovery_check.py
+vector_partition_index_check.py
+memory_schema_migrate_check.py
+changelog_completeness_check.py
+wiki_sanitization_check.py
+integration_verifier.py [v11.7]
+bulk_audit.py [v11.7]
+Appendix O CI example:
+Explicit CI pipeline example must be present.
+Gate 16 Wiki Sanitization Check must be present.
+Gate 17 Integration Verifier [v11.7].
+Gate 18 Bulk Audit [v11.7].
+Gate 19 Test-to-Implementation Alignment [v11.7].
+Gate 20 Module Import Side Effect Check [v11.7].
+Appendix P templates:
+triage_queue table with lease recovery
+worker claim pattern with lease
+worker heartbeat
+stale job reaper
+partitioned case_embeddings
+recommended audit_chain table
+optional embedded hash-chain columns
+idempotent embedding prefix wrapper
+field-aware entropy sanitization policy
+hash-chain verification
+CI additions
+Wiki commit reference ledger template
+Appendix Q entries:
+Q.1 GPU OOM runbook
+Q.2 Hash-chain mismatch runbook
+Q.3 Queue backlog emergency runbook
+Q.4 Wiki sanitization failure runbook
+Q.5 Failure Mode and Effects Analysis summary
+Release checklist:
+Full v11.6.0 release checklist
+Document termination marker:
+END OF DOCUMENT
+Known restored correction:
+The v11.5-master typo in Section 28 Contents, "664 start", is corrected to
+"64GB start" in this v11.6.0 master document.
+
+================================================================================
+CHANGELOG
+================================================================================
+v11.7.0-master:
+- Added AMEND-53 through AMEND-62.
+- Added Section 39: LLM-Driven Development Pipeline & Verification
+Infrastructure.
+- Added integration_verifier.py as Gate 17 in Appendix O.
+- Added bulk_audit.py as Gate 18 in Appendix O.
+- Added Gates 19 and 20 to CI pipeline example.
+- Added Appendix N research items R-118 through R-120 (IMPLEMENTED-VERIFIED).
+- Added Appendix P templates P.13 through P.15.
+- Updated Section 23 with development environment requirements.
+- Updated Section 32 with development pipeline LAB-VERIFY dependencies.
+- Updated Section 35 with SQLite test backend policy and threshold fix.
+- Updated Glossary, Blueprint Layers, How to Read, Executive Summary.
+- No change to deterministic safety contract.
+- No change to approval-gated mutation policy.
+- No change to prohibition on autonomous online tuning.
+- No change to Section 38 Wiki governance.
+- No change to Section 37 hash-chain policy.
+- No change to Section 34 sanitization policy.
+v11.6.0-master:
+- Added AMEND-47 through AMEND-52.
+- Added Executive Summary, How to Read This Document, Glossary, and Blueprint
+  Layers to reduce cognitive load and improve onboarding.
+- Added Section 38
+Section 39: Operational Knowledge Generation & Externalized Memory.
+- Defined SLM lab-journalist Wiki generation as append-only or draft-only,
+  sanitized before commit, and queued at low severity.
+- Added Appendix Q: Runbooks & Failure Mode Analysis.
+- Added tools/wiki_sanitization_check.py to Appendix O.
+- Added Appendix N research item R-117
+R-118 through R-120 [v11.7] for Wiki sanitization and Git audit
+  proof.
+- Added Appendix P ledger metadata guidance for Wiki commit references.
+- Updated release checklist and completeness manifest for v11.6.0.
+- No change to deterministic safety contract.
+- No change to approval-gated mutation policy.
+- No change to prohibition on autonomous online tuning.
+v11.5.2-master:
+- Consolidated v11.3, v11.3-updated, v11.4-complete, v11.5, v11.5-master,
+and v11.5.1 into one corrected master document.
+- Added AMEND-42 through AMEND-46.
+- Restored full Appendix M human-readable structure, including endpoint
+worksheet, API safety matrix, quick reference, reading list, acceptance
+criteria, compact link index, and verification notes.
+- Restored full amendment text for AMEND-1 through AMEND-41.
+- Restored Appendix O implementation skeletons and explicit CI pipeline
+examples.
+- Restored Appendix P production-hardening templates required by v11.5 and
+v11.5.1.
+- Added embedding prefix idempotency tool skeleton and CI gate.
+- Added sanitization field-policy tool contract and CI gate.
+- Added queue stale recovery tool contract and CI gate.
+- Added hash-chain concurrency tool contract and CI gate.
+- Added changelog completeness tool contract and CI gate.
+- Strengthened completeness manifest to detect omitted Appendix M
+subsections, missing amendment text, missing Appendix O skeletons,
+missing CI examples, missing Appendix P templates, and missing document
+termination marker.
+- Corrected v11.5-master Contents typo where Section 28 showed "664 start"
+instead of "64GB start".
+- No change to deterministic safety contract.
+- No change to approval-gated mutation policy.
+- No change to prohibition on autonomous online tuning.
+v11.5.1-master:
+- Consolidated v11.3, v11.3-updated, v11.4-complete, v11.5, and v11.5.1
+into one master document.
+- Added AMEND-37 through AMEND-41.
+- Added stale job recovery and lease-based heartbeat handling to Section 35.
+- Added field-aware entropy handling and quarantine-by-reference for
+high-value suspicious command-line payloads.
+- Added hash-chain concurrency policy and serialized chain sealing.
+- Made embedding prefix injection idempotent.
+- Added Appendix N research items R-112 through R-116.
+- Added v11.5.1 CI tool requirements to Appendix O.
+- Added v11.5.1 SQL and Python templates to Appendix P.
+- Added changelog completeness and document termination integrity check.
+v11.5-master:
+- Consolidated v11.3, v11.3-updated, v11.4-complete, and v11.5 update into
+one master document.
+- Renumbered v11.5 amendments to AMEND-27 through AMEND-36 to avoid
+collision with v11.4-complete amendment numbering.
+- Added Section 35: Asynchronous Ingestion, Backpressure, and Triage Queue
+Governance.
+- Added Section 36: Time-Partitioned Vector Memory and Index Lifecycle.
+- Added Section 37: Hash-Chained Audit Ledger and Tamper Detection.
+- Added Appendix P: Production-Hardening SQL, Python, and CI Templates.
+- Updated Section 33 to require dynamic VRAM detection and 90% safety cap.
+- Updated Section 34 to require two-pass sanitization using regex and
+Shannon entropy.
+- Added queue backpressure, shedding, dead-letter, and severity
+prioritization requirements.
+- Added time-partitioned case_embeddings policy with active-partition HNSW
+index lifecycle.
+- Added hash-chain tamper detection for handoffs and corrections.
+- Added Appendix N research items R-107 through R-111.
+- Added completeness manifest and end-of-document marker.
+v11.5:
+- Added asynchronous ingestion backpressure governance.
+- Added time-partitioned vector memory governance.
+- Added hash-chained audit ledger governance.
+- Added dynamic VRAM detection.
+- Added two-pass sanitization.
+- Added production-hardening templates.
+v11.4-complete:
+- Added Deployment Readiness & Verification Register.
+- Added Inference, Embedding, and VRAM Governance.
+- Added Sanitization, Quarantine, and Artifact Reference Governance.
+- Added Appendix N and Appendix O.
+- Added LAB-VERIFY posture for external integration behavior.
+- Added payload_ref canonical URI and integrity metadata.
+- Added embedding model pinning and prefix validation.
+- Changed pgvector index requirement from fixed IVFFlat to benchmark-selected
+HNSW/sequential scan policy.
+- Added replay-mix metric and evidence requirements.
+- Added canary shadow/limited modes and rollback audit requirements.
+v11.3-updated:
+- Added Appendix M: Documentation for open source security software and API
+documentation.
+- Reformatted Appendix M for human readability.
+- Added API/documentation link index for Wazuh, Security Onion, Suricata,
+TheHive, pfSense, OpenSearch, PostgreSQL, pgvector, SQLite, and
+nomic-embed-text.
+- Added human-readable integration boundary map and API safety matrix.
+- Added credential and access guidance.
+- Added documentation mirror recommendations.
+- Added endpoint worksheet for lab deployment.
+- Completed Section 31 reference structure for replay-mix evaluation,
+canary, rollback, and prohibited autonomous online tuning.
+v11.3:
+- Added Section 30: Orchestration Memory Architecture.
+- Added Section 31: Continual Learning & Experience Policy.
+- Added Appendix K: Orchestration Memory DDL, retention, and backup.
+- Added Appendix L: Adapter routing & continual-learning config.
+- Added AMEND-1 through AMEND-12.
+- Introduced PostgreSQL + pgvector + SQLite memory model.
+- Introduced append-only handoff ledger policy.
+- Introduced replay-mix evaluation and atomic adapter promotion.
+- Explicitly prohibited autonomous online tuning.
+
+================================================================================
+END OF DOCUMENT
+================================================================================
