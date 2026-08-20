@@ -14,9 +14,9 @@ def mock_db_conn():
 
 def test_check_cmr_mount_failure(monkeypatch):
     monkeypatch.setattr(os.path, "ismount", lambda x: False)
-    with pytest.raises(SystemExit) as e:
+    with pytest.raises(RuntimeError) as e:
         check_cmr_mount()
-    assert e.value.code == 3
+    assert 'CMR mount point' in str(e.value)
 
 def test_archive_partition_logic(tmp_path, monkeypatch, mock_db_conn):
     monkeypatch.setattr("memory.retention.ARCHIVE_BASE", str(tmp_path))

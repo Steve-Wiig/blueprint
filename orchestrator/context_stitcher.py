@@ -47,10 +47,10 @@ def stitch_memory_context(query_embedding, top_k=5, max_age_days=30):
 
     except psycopg2.Error as e:
         sys.stderr.write(f"Database error: {e}")
-        sys.exit(1)
+        raise RuntimeError(f"Library code called sys.exit(1)")
     except Exception as e:
         sys.stderr.write(f"Stitcher error: {e}")
-        sys.exit(2)
+        raise RuntimeError(f"Library code called sys.exit(2)")
 
 if __name__ == "__main__":
     # Example usage for orchestrator integration

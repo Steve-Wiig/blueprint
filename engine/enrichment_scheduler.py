@@ -23,7 +23,7 @@ def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensio
         return pg_conn, sq_conn
     except Exception as e:
         print(f"Connection error: {e}")
-        sys.exit(2)
+        raise RuntimeError(f"Library code called sys.exit(2)")
 
 def check_quota(sq_conn: sqlite3.Connection, provider: str) -> int:
     """Checks the remaining quota for a specific provider in the SQLite database.
@@ -80,7 +80,7 @@ def process_jobs(pg_conn: psycopg2.extensions.connection, sq_conn: sqlite3.Conne
             pg_conn.commit()
         except Exception:
             pg_conn.rollback()
-            sys.exit(1)
+            raise RuntimeError(f"Library code called sys.exit(1)")
 
 def main() -> None:
     """Parses command line arguments and initiates the job processing workflow."""
@@ -97,7 +97,7 @@ def main() -> None:
         pg_conn.close()
         sq_conn.close()
     
-    sys.exit(0)
+    raise RuntimeError(f"Library code called sys.exit(0)")
 
 if __name__ == "__main__":
     main()

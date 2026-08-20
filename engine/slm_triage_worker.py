@@ -31,7 +31,7 @@ def get_db(db_path: str) -> sqlite3.Connection:
         return conn
     except Exception as e:
         print(f"DB_ERROR: {e}")
-        sys.exit(2)
+        raise RuntimeError(f"Library code called sys.exit(2)")
 
 def heartbeat(conn: sqlite3.Connection, job_id: int, lease_interval: int) -> None:
     """Updates the heartbeat and lease expiry for a specific job.

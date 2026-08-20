@@ -24,7 +24,7 @@ def init_db() -> None:
         conn.commit()
         conn.close()
     except sqlite3.Error:
-        sys.exit(2)
+        raise RuntimeError(f"Library code called sys.exit(2)")
 
 def check_quota(adapter_id: str, estimated_tokens: int) -> bool:
     """Checks if an adapter has sufficient quota for a given token usage.
@@ -56,7 +56,7 @@ def check_quota(adapter_id: str, estimated_tokens: int) -> bool:
             return False
         return True
     except sqlite3.Error:
-        sys.exit(1)
+        raise RuntimeError(f"Library code called sys.exit(1)")
 
 def record_usage(adapter_id: str, tokens_used: int) -> None:
     """Records token usage for a specific adapter in the database.
@@ -80,7 +80,7 @@ def record_usage(adapter_id: str, tokens_used: int) -> None:
         conn.commit()
         conn.close()
     except sqlite3.Error:
-        sys.exit(1)
+        raise RuntimeError(f"Library code called sys.exit(1)")
 
 def main() -> None:
     """Parses command line arguments and executes the requested quota management operation."""
@@ -92,17 +92,17 @@ def main() -> None:
 
     if args.init:
         init_db()
-        sys.exit(0)
+        raise RuntimeError(f"Library code called sys.exit(0)")
     elif args.check:
         if check_quota(args.check[0], int(args.check[1])):
-            sys.exit(0)
+            raise RuntimeError(f"Library code called sys.exit(0)")
         else:
-            sys.exit(1)
+            raise RuntimeError(f"Library code called sys.exit(1)")
     elif args.record:
         record_usage(args.record[0], int(args.record[1]))
-        sys.exit(0)
+        raise RuntimeError(f"Library code called sys.exit(0)")
     else:
-        sys.exit(2)
+        raise RuntimeError(f"Library code called sys.exit(2)")
 
 if __name__ == "__main__":
     main()

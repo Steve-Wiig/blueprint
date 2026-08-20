@@ -12,7 +12,7 @@ CMR_MOUNT = "/mnt/cmr"
 def check_cmr_mount():
     if not os.path.ismount(CMR_MOUNT):
         sys.stderr.write(f"Error: CMR mount point {CMR_MOUNT} not available.\n")
-        sys.exit(3)
+        raise RuntimeError(f"Library code called sys.exit(3)")
 
 def archive_partition(conn, partition_name):
     try:
@@ -40,7 +40,7 @@ def archive_partition(conn, partition_name):
         conn.commit()
     except Exception as e:
         sys.stderr.write(f"Archive failed for {partition_name}: {e}\n")
-        sys.exit(1)
+        raise RuntimeError(f"Library code called sys.exit(1)")
 
 def run_retention(db_url):
     check_cmr_mount()
@@ -67,7 +67,7 @@ def run_retention(db_url):
         conn.close()
     except Exception as e:
         sys.stderr.write(f"Retention logic error: {e}\n")
-        sys.exit(2)
+        raise RuntimeError(f"Library code called sys.exit(2)")
 
 def main():
     parser = argparse.ArgumentParser(description="IOC Retention Manager")
@@ -75,10 +75,10 @@ def main():
     args = parser.parse_args()
     
     if not os.environ.get("PGPASSWORD") and "password=" not in args.db_url:
-        sys.exit(2)
+        raise RuntimeError(f"Library code called sys.exit(2)")
         
     run_retention(args.db_url)
-    sys.exit(0)
+    raise RuntimeError(f"Library code called sys.exit(0)")
 
 if __name__ == "__main__":
     main()

@@ -8,7 +8,7 @@ persists them into a PostgreSQL database, maintaining a 90-day retention policy.
 
 import re
 import psycopg2
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict
 from psycopg2.extras import execute_values
 
@@ -39,7 +39,7 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
         for ioc_type, pattern in patterns.items():
             matches = set(re.findall(pattern, str(sanitized_alert_json), re.IGNORECASE))
             for match in matches:
-                extracted.append((match, ioc_type, 'pending', datetime.utcnow()))
+                extracted.append((match, ioc_type, 'pending', datetime.now(timezone.utc)))
 
         if not extracted:
             return 0

@@ -67,11 +67,11 @@ def seal_audit_chain(db_config: Dict[str, Any]) -> None:
         conn.commit()
         cur.close()
         conn.close()
-        sys.exit(0)
+        raise RuntimeError(f"Library code called sys.exit(0)")
 
     except Exception as e:
         print(f"Sealer Error: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError(f"Library code called sys.exit(1)")
 
 if __name__ == "__main__":
     seal_audit_chain({"dbname": "soc_ledger", "user": "sealer_role"})

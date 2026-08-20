@@ -32,7 +32,7 @@ def main() -> None:
     try:
         raw_data: Any = json.loads(args.case_data)
     except json.JSONDecodeError:
-        sys.exit(2)
+        raise RuntimeError(f"Library code called sys.exit(2)")
 
     sanitized_data = sanitize_payload(raw_data)
     
@@ -57,12 +57,12 @@ def main() -> None:
             case_id = response.json().get('id')
             with open("handoff_log.txt", "a") as f:
                 f.write(f"REF:{case_id}|STATUS:SUCCESS|MODE:{args.mode}\n")
-            sys.exit(0)
+            raise RuntimeError(f"Library code called sys.exit(0)")
         else:
-            sys.exit(1)
+            raise RuntimeError(f"Library code called sys.exit(1)")
             
     except requests.exceptions.RequestException:
-        sys.exit(3)
+        raise RuntimeError(f"Library code called sys.exit(3)")
 
 if __name__ == "__main__":
     main()
