@@ -1,14 +1,8 @@
-"""
-LOCAL-SOC-SLM v11.6.0 Sanitization Pipeline
-Section 34.1 Implementation
-"""
-
 import re
 import math
 import hashlib
 import json
 import uuid
-from typing import Optional, Dict, Any, Union
 
 # LOCAL-SOC-SLM v11.6.0 Sanitization Pipeline
 # Section 34.1 Implementation
@@ -36,15 +30,7 @@ ANALYTICAL_FIELDS = {
     "script.block", "bash.command", "shell.args", "file.contents"
 }
 
-def calculate_entropy(data: str) -> float:
-    """Calculates the Shannon entropy of a given string.
-
-    Args:
-        data: The input string to analyze.
-
-    Returns:
-        The calculated Shannon entropy as a float.
-    """
+def calculate_entropy(data):
     if not data: return 0
     entropy = 0
     for x in range(256):
@@ -53,18 +39,7 @@ def calculate_entropy(data: str) -> float:
             entropy += - p_x * math.log(p_x, 2)
     return entropy
 
-def sanitize_payload(payload: str, field_path: Optional[str] = None) -> Dict[str, Any]:
-    """Sanitizes a payload by redacting sensitive patterns and high-entropy strings.
-
-    Args:
-        payload: The raw string content to be sanitized.
-        field_path: An optional identifier for the field type, used to determine
-            if the payload should be quarantined.
-
-    Returns:
-        A dictionary containing the sanitized 'payload' string and a 'metadata'
-        dictionary detailing the sanitization actions taken.
-    """
+def sanitize_payload(payload, field_path=None):
     metadata = {"sanitizer_version": "11.6.0", "regex_redaction_count": 0, "entropy_redaction_count": 0}
     
     # Pass 1: Regex Redaction

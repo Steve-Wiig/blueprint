@@ -1,26 +1,10 @@
-"""TheHive Case Writeback Adapter module.
-
-This module provides functionality to interface with TheHive API to create cases
-based on sanitized input data.
-"""
-
 import argparse
 import sys
 import requests
 import json
-from typing import Any
 from engine.sanitization_pipeline import sanitize_payload
 
-def main() -> None:
-    """Parses command line arguments and executes the case writeback process.
-
-    The function reads case data, sanitizes it, applies mode-specific modifications,
-    and attempts to post the data to TheHive API. Exits with status codes:
-    0: Success
-    1: API Error
-    2: JSON Decode Error
-    3: Request Exception
-    """
+def main():
     parser = argparse.ArgumentParser(description="TheHive Case Writeback Adapter v11.6.0")
     parser.add_argument("--case-data", required=True, help="JSON string of case data")
     parser.add_argument("--api-key", required=True, help="TheHive API Key")
@@ -30,7 +14,7 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
-        raw_data: Any = json.loads(args.case_data)
+        raw_data = json.loads(args.case_data)
     except json.JSONDecodeError:
         sys.exit(2)
 

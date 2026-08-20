@@ -35,7 +35,7 @@ except ImportError:
     sys.exit(2)
 
 BLUEPRINT_ROOT = Path("/home/swiig/Documents/blueprint")
-API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent"
 RATE_LIMIT_SLEEP = 7  # seconds between API calls
 MAX_RETRIES = 3
 

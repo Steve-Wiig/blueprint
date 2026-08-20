@@ -1,28 +1,16 @@
-"""
-Module for ingesting and queuing Suricata EVE events into a SQLite database.
-
-This module provides functionality to initialize a triage database, sanitize incoming
-event data, and enqueue events for further processing.
-"""
-
 import json
 import sqlite3
 import os
 import time
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict
 
 DB_PATH = "/var/lib/soc/triage_queue.db"
 LOG_PATH = "/var/log/soc/intake.log"
 
 logging.basicConfig(filename=LOG_PATH, level=logging.INFO)
 
-def init_db() -> None:
-    """Initializes the SQLite database and creates the triage_queue table if it does not exist.
-
-    Exits the program with status code 2 if database initialization fails.
-    """
+def init_db():
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -45,15 +33,7 @@ def init_db() -> None:
         print(f"CONFIG_ERROR: {e}")
         exit(2)
 
-def sanitize_event(event: Dict[str, Any]) -> Dict[str, Any]:
-    """Filters and sanitizes an event dictionary to include only allowed keys.
-
-    Args:
-        event: The raw event dictionary to sanitize.
-
-    Returns:
-        A dictionary containing only the allowed keys and a normalized severity level.
-    """
+def sanitize_event(event):
     allowed_keys = {'timestamp', 'event_type', 'src_ip', 'dest_ip', 'proto', 'alert', 'severity'}
     sanitized = {k: v for k, v in event.items() if k in allowed_keys}
     if 'alert' in sanitized and isinstance(sanitized['alert'], dict):
@@ -62,15 +42,7 @@ def sanitize_event(event: Dict[str, Any]) -> Dict[str, Any]:
         sanitized['severity'] = 3
     return sanitized
 
-def enqueue_event(event: Dict[str, Any]) -> bool:
-    """Inserts a sanitized event into the triage_queue database.
-
-    Args:
-        event: The sanitized event dictionary to store.
-
-    Returns:
-        True if the insertion was successful, False otherwise.
-    """
+def enqueue_event(event):
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -85,15 +57,7 @@ def enqueue_event(event: Dict[str, Any]) -> bool:
         logging.error(f"Queue write failure: {e}")
         return False
 
-def process_eve_file(filepath: str) -> int:
-    """Reads an EVE JSON file line by line and enqueues each event.
-
-    Args:
-        filepath: The path to the EVE JSON file.
-
-    Returns:
-        0 if processing completes successfully. Exits with status 1 or 3 on failure.
-    """
+def process_eve_file(filepath):
     if not os.path.exists(filepath):
         exit(3)
     

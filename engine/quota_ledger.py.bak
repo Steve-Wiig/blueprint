@@ -1,5 +1,3 @@
-"""Module for managing and tracking adapter usage quotas using a SQLite database."""
-
 import sqlite3
 import argparse
 import sys
@@ -7,8 +5,7 @@ from datetime import datetime
 
 DB_PATH = "quota_ledger.db"
 
-def init_db() -> None:
-    """Initializes the quota ledger database and creates the table if it does not exist."""
+def init_db():
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -26,16 +23,7 @@ def init_db() -> None:
     except sqlite3.Error:
         sys.exit(2)
 
-def check_quota(adapter_id: str, estimated_tokens: int) -> bool:
-    """Checks if an adapter has sufficient quota for a given token usage.
-
-    Args:
-        adapter_id: The unique identifier for the adapter.
-        estimated_tokens: The number of tokens to be used.
-
-    Returns:
-        True if the usage is within limits, False otherwise.
-    """
+def check_quota(adapter_id, estimated_tokens):
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -58,13 +46,7 @@ def check_quota(adapter_id: str, estimated_tokens: int) -> bool:
     except sqlite3.Error:
         sys.exit(1)
 
-def record_usage(adapter_id: str, tokens_used: int) -> None:
-    """Records token usage for a specific adapter in the database.
-
-    Args:
-        adapter_id: The unique identifier for the adapter.
-        tokens_used: The number of tokens to record.
-    """
+def record_usage(adapter_id, tokens_used):
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -82,8 +64,7 @@ def record_usage(adapter_id: str, tokens_used: int) -> None:
     except sqlite3.Error:
         sys.exit(1)
 
-def main() -> None:
-    """Parses command line arguments and executes the requested quota management operation."""
+def main():
     parser = argparse.ArgumentParser(description="SLM Quota Ledger Manager")
     parser.add_argument("--init", action="store_true")
     parser.add_argument("--check", nargs=2, metavar=('ID', 'TOKENS'))

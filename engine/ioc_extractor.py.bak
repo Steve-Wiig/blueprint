@@ -1,29 +1,12 @@
-"""
-Module for extracting Indicators of Compromise (IOCs) from alert payloads.
-
-This module provides functionality to parse sanitized alert JSON objects for
-various IOC types (IPv4, domains, URLs, SHA256 hashes, and emails) and
-persists them into a PostgreSQL database, maintaining a 90-day retention policy.
-"""
-
 import re
 import psycopg2
 from datetime import datetime, timedelta
-from typing import Any, Dict
 from psycopg2.extras import execute_values
 
-def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
+def extract_iocs(sanitized_alert_json):
     """
     Extracts IOCs from sanitized alert payloads and persists to PostgreSQL.
-
     Compliant with LOCAL-SOC-SLM Blueprint v11.6.0 Section 30.
-
-    Args:
-        sanitized_alert_json: A dictionary containing the alert data to be parsed.
-
-    Returns:
-        int: 0 if successful or no IOCs found, 1 for general extraction errors,
-            2 for database-related errors.
     """
     try:
         # Regex patterns for IOC extraction

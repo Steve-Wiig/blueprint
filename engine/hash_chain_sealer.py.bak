@@ -1,28 +1,8 @@
-"""Module for sealing audit chains using cryptographic hashing.
-
-This module provides functionality to process pending handoff records,
-link them into a cryptographic chain, and persist them to a PostgreSQL database.
-"""
-
 import psycopg2
 import hashlib
 import sys
-from typing import Dict, Any
 
-def seal_audit_chain(db_config: Dict[str, Any]) -> None:
-    """Processes pending handoff records and seals them into an audit chain.
-
-    This function acquires an advisory lock on the database to ensure atomicity,
-    identifies unlinked records, computes a SHA-256 hash based on the previous
-    chain link and current payload, and inserts the result into the audit_chain table.
-
-    Args:
-        db_config: A dictionary containing database connection parameters
-            compatible with psycopg2.connect().
-
-    Returns:
-        None. Exits the process with status 0 on success or 1 on failure.
-    """
+def seal_audit_chain(db_config):
     GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000"
     LOCK_ID = 37001
 
