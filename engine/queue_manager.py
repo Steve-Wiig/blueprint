@@ -73,13 +73,25 @@ class TriageQueueManager:
         """, (job_id,))
 
     def reap_stale_jobs(self):
-        # P.4: Stale job recovery
+        # P.4: Stale job recovery (Section 35.9)
+        # Reset stale jobs that haven't exhausted attempts
         self.cursor.execute("""
-            UPDATE triage_queue 
-            SET status = 'pending', lease_expires_at = NULL 
-            WHERE status = 'processing' AND lease_expires_at < CURRENT_TIMESTAMP
-        """)
+            UPDATE triage_queue
+            SET status = 'pending', started_at = NULL, lease_expires_at = NULL
+            WHERE status = 'processing'
+            AND lease_expires_at < CURRENT_TIMESTAMP
+            AND attempts < ?
+        """, (self.max_attempts,))
 
+        # Fail stale jobs that have exhausted attempts
+        self.cursor.execute("""
+            UPDATE triage_queue
+            SET status = 'failed',
+                shed_reason = 'max_attempts_exceeded_after_stale_recovery'
+            WHERE status = 'processing'
+            AND lease_expires_at < CURRENT_TIMESTAMP
+            AND attempts >= ?
+        """, (self.max_attempts,))
     def complete_job(self, job_id, success=True, reason=None):
         if success:
             self.cursor.execute("UPDATE triage_queue SET status = 'completed' WHERE id = ?", (job_id,))
