@@ -24,7 +24,7 @@ def test_write_to_ledger_success():
 
 def test_write_to_ledger_failure():
     with patch("builtins.open", side_effect=IOError):
-        with pytest.raises(RuntimeError, match="Library code called sys.exit\(2\)"):
+        with pytest.raises(RuntimeError, match="Library code called exit\\(2\\)"):
             write_to_ledger("ref", "id")
 
 @patch("requests.post")
@@ -41,7 +41,7 @@ def test_create_case_api_success(mock_post):
 @patch("requests.post")
 def test_create_case_api_failure(mock_post):
     mock_post.side_effect = Exception("Connection Error")
-    with pytest.raises(RuntimeError, match="Library code called sys.exit\(1\)"):
+    with pytest.raises(RuntimeError, match="Library code called exit\\(1\\)"):
         create_case("http://test", "key", {"test": "data"}, False)
 
 def test_create_case_draft_mode():
