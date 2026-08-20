@@ -1,7 +1,7 @@
 import psycopg2
 import json
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 def stitch_memory_context(query_embedding, top_k=5, max_age_days=30):
     """
@@ -35,7 +35,7 @@ def stitch_memory_context(query_embedding, top_k=5, max_age_days=30):
             
         formatted_context = f"<memory_context>\n{''.join(context_blocks)}\n</memory_context>"
         metadata = {
-            "memory_retrieval_timestamp": datetime.utcnow().isoformat(),
+            "memory_retrieval_timestamp": datetime.now(timezone.utc).isoformat(),
             "retrieved_case_ids": case_refs,
             "top_k_requested": top_k,
             "max_age_days": max_age_days
