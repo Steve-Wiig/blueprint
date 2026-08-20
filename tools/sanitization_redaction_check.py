@@ -58,4 +58,6 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", help="Run with test/mock data")
     args = parser.parse_args()
     
-sys.exit(run_sanitization_check())
+if __name__ == '__main__':
+    if __name__ == '__main__':
+    sys.exit(run_sanitization_check())
