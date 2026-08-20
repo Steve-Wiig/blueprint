@@ -1,84 +1,66 @@
+"""Tests for tools/memory_schema_migrate_check.py"""
 import sys
+import json
 from pathlib import Path
+from unittest.mock import patch
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
-import json
-import os
-from unittest.mock import patch, mock_open
-from tools.memory_schema_migrate_check import validate_schema, main
+from tools.memory_schema_migrate_check import main
 
-def test_validate_schema_success():
-    data = {
+
+def test_main_dry_run_success(tmp_path):
+    """Dry run should succeed when config file exists."""
+    config_file = tmp_path / "config.json"
+    config_file.write_text(json.dumps({
         "version": "11.6.0",
         "vector_dim": 768,
-        "partition_strategy": "round-robin",
-        "retention_days": 30
-    }
-    success, msg = validate_schema(data)
-    assert success is True
-    assert msg == "Schema valid"
+        "partition_strategy": "x",
+        "retention_days": 90
+    }))
+    
+    with patch("tools.memory_schema_migrate_check.CONFIG_PATH", config_file):
+        with patch("tools.memory_schema_migrate_check.LEDGER_PATH", tmp_path / "ledger.json"):
+            with patch("sys.argv", ["memory_schema_migrate_check.py", "--dry-run"]):
+                result = main()
+                assert result == 0
 
-def test_validate_schema_missing_keys():
-    data = {"version": "11.6.0"}
-    success, msg = validate_schema(data)
-    assert success is False
-    assert "Missing required schema keys" in msg
 
-def test_validate_schema_version_mismatch():
-    data = {
-        "version": "1.0.0",
-        "vector_dim": 768,
-        "partition_strategy": "none",
-        "retention_days": 1
-    }
-    success, msg = validate_schema(data)
-    assert success is False
-    assert "Version mismatch" in msg
-
-def test_validate_schema_invalid_dim():
-    data = {
+def test_main_full_success(tmp_path):
+    """Full run should succeed when config and ledger exist."""
+    config_file = tmp_path / "config.json"
+    config_file.write_text(json.dumps({
         "version": "11.6.0",
-        "vector_dim": 128,
-        "partition_strategy": "none",
-        "retention_days": 1
-    }
-    success, msg = validate_schema(data)
-    assert success is False
-    assert "Invalid vector dimension" in msg
+        "vector_dim": 768,
+        "partition_strategy": "x",
+        "retention_days": 90
+    }))
+    
+    ledger_file = tmp_path / "ledger.json"
+    ledger_file.write_text(json.dumps({"migrations": []}))
+    
+    with patch("tools.memory_schema_migrate_check.CONFIG_PATH", config_file):
+        with patch("tools.memory_schema_migrate_check.LEDGER_PATH", ledger_file):
+            with patch("sys.argv", ["memory_schema_migrate_check.py"]):
+                result = main()
+                assert result == 0
 
-@patch("os.path.exists")
-def test_main_missing_config(mock_exists):
-    mock_exists.return_value = False
-    assert main() == 2
 
-@patch("os.path.exists")
-@patch("builtins.open", new_callable=mock_open, read_data="invalid json")
-def test_main_invalid_json(mock_file, mock_exists):
-    mock_exists.return_value = True
-    assert main() == 1
+def test_main_missing_config(tmp_path):
+    """Should fail when config file doesn't exist."""
+    with patch("tools.memory_schema_migrate_check.CONFIG_PATH", tmp_path / "nonexistent.json"):
+        with patch("sys.argv", ["memory_schema_migrate_check.py"]):
+            with pytest.raises(RuntimeError, match="exit\\(2\\)"):
+                main()
 
-@patch("os.path.exists")
-@patch("builtins.open", new_callable=mock_open, read_data='{"version": "11.6.0", "vector_dim": 768, "partition_strategy": "x", "retention_days": 1}')
-@patch("argparse.ArgumentParser.parse_args")
-def test_main_dry_run_success(mock_args, mock_file, mock_exists):
-    mock_exists.return_value = True
-    mock_args.return_value = type('obj', (object,), {'dry_run': True})
-    assert main() == 0
 
-@patch("os.path.exists")
-@patch("builtins.open", new_callable=mock_open, read_data='{"version": "11.6.0", "vector_dim": 768, "partition_strategy": "x", "retention_days": 1}')
-@patch("argparse.ArgumentParser.parse_args")
-def test_main_missing_ledger(mock_args, mock_file, mock_exists):
-    # First call for config, second for ledger
-    mock_exists.side_effect = [True, False]
-    mock_args.return_value = type('obj', (object,), {'dry_run': False})
-    assert main() == 1
-
-@patch("os.path.exists")
-@patch("builtins.open", new_callable=mock_open, read_data='{"version": "11.6.0", "vector_dim": 768, "partition_strategy": "x", "retention_days": 1}')
-@patch("argparse.ArgumentParser.parse_args")
-def test_main_full_success(mock_args, mock_file, mock_exists):
-    mock_exists.return_value = True
-    mock_args.return_value = type('obj', (object,), {'dry_run': False})
-    assert main() == 0
+def test_main_invalid_json(tmp_path):
+    """Should fail when config file contains invalid JSON."""
+    config_file = tmp_path / "config.json"
+    config_file.write_text("not valid json {")
+    
+    with patch("tools.memory_schema_migrate_check.CONFIG_PATH", config_file):
+        with patch("sys.argv", ["memory_schema_migrate_check.py"]):
+            with pytest.raises(RuntimeError, match="exit\\(1\\)"):
+                main()

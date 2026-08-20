@@ -60,4 +60,4 @@ if __name__ == "__main__":
     
 if __name__ == '__main__':
     if __name__ == '__main__':
-    sys.exit(run_sanitization_check())
+        sys.exit(run_sanitization_check())
