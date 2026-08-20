@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # CI Gate: Two-pass Sanitization Entropy Check
 import sys
+import argparse
 import re
 import math
 import collections
@@ -65,4 +66,8 @@ def main():
         return 2
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="CI Check Tool")
+    parser.add_argument("--dry-run", action="store_true", help="Run with test/mock data")
+    args = parser.parse_args()
+    
     sys.exit(main())

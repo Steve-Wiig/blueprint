@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # CI Gate: Embedding Prefix & Dimension Contract
 import sys
+import argparse
 
 REQUIRED_DOC_PREFIX = "search_document: "
 REQUIRED_QUERY_PREFIX = "search_query: "
@@ -51,4 +52,8 @@ def main():
     return 0
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="CI Check Tool")
+    parser.add_argument("--dry-run", action="store_true", help="Run with test/mock data")
+    args = parser.parse_args()
+    
     sys.exit(main())

@@ -21,6 +21,17 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Load .env file if it exists
+def load_env():
+    env_path = Path("/home/swiig/Documents/blueprint/.env")
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                os.environ.setdefault(key.strip(), value.strip())
+
+
 BLUEPRINT_ROOT = Path("/home/swiig/Documents/blueprint")
 OVERNIGHT_DIR = BLUEPRINT_ROOT / "overnight"
 REPORT_PATH = OVERNIGHT_DIR / "morning_report.md"
@@ -510,6 +521,7 @@ def phase5_morning_report(verification_results, gaps, tasks, loop_result):
 
 
 def main():
+    load_env()
     log("=" * 60)
     log("OVERNIGHT VERIFICATION & DEVELOPMENT PIPELINE")
     log("=" * 60)

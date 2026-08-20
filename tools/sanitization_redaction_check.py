@@ -1,4 +1,5 @@
 import re
+import argparse
 import sys
 
 PATTERNS = {
@@ -53,4 +54,8 @@ def run_sanitization_check():
         return 2
 
 if __name__ == "__main__":
-    sys.exit(run_sanitization_check())
+    parser = argparse.ArgumentParser(description="CI Check Tool")
+    parser.add_argument("--dry-run", action="store_true", help="Run with test/mock data")
+    args = parser.parse_args()
+    
+sys.exit(run_sanitization_check())
