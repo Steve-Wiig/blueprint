@@ -16,8 +16,8 @@ def check_cmr_mount():
 
 def archive_partition(conn, partition_name):
     try:
-        date_str = partition_name.split('_')[-1]
-        archive_dir = Path(ARCHIVE_BASE) / date_str[:7]
+        date_part = partition_name.replace('iocs_', '')
+        archive_dir = Path(ARCHIVE_BASE) / date_part[:7]
         archive_dir.mkdir(parents=True, exist_ok=True)
         output_file = archive_dir / f"{partition_name}.jsonl.zst"
 
