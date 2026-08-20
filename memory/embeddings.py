@@ -17,11 +17,11 @@ class EmbeddingService:
         try:
             self.model = SentenceTransformer(model_name)
         except Exception:
-            raise RuntimeError(f"Library code called sys.exit(3)")
+            raise RuntimeError(f"Library code called exit(3)")
 
     def _enforce_contract(self, vector: np.ndarray) -> List[float]:
         if vector.shape[-1] != self.DIMENSION:
-            raise RuntimeError(f"Library code called sys.exit(1)")
+            raise RuntimeError(f"Library code called exit(1)")
         return vector.tolist()
 
     def _apply_prefix(self, text: str, prefix: str) -> str:
@@ -35,7 +35,7 @@ class EmbeddingService:
             embedding = self.model.encode(processed)
             return self._enforce_contract(embedding)
         except Exception:
-            raise RuntimeError(f"Library code called sys.exit(1)")
+            raise RuntimeError(f"Library code called exit(1)")
 
     def embed_query(self, text: str) -> List[float]:
         try:
@@ -43,7 +43,7 @@ class EmbeddingService:
             embedding = self.model.encode(processed)
             return self._enforce_contract(embedding)
         except Exception:
-            raise RuntimeError(f"Library code called sys.exit(1)")
+            raise RuntimeError(f"Library code called exit(1)")
 
 if __name__ == "__main__":
     # Self-test for deployment validation

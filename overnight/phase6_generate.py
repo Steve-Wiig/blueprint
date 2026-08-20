@@ -23,7 +23,11 @@ except ImportError:
     sys.exit(2)
 
 BLUEPRINT_ROOT = Path("/home/swiig/Documents/blueprint")
-TASKS_FILE = BLUEPRINT_ROOT / "overnight" / "tasks_phase6.json"
+import argparse as _ap
+_parser = _ap.ArgumentParser()
+_parser.add_argument("--tasks-file", default="overnight/tasks_phase6.json")
+_args, _ = _parser.parse_known_args()
+TASKS_FILE = BLUEPRINT_ROOT / _args.tasks_file
 EVIDENCE_DIR = BLUEPRINT_ROOT / "overnight" / "evidence"
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent"
 RATE_LIMIT_SLEEP = 7

@@ -43,7 +43,7 @@ def init_db() -> None:
         conn.close()
     except Exception as e:
         print(f"CONFIG_ERROR: {e}")
-        exit(2)
+        raise RuntimeError(f"Library code called exit(2)")
 
 def sanitize_event(event: Dict[str, Any]) -> Dict[str, Any]:
     """Filters and sanitizes an event dictionary to include only allowed keys.
@@ -95,7 +95,7 @@ def process_eve_file(filepath: str) -> int:
         0 if processing completes successfully. Exits with status 1 or 3 on failure.
     """
     if not os.path.exists(filepath):
-        exit(3)
+        raise RuntimeError(f"Library code called exit(3)")
     
     try:
         with open(filepath, 'r') as f:
@@ -104,13 +104,13 @@ def process_eve_file(filepath: str) -> int:
                     data = json.loads(line)
                     sanitized = sanitize_event(data)
                     if not enqueue_event(sanitized):
-                        exit(1)
+                        raise RuntimeError(f"Library code called exit(1)")
                 except json.JSONDecodeError:
                     continue
         return 0
     except Exception as e:
         logging.error(f"Intake error: {e}")
-        exit(1)
+        raise RuntimeError(f"Library code called exit(1)")
 
 if __name__ == "__main__":
     init_db()

@@ -20,3 +20,4 @@ __pycache__/
 .env
 *.bak
 *.bak
+handoff_log.txt

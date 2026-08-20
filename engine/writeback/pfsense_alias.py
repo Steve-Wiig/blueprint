@@ -31,7 +31,7 @@ def init_db() -> None:
         conn.commit()
         conn.close()
     except Exception:
-        raise RuntimeError(f"Library code called sys.exit(2)")
+        raise RuntimeError(f"Library code called exit(2)")
 
 def store_proposal(name: str, ip: str) -> None:
     """Stores a new alias proposal in the database.
@@ -51,7 +51,7 @@ def store_proposal(name: str, ip: str) -> None:
         conn.close()
         print(f"PROPOSAL_STORED: {name} -> {ip}")
     except Exception:
-        raise RuntimeError(f"Library code called sys.exit(1)")
+        raise RuntimeError(f"Library code called exit(1)")
 
 def rollback_plan() -> None:
     """Prints instructions for rolling back pending alias proposals."""
@@ -74,9 +74,9 @@ def main() -> None:
     if args.mode == 'proposal':
         store_proposal(args.name, args.ip)
         rollback_plan()
-        raise RuntimeError(f"Library code called sys.exit(0)")
+        raise RuntimeError(f"Library code called exit(0)")
     else:
-        raise RuntimeError(f"Library code called sys.exit(2)")
+        raise RuntimeError(f"Library code called exit(2)")
 
 if __name__ == "__main__":
     main()

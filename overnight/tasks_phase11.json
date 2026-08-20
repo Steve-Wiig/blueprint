@@ -1,0 +1,18 @@
+[
+  {
+    "id": "T-1101",
+    "type": "generate_tests",
+    "target": "tests/test_chaos_worker_crash.py",
+    "prompt_hint": "Generate chaos tests that simulate worker crashes during job processing. Test: 1) Worker crashes mid-job, job returns to pending after lease expiry, 2) Worker crashes after 3 attempts, job moves to failed, 3) Multiple workers crash simultaneously, queue recovers. Use real in-memory SQLite. Output ONLY valid Python code.",
+    "priority": 1,
+    "status": "open"
+  },
+  {
+    "id": "T-1102",
+    "type": "generate_tests",
+    "target": "tests/test_chaos_db_corruption.py",
+    "prompt_hint": "Generate tests that simulate database corruption. Test: 1) Hash chain detects tampered row, 2) Queue recovers from corrupted job record, 3) Quarantine store handles missing file gracefully. Use real SQLite with deliberate corruption. Output ONLY valid Python code.",
+    "priority": 2,
+    "status": "open"
+  }
+]

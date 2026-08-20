@@ -43,7 +43,7 @@ def write_to_ledger(payload_ref: str, case_id: str) -> None:
         with open("handoffs_ledger.log", "a") as f:
             f.write(f"{datetime.now(timezone.utc).isoformat()} | {payload_ref} | {case_id}\n")
     except IOError:
-        raise RuntimeError(f"Library code called sys.exit(2)")
+        raise RuntimeError(f"Library code called exit(2)")
 
 def create_case(api_url: str, api_key: str, payload: Dict[str, Any], draft_mode: bool) -> str:
     """Creates a case via the Security Onion API.
@@ -74,7 +74,7 @@ def create_case(api_url: str, api_key: str, payload: Dict[str, Any], draft_mode:
         return case_id
     except Exception as e:
         logging.error(f"API Failure: {e}")
-        raise RuntimeError(f"Library code called sys.exit(1)")
+        raise RuntimeError(f"Library code called exit(1)")
 
 def main() -> None:
     """Parses command line arguments and executes the case writeback process."""
@@ -89,7 +89,7 @@ def main() -> None:
     try:
         data = json.loads(args.payload)
     except json.JSONDecodeError:
-        raise RuntimeError(f"Library code called sys.exit(2)")
+        raise RuntimeError(f"Library code called exit(2)")
 
     case_id = create_case(args.url, args.key, data, args.draft)
     
@@ -97,7 +97,7 @@ def main() -> None:
         write_to_ledger(data.get("ref", "N/A"), case_id)
     
     print(f"SUCCESS: {case_id}")
-    raise RuntimeError(f"Library code called sys.exit(0)")
+    raise RuntimeError(f"Library code called exit(0)")
 
 if __name__ == "__main__":
     main()

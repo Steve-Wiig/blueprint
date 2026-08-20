@@ -57,9 +57,9 @@ def main():
             res = scan_text(p)
             if not res:
                 print(f"FAIL: Dry-run payload missed: {p}")
-                raise RuntimeError(f"Library code called sys.exit(1)")
+                raise RuntimeError(f"Library code called exit(1)")
         print("PASS: Dry-run successful.")
-        raise RuntimeError(f"Library code called sys.exit(0)")
+        raise RuntimeError(f"Library code called exit(0)")
 
     exit_code = 0
     for file_path in args.files:
@@ -73,7 +73,7 @@ def main():
                     exit_code = 1
         except Exception as e:
             print(f"CONFIG ERROR: Could not read {file_path}: {e}")
-            raise RuntimeError(f"Library code called sys.exit(2)")
+            raise RuntimeError(f"Library code called exit(2)")
             
     raise RuntimeError(f"Library code called sys.exit(exit_code)")
 

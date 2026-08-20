@@ -31,7 +31,7 @@ def init_db() -> None:
         conn.commit()
         conn.close()
     except Exception:
-        raise RuntimeError(f"Library code called sys.exit(2)")
+        raise RuntimeError(f"Library code called exit(2)")
 
 def check_approval_gate(key: str) -> bool:
     """Validates if a key is permitted for a proposal.
@@ -58,10 +58,10 @@ def main() -> None:
     args = parser.parse_args()
 
     if not os.path.exists(os.path.dirname(DB_PATH)):
-        raise RuntimeError(f"Library code called sys.exit(3)")
+        raise RuntimeError(f"Library code called exit(3)")
 
     if not check_approval_gate(args.key):
-        raise RuntimeError(f"Library code called sys.exit(1)")
+        raise RuntimeError(f"Library code called exit(1)")
 
     try:
         init_db()
@@ -71,9 +71,9 @@ def main() -> None:
                        (args.key, args.value, 'PENDING', datetime.now()))
         conn.commit()
         conn.close()
-        raise RuntimeError(f"Library code called sys.exit(0)")
+        raise RuntimeError(f"Library code called exit(0)")
     except Exception:
-        raise RuntimeError(f"Library code called sys.exit(1)")
+        raise RuntimeError(f"Library code called exit(1)")
 
 if __name__ == "__main__":
     main()

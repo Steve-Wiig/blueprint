@@ -1,0 +1,26 @@
+[
+  {
+    "id": "T-1001",
+    "type": "generate_config",
+    "target": "lab/docker-compose.yml",
+    "prompt_hint": "Generate a complete docker-compose.yml for the LOCAL-SOC-SLM lab. Include services: wazuh-manager (port 1514, 1515, 55000), thehive (port 9000), suricata, postgresql with pgvector extension (port 5432), and the soc-engine (our Python app). Define networks, volumes, health checks, and resource limits. Use specific image tags. Include comments explaining each service. Output ONLY valid YAML.",
+    "priority": 1,
+    "status": "open"
+  },
+  {
+    "id": "T-1002",
+    "type": "generate_config",
+    "target": "lab/wazuh/ossec.conf",
+    "prompt_hint": "Generate a Wazuh ossec.conf for the LOCAL-SOC-SLM lab. Configure: 1) Syslog input on port 1514, 2) JSON alert output to /var/ossec/logs/alerts/alerts.json, 3) Integration with our Python engine via webhook or file watch, 4) Basic rules for SSH brute force, port scan, and malware detection. Output ONLY valid XML.",
+    "priority": 2,
+    "status": "open"
+  },
+  {
+    "id": "T-1003",
+    "type": "generate_config",
+    "target": "lab/postgres/init.sql",
+    "prompt_hint": "Generate the PostgreSQL initialization SQL for LOCAL-SOC-SLM. Create: 1) soc_memory database with pgvector extension, 2) iocs table with daily partitions (iocs_YYYY_MM_DD), 3) case_summaries table with vector column (768 dims), 4) audit_chain table for hash chain, 5) quota_ledger table. Include indexes and constraints. Output ONLY valid SQL.",
+    "priority": 3,
+    "status": "open"
+  }
+]

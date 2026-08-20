@@ -10,7 +10,7 @@ try:
     import requests
 except ImportError:
     print("FAIL: requests library is not installed")
-    raise RuntimeError(f"Library code called sys.exit(2)")
+    raise RuntimeError(f"Library code called exit(2)")
 
 CONFIG = {
     "wazuh": {
