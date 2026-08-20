@@ -1,6 +1,7 @@
 import sqlite3
 import hashlib
 import json
+import yaml
 import sys
 from typing import Dict, Optional
 
@@ -9,14 +10,14 @@ class ModelRegistryClient:
         self.db_path = db_path
         try:
             with open(routing_config_path, 'r') as f:
-                self.routing_config = json.load(f)
+                self.routing_config = yaml.safe_load(f)
         except Exception:
-            sys.exit(2)
+            raise ValueError(f"CONFIG ERROR: Could not load routing config: {routing_config_path}")
 
     def get_adapter(self, task_type: str) -> Dict:
         adapter_id = self.routing_config.get(task_type)
         if not adapter_id:
-            sys.exit(1)
+            return None  # Adapter not found
 
         try:
             conn = sqlite3.connect(self.db_path)
@@ -29,16 +30,16 @@ class ModelRegistryClient:
             conn.close()
 
             if not row:
-                sys.exit(1)
+                return None  # Adapter not found
 
             aid, sha, status = row
             
             if status not in ['canary', 'active', 'retired']:
-                sys.exit(1)
+                return None  # Adapter not found
             
             return {"adapter_id": aid, "sha256": sha, "status": status}
         except Exception:
-            sys.exit(1)
+            return None  # Adapter not found
 
     def verify_integrity(self, adapter_data: Dict, file_path: str) -> bool:
         sha256_hash = hashlib.sha256()
@@ -48,7 +49,7 @@ class ModelRegistryClient:
                     sha256_hash.update(byte_block)
             return sha256_hash.hexdigest() == adapter_data['sha256']
         except FileNotFoundError:
-            sys.exit(1)
+            return None  # Adapter not found
 
 if __name__ == "__main__":
     # Example usage for LOCAL-SOC-SLM v11.6.0
