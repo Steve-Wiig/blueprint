@@ -1,0 +1,169 @@
+version: '3.8'
+
+networks:
+  soc-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+volumes:
+  wazuh_data:
+  hive_data:
+  postgres_data:
+  engine_logs:
+
+services:
+  # Wazuh Manager: Centralized security monitoring and log analysis
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.7.2
+    container_name: wazuh-manager
+    restart: unless-stopped
+    networks:
+      - soc-net
+    ports:
+      - "1514:1514"
+      - "1515:1515"
+      - "55000:55000"
+    volumes:
+      - wazuh_data:/var/ossec/data
+    healthcheck:
+      test: ["CMD", "/usr/bin/test", "-f", "/var/ossec/bin/wazuh-control"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+
+  # PostgreSQL with pgvector: Memory layer for RAG and embedding storage
+  postgresql:
+    image: pgvector/pgvector:pg16
+    container_name: postgres-memory
+    restart: always
+    environment:
+      POSTGRES_USER: soc_admin
+      POSTGRES_PASSWORD: securepassword123
+      POSTGRES_DB: soc_memory
+    networks:
+      - soc-net
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U soc_admin -d soc_memory"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+
+  # TheHive: Incident response and case management platform
+  thehive:
+    image: hiveproject/thehive:5.2.0
+    container_name: thehive
+    restart: unless-stopped
+    depends_on:
+      - postgresql
+    networks:
+      - soc-net
+    ports:
+      - "9000:9000"
+    volumes:
+      - hive_data:/opt/thehive/data
+    environment:
+      - TH_DB_TYPE=postgres
+      - TH_DB_HOST=postgresql
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+
+  # Suricata: Network Intrusion Detection System (NIDS)
+  suricata:
+    image: jasonish/suricata:7.0.3
+    container_name: suricata
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    network_mode: host
+    volumes:
+      - ./suricata/rules:/var/lib/suricata/rules
+      - ./suricata/config:/etc/suricata
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  # SOC-Engine: Core Python application for intake, enrichment, and writeback
+  soc-engine:
+    build:
+      context: .
+      dockerfile: ./engine/Dockerfile
+    container_name: soc-engine
+    restart: always
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    networks:
+      - soc-net
+    volumes:
+      - ./engine:/app/engine
+      - engine_logs:/app/logs
+    environment:
+      - ENGINE_MODE=production
+      - DB_URL=postgresql://soc_admin:securepassword123@postgresql:5432/soc_memory
+      - QUEUE_BROKER=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 2G
+
+  # Redis: Queue management for the engine intake pipeline
+  redis:
+    image: redis:7.2-alpine
+    container_name: soc-queue
+    restart: unless-stopped
+    networks:
+      - soc-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 256M
+
+  # Orchestrator: Model routing and context management
+  orchestrator:
+    build:
+      context: .
+      dockerfile: ./orchestrator/Dockerfile
+    container_name: soc-orchestrator
+    restart: always
+    depends_on:
+      - soc-engine
+    networks:
+      - soc-net
+    environment:
+      - MODEL_ENDPOINT=http://llm-provider:8080
+      - ENGINE_API=http://soc-engine:8000
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M

@@ -5,7 +5,7 @@
     "target": "docs/ARCHITECTURE.md",
     "prompt_hint": "Generate a comprehensive architecture document for LOCAL-SOC-SLM. Describe: 1) Data flow from Wazuh intake to TheHive writeback, 2) The sanitization pipeline and quarantine mechanism, 3) The triage queue with backpressure and shedding, 4) The hash chain audit trail, 5) The memory/RAG layer. Use mermaid diagrams. Output ONLY valid Markdown.",
     "priority": 1,
-    "status": "open"
+    "status": "done"
   },
   {
     "id": "T-802",
@@ -13,7 +13,7 @@
     "target": "docs/OPERATIONS_RUNBOOK.md",
     "prompt_hint": "Generate an operations runbook for LOCAL-SOC-SLM. Cover: 1) Starting/stopping services, 2) Checking queue health, 3) Monitoring hash chain integrity, 4) Handling quarantine overflow, 5) Recovering from worker crashes, 6) Rotating API keys. Use step-by-step procedures with exact commands. Output ONLY valid Markdown.",
     "priority": 2,
-    "status": "open"
+    "status": "done"
   },
   {
     "id": "T-803",
@@ -21,6 +21,6 @@
     "target": "docs/LAB_SETUP_GUIDE.md",
     "prompt_hint": "Generate a detailed lab setup guide for LOCAL-SOC-SLM. Cover: 1) Hardware requirements (RAM, CPU, storage), 2) Docker compose stack (Wazuh, TheHive, Suricata, PostgreSQL+pgvector), 3) Network topology and port mappings, 4) Initial configuration steps, 5) Verification checklist. Include exact docker-compose.yml snippets. Output ONLY valid Markdown.",
     "priority": 3,
-    "status": "open"
+    "status": "done"
   }
 ]
