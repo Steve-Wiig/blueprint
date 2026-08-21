@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from overnight.llm_client import generate_with_critique, load_api_keys, strip_fences
 
 try:
     import requests
@@ -31,24 +32,6 @@ def load_env():
             if line and not line.startswith("#") and "=" in line:
                 key, value = line.split("=", 1)
                 os.environ.setdefault(key.strip(), value.strip())
-
-def call_gemini(prompt, api_key):
-    headers = {"Content-Type": "application/json"}
-    payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.3, "maxOutputTokens": 16384}}
-    for attempt in range(3):
-        try:
-            resp = requests.post(f"{API_URL}?key={api_key}", json=payload, headers=headers, timeout=120)
-            if resp.status_code == 429:
-                wait = 60 * (attempt + 1)
-                print(f"    Rate limited. Waiting {wait}s...")
-                time.sleep(wait)
-                continue
-            resp.raise_for_status()
-            return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception as e:
-            if attempt < 2:
-                time.sleep(10)
-    return ""
 
 def strip_fences(text):
     text = re.sub(r'^```(?:markdown|yaml|sql|xml|python)?\s*\n', '', text)
@@ -155,7 +138,8 @@ RULES:
         for attempt in range(1, MAX_ATTEMPTS + 1):
             print(f"    Attempt {attempt}/{MAX_ATTEMPTS}...")
             
-            response = call_gemini(prompt, api_key)
+            api_keys = load_api_keys()
+        response = generate_with_critique(prompt, task["description"], api_keys, model_type="docs")
             if not response:
                 print(f"    ⚠️  Empty response")
                 time.sleep(RATE_LIMIT_SLEEP)
