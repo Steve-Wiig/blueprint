@@ -6,13 +6,9 @@ LOCAL-SOC-SLM Blueprint v11.6.0 - Appendix Q.4
 import argparse
 import json
 import logging
-import sys
 import requests
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
-
-# LOCAL-SOC-SLM Blueprint v11.6.0 - Appendix Q.4
-# Security Onion Case Writeback Adapter
+from typing import Any, Dict
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
@@ -37,7 +33,7 @@ def write_to_ledger(payload_ref: str, case_id: str) -> None:
         case_id: The ID of the created case.
 
     Raises:
-        SystemExit: If the ledger file cannot be written to.
+        RuntimeError: If the ledger file cannot be written to.
     """
     try:
         with open("handoffs_ledger.log", "a") as f:
@@ -58,7 +54,7 @@ def create_case(api_url: str, api_key: str, payload: Dict[str, Any], draft_mode:
         The ID of the created case or a draft identifier.
 
     Raises:
-        SystemExit: If the API request fails.
+        RuntimeError: If the API request fails.
     """
     sanitized = sanitize_input(payload)
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
