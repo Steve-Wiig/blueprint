@@ -1,9 +1,7 @@
-"""Module for scheduling and processing enrichment jobs using PostgreSQL and SQLite."""
-
-import sqlite3
-import psycopg2
 import argparse
 import json
+import sqlite3
+import psycopg2
 from typing import Tuple
 
 def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensions.connection, sqlite3.Connection]:
@@ -18,7 +16,6 @@ def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensio
     """
     try:
         pg_conn = psycopg2.connect(pg_dsn)
-        # Use in‑memory SQLite database if ':memory:' is specified (default for testing)
         sq_conn = sqlite3.connect(sqlite_path)
         return pg_conn, sq_conn
     except Exception as e:
@@ -39,6 +36,21 @@ def check_quota(sq_conn: sqlite3.Connection, provider: str) -> int:
     cursor.execute("SELECT remaining FROM quota_ledger WHERE provider = ?", (provider,))
     row = cursor.fetchone()
     return row[0] if row else 0
+
+def get_provider_cost(sq_conn: sqlite3.Connection, provider: str) -> int:
+    """Retrieves the cost per enrichment for a provider.
+
+    Args:
+        sq_conn: The SQLite database connection.
+        provider: The name of the enrichment provider.
+
+    Returns:
+        The cost as an integer. Defaults to 1 if not specified.
+    """
+    cursor = sq_conn.cursor()
+    cursor.execute("SELECT cost FROM provider_costs WHERE provider = ?", (provider,))
+    row = cursor.fetchone()
+    return row[0] if row else 1
 
 def update_quota(sq_conn: sqlite3.Connection, provider: str, cost: int) -> None:
     """Decrements the quota for a specific provider in the SQLite database.
@@ -70,7 +82,8 @@ def process_jobs(pg_conn: psycopg2.extensions.connection, sq_conn: sqlite3.Conne
 
     for job_id, ioc, provider in jobs:
         quota = check_quota(sq_conn, provider)
-        if quota <= 0:
+        cost = get_provider_cost(sq_conn, provider)
+        if quota < cost:
             continue
 
         try:
@@ -81,7 +94,7 @@ def process_jobs(pg_conn: psycopg2.extensions.connection, sq_conn: sqlite3.Conne
                 "UPDATE enrichment_jobs SET status = 'COMPLETED', result = %s WHERE id = %s",
                 (json.dumps(result), job_id)
             )
-            update_quota(sq_conn, provider, 1)
+            update_quota(sq_conn, provider, cost)
             pg_conn.commit()
         except Exception as e:
             pg_conn.rollback()
