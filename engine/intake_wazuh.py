@@ -9,6 +9,15 @@ from datetime import datetime, timezone
 DB_PATH = os.getenv('TRIAGE_DB_PATH', '/var/lib/local-soc/triage_queue.db')
 LOG_FILE = os.getenv('TRIAGE_LOG_FILE', '/var/log/local-soc/intake.log')
 
+"""
+Logging configuration.
+
+Sets up basic logging to write INFO level messages and above to the specified log file.
+
+Attributes:
+    LOG_FILE (str): The path to the log file.
+"""
+
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO)
 
 def sanitize_payload(data):
