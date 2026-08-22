@@ -1,15 +1,3 @@
-"""
-Module for extracting Indicators of Compromise (IOCs) from alert payloads.
-
-This module provides functionality to parse sanitized alert JSON objects for
-various IOC types (IPv4, domains, URLs, SHA256 hashes, and emails) and
-persists them into a PostgreSQL database, maintaining a 90‑day retention policy.
-
-NOTE: The 90‑day cleanup is now expected to be handled by an external scheduled
-job (e.g., cron, pg_cron, or a partitioning strategy) rather than on every
-extraction call to avoid unnecessary load and potential table locks.
-"""
-
 import json
 import re
 from datetime import datetime, timezone
@@ -18,11 +6,11 @@ from typing import Any, Dict
 import psycopg2
 from psycopg2.extras import execute_values
 
-_IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
-_DOMAIN_RE = re.compile(r"\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b")
-_URL_RE = re.compile(r"https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+")
-_SHA256_RE = re.compile(r"\b[a-fA-F0-9]{64}\b")
-_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
+_IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", re.IGNORECASE)
+_DOMAIN_RE = re.compile(r"\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b", re.IGNORECASE)
+_URL_RE = re.compile(r"https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+", re.IGNORECASE)
+_SHA256_RE = re.compile(r"\b[a-fA-F0-9]{64}\b", re.IGNORECASE)
+_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", re.IGNORECASE)
 
 _PATTERNS = {
     "ipv4": _IPV4_RE,
@@ -51,7 +39,7 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
         extracted = []
 
         for ioc_type, regex in _PATTERNS.items():
-            matches = set(regex.findall(payload_str, re.IGNORECASE))
+            matches = set(regex.findall(payload_str))
             for match in matches:
                 extracted.append((match, ioc_type, "pending", datetime.now(timezone.utc)))
 
@@ -82,4 +70,5 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
 
 
 if __name__ == "__main__":
-    exit(extract_iocs({}))
+    result = extract_iocs({})
+    print(result)
