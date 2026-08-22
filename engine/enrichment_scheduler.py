@@ -3,9 +3,8 @@
 import sqlite3
 import psycopg2
 import argparse
-import sys
 import json
-from typing import Tuple, Any
+from typing import Tuple
 
 def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensions.connection, sqlite3.Connection]:
     """Establishes connections to PostgreSQL and SQLite databases.
@@ -23,7 +22,7 @@ def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensio
         return pg_conn, sq_conn
     except Exception as e:
         print(f"Connection error: {e}")
-        raise RuntimeError(f"Library code called exit(2)")
+        raise RuntimeError("Failed to establish database connections")
 
 def check_quota(sq_conn: sqlite3.Connection, provider: str) -> int:
     """Checks the remaining quota for a specific provider in the SQLite database.
@@ -78,9 +77,9 @@ def process_jobs(pg_conn: psycopg2.extensions.connection, sq_conn: sqlite3.Conne
             )
             update_quota(sq_conn, provider, 1)
             pg_conn.commit()
-        except Exception:
+        except Exception as e:
             pg_conn.rollback()
-            raise RuntimeError(f"Library code called exit(1)")
+            raise RuntimeError("Failed to process enrichment job") from e
 
 def main() -> None:
     """Parses command line arguments and initiates the job processing workflow."""
@@ -96,8 +95,6 @@ def main() -> None:
     finally:
         pg_conn.close()
         sq_conn.close()
-    
-    raise RuntimeError(f"Library code called exit(0)")
 
 if __name__ == "__main__":
     main()
