@@ -21,7 +21,7 @@ def seal_audit_chain(db_config: Dict[str, Any]) -> None:
             compatible with psycopg2.connect().
 
     Returns:
-        None. Exits the process with status 0 on success or 1 on failure.
+        None. Raises RuntimeError on failure.
     """
     GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000"
     LOCK_ID = 37001
@@ -67,11 +67,10 @@ def seal_audit_chain(db_config: Dict[str, Any]) -> None:
         conn.commit()
         cur.close()
         conn.close()
-        raise RuntimeError(f"Library code called exit(0)")
 
     except Exception as e:
         print(f"Sealer Error: {e}", file=sys.stderr)
-        raise RuntimeError(f"Library code called exit(1)")
+        raise RuntimeError(f"Sealer failed: {e}")
 
 if __name__ == "__main__":
     seal_audit_chain({"dbname": "soc_ledger", "user": "sealer_role"})
