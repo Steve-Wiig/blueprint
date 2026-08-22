@@ -3,10 +3,11 @@ import json
 import uuid
 import sys
 import logging
+import os
 from datetime import datetime, timezone
 
-DB_PATH = "/var/lib/local-soc/triage_queue.db"
-LOG_FILE = "/var/log/local-soc/intake.log"
+DB_PATH = os.getenv('TRIAGE_DB_PATH', '/var/lib/local-soc/triage_queue.db')
+LOG_FILE = os.getenv('TRIAGE_LOG_FILE', '/var/log/local-soc/intake.log')
 
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO)
 
@@ -35,13 +36,13 @@ def intake_adapter(raw_payload):
     try:
         data = json.loads(raw_payload)
     except json.JSONDecodeError:
-        raise RuntimeError(f"Library code called exit(2)")
+        raise RuntimeError("Library code called exit(2)")
 
     sanitized, err = sanitize_payload(data)
     
     if err:
         logging.error(f"Sanitization failed: {err}")
-        raise RuntimeError(f"Library code called exit(1)")
+        raise RuntimeError("Library code called exit(1)")
 
     conn = None
     try:
@@ -63,7 +64,7 @@ def intake_adapter(raw_payload):
         return 202
     except sqlite3.Error as e:
         logging.critical(f"Database error: {e}")
-        raise RuntimeError(f"Library code called exit(1)")
+        raise RuntimeError("Library code called exit(1)")
     finally:
         if conn:
             conn.close()
