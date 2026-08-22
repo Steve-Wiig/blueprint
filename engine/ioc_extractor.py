@@ -1,7 +1,7 @@
 import json
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Iterable, List, Tuple
 
 import psycopg2
 from psycopg2.extras import execute_values
@@ -21,6 +21,17 @@ _PATTERNS = {
 }
 
 
+def _iter_strings(obj: Any) -> Iterable[str]:
+    if isinstance(obj, dict):
+        for value in obj.values():
+            yield from _iter_strings(value)
+    elif isinstance(obj, list):
+        for item in obj:
+            yield from _iter_strings(item)
+    elif isinstance(obj, str):
+        yield obj
+
+
 def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
     """
     Extracts IOCs from sanitized alert payloads and persists to PostgreSQL.
@@ -35,11 +46,12 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
             2 for database-related errors.
     """
     try:
-        payload_str = json.dumps(sanitized_alert_json)
-        extracted = []
+        extracted: List[Tuple[str, str, str, datetime]] = []
 
         for ioc_type, regex in _PATTERNS.items():
-            matches = set(regex.findall(payload_str))
+            matches = set()
+            for text in _iter_strings(sanitized_alert_json):
+                matches.update(regex.findall(text))
             for match in matches:
                 extracted.append((match, ioc_type, "pending", datetime.now(timezone.utc)))
 
