@@ -28,6 +28,7 @@ def seal_audit_chain(db_config: Dict[str, Any]) -> None:
     """
     GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000"
     LOCK_ID = 37001
+    BATCH_SIZE = 1000
 
     try:
         conn = psycopg2.connect(**db_config)
@@ -49,8 +50,9 @@ def seal_audit_chain(db_config: Dict[str, Any]) -> None:
             )
             prev_hash = cur.fetchone()[0]
 
-        # Efficiently fetch handoff rows that are not yet linked in audit_chain
-        cur.execute(
+        # Use a server‑side cursor to avoid loading all pending rows into memory
+        pending_cur = conn.cursor(name="pending_cursor")
+        pending_cur.execute(
             """
             SELECT h.id, h.ts, h.payload_sha256
             FROM handoffs h
@@ -59,38 +61,41 @@ def seal_audit_chain(db_config: Dict[str, Any]) -> None:
             ORDER BY h.ts ASC, h.id ASC
             """
         )
-        pending_rows = cur.fetchall()
 
-        rows_to_insert = []
-        for row_id, row_ts, payload_sha in pending_rows:
-            last_seq += 1
+        while True:
+            pending_rows = pending_cur.fetchmany(BATCH_SIZE)
+            if not pending_rows:
+                break
 
-            canonical_data = f"{last_seq}{prev_hash}{payload_sha}".encode("utf-8")
-            row_hash = hashlib.sha256(canonical_data).hexdigest()
+            rows_to_insert = []
+            for row_id, row_ts, payload_sha in pending_rows:
+                last_seq += 1
+                canonical_data = f"{last_seq}{prev_hash}{payload_sha}".encode("utf-8")
+                row_hash = hashlib.sha256(canonical_data).hexdigest()
 
-            rows_to_insert.append(
-                (
-                    last_seq,
-                    'handoffs',
-                    row_id,
-                    row_ts,
-                    payload_sha,
-                    prev_hash,
-                    row_hash,
+                rows_to_insert.append(
+                    (
+                        last_seq,
+                        "handoffs",
+                        row_id,
+                        row_ts,
+                        payload_sha,
+                        prev_hash,
+                        row_hash,
+                    )
                 )
-            )
+                prev_hash = row_hash
 
-            prev_hash = row_hash
+            insert_query = """
+                INSERT INTO audit_chain
+                (chain_seq, table_name, row_id, row_ts, canonical_payload_sha256,
+                 previous_hash, row_hash)
+                VALUES %s
+            """
+            execute_values(cur, insert_query, rows_to_insert)
 
-        # Batch insert rows into audit_chain table
-        insert_query = """
-            INSERT INTO audit_chain
-            (chain_seq, table_name, row_id, row_ts, canonical_payload_sha256,
-             previous_hash, row_hash)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """
-        execute_values(cur, insert_query, rows_to_insert)
-
+        # Clean up cursors and commit transaction
+        pending_cur.close()
         conn.commit()
         cur.close()
         conn.close()
