@@ -9,6 +9,7 @@ import hashlib
 from typing import Dict, Any
 
 import psycopg2
+from psycopg2.extras import execute_values
 
 
 def seal_audit_chain(db_config: Dict[str, Any]) -> None:
@@ -60,23 +61,35 @@ def seal_audit_chain(db_config: Dict[str, Any]) -> None:
         )
         pending_rows = cur.fetchall()
 
+        rows_to_insert = []
         for row_id, row_ts, payload_sha in pending_rows:
             last_seq += 1
 
             canonical_data = f"{last_seq}{prev_hash}{payload_sha}".encode("utf-8")
             row_hash = hashlib.sha256(canonical_data).hexdigest()
 
-            cur.execute(
-                """
-                INSERT INTO audit_chain
-                (chain_seq, table_name, row_id, row_ts, canonical_payload_sha256,
-                 previous_hash, row_hash)
-                VALUES (%s, 'handoffs', %s, %s, %s, %s, %s)
-                """,
-                (last_seq, row_id, row_ts, payload_sha, prev_hash, row_hash),
+            rows_to_insert.append(
+                (
+                    last_seq,
+                    'handoffs',
+                    row_id,
+                    row_ts,
+                    payload_sha,
+                    prev_hash,
+                    row_hash,
+                )
             )
 
             prev_hash = row_hash
+
+        # Batch insert rows into audit_chain table
+        insert_query = """
+            INSERT INTO audit_chain
+            (chain_seq, table_name, row_id, row_ts, canonical_payload_sha256,
+             previous_hash, row_hash)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+        execute_values(cur, insert_query, rows_to_insert)
 
         conn.commit()
         cur.close()
