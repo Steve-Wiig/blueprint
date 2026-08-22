@@ -11,18 +11,19 @@ def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensio
 
     Args:
         pg_dsn: The Data Source Name for the PostgreSQL database.
-        sqlite_path: The file path to the SQLite database.
+        sqlite_path: The file path to the SQLite database. Use ':memory:' for in‑memory DB.
 
     Returns:
         A tuple containing the PostgreSQL connection and the SQLite connection.
     """
     try:
         pg_conn = psycopg2.connect(pg_dsn)
+        # Use in‑memory SQLite database if ':memory:' is specified (default for testing)
         sq_conn = sqlite3.connect(sqlite_path)
         return pg_conn, sq_conn
     except Exception as e:
         print(f"Connection error: {e}")
-        raise RuntimeError("Failed to establish database connections")
+        raise RuntimeError("Failed to establish database connections") from e
 
 def check_quota(sq_conn: sqlite3.Connection, provider: str) -> int:
     """Checks the remaining quota for a specific provider in the SQLite database.
@@ -48,7 +49,10 @@ def update_quota(sq_conn: sqlite3.Connection, provider: str, cost: int) -> None:
         cost: The amount to decrement from the quota.
     """
     cursor = sq_conn.cursor()
-    cursor.execute("UPDATE quota_ledger SET remaining = remaining - ? WHERE provider = ?", (cost, provider))
+    cursor.execute(
+        "UPDATE quota_ledger SET remaining = remaining - ? WHERE provider = ?",
+        (cost, provider)
+    )
     sq_conn.commit()
 
 def process_jobs(pg_conn: psycopg2.extensions.connection, sq_conn: sqlite3.Connection) -> None:
@@ -59,18 +63,20 @@ def process_jobs(pg_conn: psycopg2.extensions.connection, sq_conn: sqlite3.Conne
         sq_conn: The SQLite database connection.
     """
     pg_cur = pg_conn.cursor()
-    pg_cur.execute("SELECT id, ioc_value, provider FROM enrichment_jobs WHERE status = 'PENDING'")
+    pg_cur.execute(
+        "SELECT id, ioc_value, provider FROM enrichment_jobs WHERE status = 'PENDING'"
+    )
     jobs = pg_cur.fetchall()
 
     for job_id, ioc, provider in jobs:
         quota = check_quota(sq_conn, provider)
         if quota <= 0:
             continue
-        
+
         try:
             # Mock enrichment logic
             result = {"status": "enriched", "data": f"mock_data_for_{ioc}"}
-            
+
             pg_cur.execute(
                 "UPDATE enrichment_jobs SET status = 'COMPLETED', result = %s WHERE id = %s",
                 (json.dumps(result), job_id)
@@ -84,12 +90,16 @@ def process_jobs(pg_conn: psycopg2.extensions.connection, sq_conn: sqlite3.Conne
 def main() -> None:
     """Parses command line arguments and initiates the job processing workflow."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pg-dsn", required=True)
-    parser.add_argument("--sqlite-path", required=True)
+    parser.add_argument("--pg-dsn", required=True, help="PostgreSQL DSN")
+    parser.add_argument(
+        "--sqlite-path",
+        default=":memory:",
+        help="Path to SQLite DB file; defaults to in‑memory DB for testing"
+    )
     args = parser.parse_args()
 
     pg_conn, sq_conn = get_db_connections(args.pg_dsn, args.sqlite_path)
-    
+
     try:
         process_jobs(pg_conn, sq_conn)
     finally:
