@@ -10,12 +10,27 @@ job (e.g., cron, pg_cron, or a partitioning strategy) rather than on every
 extraction call to avoid unnecessary load and potential table locks.
 """
 
+import json
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict
 
 import psycopg2
 from psycopg2.extras import execute_values
+
+_IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+_DOMAIN_RE = re.compile(r"\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b")
+_URL_RE = re.compile(r"https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+")
+_SHA256_RE = re.compile(r"\b[a-fA-F0-9]{64}\b")
+_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
+
+_PATTERNS = {
+    "ipv4": _IPV4_RE,
+    "domain": _DOMAIN_RE,
+    "url": _URL_RE,
+    "sha256": _SHA256_RE,
+    "email": _EMAIL_RE,
+}
 
 
 def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
@@ -32,18 +47,11 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
             2 for database-related errors.
     """
     try:
-        # Regex patterns for IOC extraction
-        patterns = {
-            "ipv4": r"\b(?:\d{1,3}\.){3}\d{1,3}\b",
-            "domain": r"\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b",
-            "url": r"https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+",
-            "sha256": r"\b[a-fA-F0-9]{64}\b",
-            "email": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
-        }
-
+        payload_str = json.dumps(sanitized_alert_json)
         extracted = []
-        for ioc_type, pattern in patterns.items():
-            matches = set(re.findall(pattern, str(sanitized_alert_json), re.IGNORECASE))
+
+        for ioc_type, regex in _PATTERNS.items():
+            matches = set(regex.findall(payload_str, re.IGNORECASE))
             for match in matches:
                 extracted.append((match, ioc_type, "pending", datetime.now(timezone.utc)))
 
@@ -53,7 +61,6 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
         conn = psycopg2.connect("dbname=soc_memory user=orchestrator")
         cur = conn.cursor()
 
-        # Insert extracted IOCs
         query = """
             INSERT INTO iocs (value, type, enrichment_status, first_seen)
             VALUES %s
