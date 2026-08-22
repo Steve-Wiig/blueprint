@@ -4,10 +4,12 @@ This module provides functionality to process pending handoff records,
 link them into a cryptographic chain, and persist them to a PostgreSQL database.
 """
 
-import psycopg2
-import hashlib
 import sys
+import hashlib
 from typing import Dict, Any
+
+import psycopg2
+
 
 def seal_audit_chain(db_config: Dict[str, Any]) -> None:
     """Processes pending handoff records and seals them into an audit chain.
@@ -30,38 +32,50 @@ def seal_audit_chain(db_config: Dict[str, Any]) -> None:
         conn = psycopg2.connect(**db_config)
         cur = conn.cursor()
 
+        # Acquire an advisory lock to guarantee exclusive processing
         cur.execute("SELECT pg_advisory_xact_lock(%s)", (LOCK_ID,))
 
+        # Determine the last sequence number in the chain
         cur.execute("SELECT COALESCE(MAX(chain_seq), 0) FROM audit_chain")
         last_seq = cur.fetchone()[0]
-        
+
+        # Resolve the previous hash (genesis if chain is empty)
         if last_seq == 0:
             prev_hash = GENESIS_HASH
         else:
-            cur.execute("SELECT row_hash FROM audit_chain WHERE chain_seq = %s", (last_seq,))
+            cur.execute(
+                "SELECT row_hash FROM audit_chain WHERE chain_seq = %s", (last_seq,)
+            )
             prev_hash = cur.fetchone()[0]
 
-        cur.execute("""
-            SELECT id, ts, payload_sha256 
-            FROM handoffs 
-            WHERE id NOT IN (SELECT row_id FROM audit_chain)
-            ORDER BY ts ASC, id ASC
-        """)
+        # Efficiently fetch handoff rows that are not yet linked in audit_chain
+        cur.execute(
+            """
+            SELECT h.id, h.ts, h.payload_sha256
+            FROM handoffs h
+            LEFT JOIN audit_chain a ON a.row_id = h.id
+            WHERE a.row_id IS NULL
+            ORDER BY h.ts ASC, h.id ASC
+            """
+        )
         pending_rows = cur.fetchall()
 
-        for row in pending_rows:
-            row_id, row_ts, payload_sha = row
+        for row_id, row_ts, payload_sha in pending_rows:
             last_seq += 1
-            
-            canonical_data = f"{last_seq}{prev_hash}{payload_sha}".encode('utf-8')
+
+            canonical_data = f"{last_seq}{prev_hash}{payload_sha}".encode("utf-8")
             row_hash = hashlib.sha256(canonical_data).hexdigest()
 
-            cur.execute("""
-                INSERT INTO audit_chain 
-                (chain_seq, table_name, row_id, row_ts, canonical_payload_sha256, previous_hash, row_hash)
+            cur.execute(
+                """
+                INSERT INTO audit_chain
+                (chain_seq, table_name, row_id, row_ts, canonical_payload_sha256,
+                 previous_hash, row_hash)
                 VALUES (%s, 'handoffs', %s, %s, %s, %s, %s)
-            """, (last_seq, row_id, row_ts, payload_sha, prev_hash, row_hash))
-            
+                """,
+                (last_seq, row_id, row_ts, payload_sha, prev_hash, row_hash),
+            )
+
             prev_hash = row_hash
 
         conn.commit()
@@ -71,6 +85,7 @@ def seal_audit_chain(db_config: Dict[str, Any]) -> None:
     except Exception as e:
         print(f"Sealer Error: {e}", file=sys.stderr)
         raise RuntimeError(f"Sealer failed: {e}")
+
 
 if __name__ == "__main__":
     seal_audit_chain({"dbname": "soc_ledger", "user": "sealer_role"})
