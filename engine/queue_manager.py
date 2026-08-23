@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 class TriageQueueManager:
     def __init__(self, db_path="soc_triage.db"):
-        self.conn = sqlite3.connect(db_path, isolation_level=None)
+        self.conn = sqlite3.connect(db_path)
         self.cursor = self.conn.cursor()
         self._init_schema()
         self.lease_interval = 900  # 15 minutes
@@ -27,9 +27,52 @@ class TriageQueueManager:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        self.cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_triage_queue_pending
+            ON triage_queue (status, severity, created_at)
+        """)
+        
+        # Counter table for pending jobs - avoids COUNT(*) on every enqueue
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS triage_queue_counters (
+                name TEXT PRIMARY KEY,
+                value INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        self.cursor.execute("""
+            INSERT OR IGNORE INTO triage_queue_counters (name, value) VALUES ('pending_count', 0)
+        """)
+        
+        # Triggers to maintain pending_count automatically
+        self.cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS triage_queue_pending_inc
+            AFTER INSERT ON triage_queue
+            WHEN NEW.status = 'pending'
+            BEGIN
+                UPDATE triage_queue_counters SET value = value + 1 WHERE name = 'pending_count';
+            END
+        """)
+        self.cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS triage_queue_pending_dec
+            AFTER UPDATE ON triage_queue
+            WHEN OLD.status = 'pending' AND NEW.status != 'pending'
+            BEGIN
+                UPDATE triage_queue_counters SET value = value - 1 WHERE name = 'pending_count';
+            END
+        """)
+        self.cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS triage_queue_pending_dec_delete
+            AFTER DELETE ON triage_queue
+            WHEN OLD.status = 'pending'
+            BEGIN
+                UPDATE triage_queue_counters SET value = value - 1 WHERE name = 'pending_count';
+            END
+        """)
+        self.conn.commit()
 
     def enqueue(self, severity, payload_ref):
-        depth = self.cursor.execute("SELECT count(*) FROM triage_queue WHERE status = 'pending'").fetchone()[0]
+        # Read pending count from counter table instead of COUNT(*)
+        depth = self.cursor.execute("SELECT value FROM triage_queue_counters WHERE name = 'pending_count'").fetchone()[0]
         if depth >= self.emergency_depth and severity in ('low', 'informational'):
             self.cursor.execute("INSERT INTO triage_queue (severity, payload_ref, status, shed_reason) VALUES (?, ?, 'shed', 'emergency_backpressure')", (severity, payload_ref))
             return 1
