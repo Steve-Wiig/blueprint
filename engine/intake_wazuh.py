@@ -1,3 +1,15 @@
+"""
+Wazuh Alert Intake Module
+
+This module handles the ingestion and sanitization of Wazuh alert payloads
+for the SOC automation platform. It provides functions to validate, sanitize,
+and persist incoming alerts into a SQLite triage queue.
+
+Functions:
+    sanitize_payload: Validates and normalizes raw Wazuh alert data.
+    intake_adapter: Processes raw JSON payloads and stores them in the database.
+"""
+
 import sqlite3
 import json
 import uuid
@@ -10,15 +22,7 @@ from typing import Dict, Any, Tuple, Optional
 DB_PATH = os.getenv('TRIAGE_DB_PATH', '/var/lib/local-soc/triage_queue.db')
 LOG_FILE = os.getenv('TRIAGE_LOG_FILE', '/var/log/local-soc/intake.log')
 
-"""
-Logging configuration.
-
-Sets up basic logging to write INFO level messages and above to the specified log file.
-
-Attributes:
-    LOG_FILE (str): The path to the log file.
-"""
-
+# Logging configuration
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO)
 
 def sanitize_payload(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[str]]:
