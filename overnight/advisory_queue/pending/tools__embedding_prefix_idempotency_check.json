@@ -1,0 +1,6 @@
+{
+  "file_path": "tools/embedding_prefix_idempotency_check.py",
+  "advisory_notes": "Here are my initial observations for `tools/embedding_prefix_idempotency_check.py`:\n\n*   **Logic Flaw in `check_idempotency` (Lines 16-18):** The simulation logic is flawed. If `input_text` is already prefixed, it returns the original text, but if it's not, it prepends the prefix. This logic does not actually test if the *service* would accidentally double-prefix; it only tests if the resulting string *contains* a double prefix.\n*   **Hardcoded Test Logic (Lines 35-45):** The `main()` function relies on string matching (`\"double_prefixed\" in text`) to determine if a test case should pass or fail. This is brittle and makes the test suite difficult to extend; it would be better to use a structured list of `(input, prefix, expected_result)` tuples.\n*   **Unused Argument (Lines 49-50):** The script defines a `--dry-run` argument via `argparse`, but the `main()` function never consumes or acts upon `args`. This creates a misleading CLI interface.\n*   **Limited Scope:** The script only tests the `REQUIRED_DOC_PREFIX`. It ignores `REQUIRED_QUERY_PREFIX` entirely, despite defining it at the top level (Line 6). The test suite should cover both prefixes to ensure consistency.",
+  "created_at": "2026-08-23T16:45:16.707340",
+  "status": "pending"
+}

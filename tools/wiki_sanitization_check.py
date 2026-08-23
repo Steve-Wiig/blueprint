@@ -75,7 +75,7 @@ def main():
             print(f"CONFIG ERROR: Could not read {file_path}: {e}")
             raise RuntimeError(f"Library code called exit(2)")
             
-    raise RuntimeError(f"Library code called sys.exit(exit_code)")")
+    raise RuntimeError(f"Library code called sys.exit({exit_code})")
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,92 @@
+{
+  "file_path": "engine/queue_manager.py",
+  "lines_of_code": 94,
+  "language": "python",
+  "reviewed_at": "2026-08-21T22:23:38.848966",
+  "model_used": "nvidia/nemotron-3.5-lightning:free",
+  "critic_model": "gemini-3.1-flash-lite-preview",
+  "improvements": [
+    {
+      "category": "reliability",
+      "severity": "high",
+      "line_start": 39,
+      "line_end": 52,
+      "description": "The claim_job method uses a subquery in an UPDATE statement, which is prone to race conditions in SQLite under high concurrency, as it lacks true 'FOR UPDATE SKIP LOCKED' semantics.",
+      "suggestion": "Implement a transaction with explicit locking or use a dedicated 'worker_id' column to atomically claim jobs to prevent multiple workers from claiming the same task.",
+      "impact": "high",
+      "effort": "medium",
+      "validated": true,
+      "false_positive": false,
+      "gemini_critique": "SQLite's UPDATE statement is atomic, but the subquery selection is not locked against other concurrent SELECTs, leading to potential race conditions where two workers claim the same job."
+    },
+    {
+      "category": "performance",
+      "severity": "high",
+      "line_start": 32,
+      "line_end": 32,
+      "description": "The enqueue method performs a full table count on every insertion, which will degrade significantly as the triage_queue table grows.",
+      "suggestion": "Maintain a separate counter table or use a trigger to track the pending job count, or rely on a more efficient estimation method.",
+      "impact": "medium",
+      "effort": "small",
+      "validated": true,
+      "false_positive": false,
+      "gemini_critique": "A full table scan for every enqueue operation is an O(N) operation that will cause severe performance degradation as the queue grows."
+    },
+    {
+      "category": "correctness",
+      "severity": "medium",
+      "line_start": 43,
+      "line_end": 47,
+      "description": "The claim_job query does not handle the case where multiple workers attempt to claim the same job simultaneously, potentially leading to inconsistent state.",
+      "suggestion": "Add a 'worker_id' column to the triage_queue table and include it in the UPDATE criteria to ensure atomic ownership.",
+      "impact": "medium",
+      "effort": "small",
+      "validated": true,
+      "false_positive": false,
+      "gemini_critique": "This is essentially the same issue as the first point; adding a worker_id is a standard pattern to ensure idempotency and ownership in distributed task queues."
+    },
+    {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 1,
+      "line_end": 4,
+      "description": "Unused imports (time, logging, timedelta) are present in the file.",
+      "suggestion": "Remove unused imports to clean up the namespace.",
+      "impact": "low",
+      "effort": "trivial",
+      "validated": true,
+      "false_positive": false,
+      "gemini_critique": "Clean code practices dictate removing unused imports to reduce cognitive load and potential dependency confusion."
+    },
+    {
+      "category": "reliability",
+      "severity": "medium",
+      "line_start": 8,
+      "line_end": 8,
+      "description": "SQLite connection is opened with isolation_level=None, which puts the connection in autocommit mode, potentially causing issues with transaction integrity.",
+      "suggestion": "Use default isolation levels and manage transactions explicitly using 'BEGIN' and 'COMMIT' statements.",
+      "impact": "medium",
+      "effort": "small",
+      "validated": true,
+      "false_positive": false,
+      "gemini_critique": "Autocommit mode is dangerous for multi-step operations like job claiming, as it prevents proper transaction atomicity."
+    },
+    {
+      "category": "performance",
+      "severity": "high",
+      "line_start": 43,
+      "line_end": 47,
+      "description": "The query in claim_job lacks an index on the 'status' and 'severity' columns, leading to full table scans during job selection.",
+      "suggestion": "Add a composite index on (status, severity, created_at) to optimize the job selection query.",
+      "impact": "high",
+      "effort": "trivial",
+      "validated": true,
+      "false_positive": false,
+      "gemini_critique": "Without an index, the database must perform a full table scan to find the next pending job, which is highly inefficient."
+    }
+  ],
+  "overall_quality_score": 45,
+  "summary": "The queue manager suffers from significant concurrency and performance issues due to lack of proper indexing and atomic locking mechanisms. While the logic is functional for small loads, it will fail under production-level concurrency.",
+  "nemotron_raw_response": "Let me analyze the file carefully against the blueprint requirements and the review categories.\n\nFirst, let me understand the file structure and identify line numbers:\n\nLine 1: import sqlite3\nLine 2: import time\nLine 3: import logging\nLine 4: from datetime import datetime, timedelta\nLine 5: (empty line)\nLine 6: class TriageQueueManager:\nLine 7:     def __init__(self, db_path=\"soc_triage.db\"):\nLine 8:         self.conn = sqlite3.connect(db_path, isolation_level=None)\nLine 9:         self.cursor = self.conn.cursor()\nLine 10:         self._init_schema()\nLine 11:         self.lease_interval = 900  # 15 minutes\nLine 12:         self.max_attempts = 3\nLine 13:         self.emergency_depth = 1000\nLine 14: (empty line)\nLine 15:     def _init_schema(self):\nLine 16:         self.cursor.execute(\"\"\"\nLine 17:             CREATE TABLE IF NOT EXISTS triage_queue (\nLine 18:                 id INTEGER PRIMARY KEY AUTOINCREMENT,\nLine 19:                 severity TEXT CHECK(severity IN ('critical', 'high', 'medium', 'low', 'informational')),\nLine 20:                 payload_ref TEXT,\nLine 21:                 status TEXT DEFAULT 'pending',\nLine 22:                 attempts INTEGER DEFAULT 0,\nLine 23:                 started_at TIMESTAMP,\nLine 24:                 lease_expires_at TIMESTAMP,\nLine 25:                 last_heartbeat_at TIMESTAMP,\nLine 26:                 shed_reason TEXT,\nLine 27:                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\nLine 28:             )\nLine 29:         \"\"\")\nLine 30: (empty line)\nLine 31:     def enqueue(self, severity, payload_ref):\nLine 32:         depth = self.cursor.execute(\"SELECT count(*) FROM triage_queue WHERE status = 'pending'\").fetchone()[0]\nLine 33:         if depth >= self.emergency_depth and severity in ('low', 'informational'):\nLine 34:             self.cursor.execute(\"INSERT INTO triage_queue (severity, payload_ref, status, shed_reason) VALUES (?, ?, 'shed', 'emergency_backpressure')\", (severity, payload_ref))\nLine 35:           ",
+  "gemini_raw_response": "{\n  \"validated_improvements\": [\n    {\n      \"category\": \"reliability\",\n      \"severity\": \"high\",\n      \"line_start\": 39,\n      \"line_end\": 52,\n      \"description\": \"The claim_job method uses a subquery in an UPDATE statement, which is prone to race conditions in SQLite under high concurrency, as it lacks true 'FOR UPDATE SKIP LOCKED' semantics.\",\n      \"suggestion\": \"Implement a transaction with explicit locking or use a dedicated 'worker_id' column to atomically claim jobs to prevent multiple workers from claiming the same task.\",\n      \"validated\": true,\n      \"false_positive\": false,\n      \"gemini_critique\": \"SQLite's UPDATE statement is atomic, but the subquery selection is not locked against other concurrent SELECTs, leading to potential race conditions where two workers claim the same job.\",\n      \"adjusted_severity\": \"high\"\n    },\n    {\n      \"category\": \"performance\",\n      \"severity\": \"medium\",\n      \"line_start\": 32,\n      \"line_end\": 32,\n      \"description\": \"The enqueue method performs a full table count on every insertion, which will degrade significantly as the triage_queue table grows.\",\n      \"suggestion\": \"Maintain a separate counter table or use a trigger to track the pending job count, or rely on a more efficient estimation method.\",\n      \"validated\": true,\n      \"false_positive\": false,\n      \"gemini_critique\": \"A full table scan for every enqueue operation is an O(N) operation that will cause severe performance degradation as the queue grows.\",\n      \"adjusted_severity\": \"high\"\n    },\n    {\n      \"category\": \"correctness\",\n      \"severity\": \"medium\",\n      \"line_start\": 43,\n      \"line_end\": 47,\n      \"description\": \"The claim_job query does not handle the case where multiple workers attempt to claim the same job simultaneously, potentially leading to inconsistent state.\",\n      \"suggestion\": \"Add a 'worker_id' column to the triage_queue table and include it in the UPDATE criteria to ensure atomic ownership.\",\n      \"validated\": true,\n      \"fa"
+}
