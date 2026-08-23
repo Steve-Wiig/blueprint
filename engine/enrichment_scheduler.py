@@ -2,7 +2,7 @@ import argparse
 import json
 import sqlite3
 import psycopg2
-from typing import Tuple
+from typing import Tuple, Dict, List
 
 def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensions.connection, sqlite3.Connection]:
     """Establishes connections to PostgreSQL and SQLite databases.
@@ -67,6 +67,30 @@ def update_quota(sq_conn: sqlite3.Connection, provider: str, cost: int) -> None:
     )
     sq_conn.commit()
 
+def _fetch_provider_data(sq_conn: sqlite3.Connection, providers: List[str]) -> Tuple[Dict[str, int], Dict[str, int]]:
+    """Fetches quota and cost for multiple providers in bulk.
+
+    Args:
+        sq_conn: The SQLite database connection.
+        providers: List of provider names.
+
+    Returns:
+        Tuple of (quota_dict, cost_dict) keyed by provider.
+    """
+    if not providers:
+        return {}, {}
+    
+    placeholders = ','.join(['?'] * len(providers))
+    cursor = sq_conn.cursor()
+    
+    cursor.execute(f"SELECT provider, remaining FROM quota_ledger WHERE provider IN ({placeholders})", providers)
+    quota_dict = {row[0]: row[1] for row in cursor.fetchall()}
+    
+    cursor.execute(f"SELECT provider, cost FROM provider_costs WHERE provider IN ({placeholders})", providers)
+    cost_dict = {row[0]: row[1] for row in cursor.fetchall()}
+    
+    return quota_dict, cost_dict
+
 def process_jobs(pg_conn: psycopg2.extensions.connection, sq_conn: sqlite3.Connection) -> None:
     """Fetches pending enrichment jobs and processes them if quota is available.
 
@@ -80,9 +104,15 @@ def process_jobs(pg_conn: psycopg2.extensions.connection, sq_conn: sqlite3.Conne
     )
     jobs = pg_cur.fetchall()
 
+    if not jobs:
+        return
+
+    providers = list({job[2] for job in jobs})
+    quota_cache, cost_cache = _fetch_provider_data(sq_conn, providers)
+
     for job_id, ioc, provider in jobs:
-        quota = check_quota(sq_conn, provider)
-        cost = get_provider_cost(sq_conn, provider)
+        quota = quota_cache.get(provider, 0)
+        cost = cost_cache.get(provider, 1)
         if quota < cost:
             continue
 
@@ -95,6 +125,7 @@ def process_jobs(pg_conn: psycopg2.extensions.connection, sq_conn: sqlite3.Conne
                 (json.dumps(result), job_id)
             )
             update_quota(sq_conn, provider, cost)
+            quota_cache[provider] = quota - cost
             pg_conn.commit()
         except Exception as e:
             pg_conn.rollback()
