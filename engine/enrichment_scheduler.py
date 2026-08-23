@@ -65,7 +65,6 @@ def update_quota(sq_conn: sqlite3.Connection, provider: str, cost: int) -> None:
         "UPDATE quota_ledger SET remaining = remaining - ? WHERE provider = ?",
         (cost, provider)
     )
-    sq_conn.commit()
 
 def _fetch_provider_data(sq_conn: sqlite3.Connection, providers: List[str]) -> Tuple[Dict[str, int], Dict[str, int]]:
     """Fetches quota and cost for multiple providers in bulk.
@@ -130,6 +129,8 @@ def process_jobs(pg_conn: psycopg2.extensions.connection, sq_conn: sqlite3.Conne
         except Exception as e:
             pg_conn.rollback()
             raise RuntimeError("Failed to process enrichment job") from e
+
+    sq_conn.commit()
 
 def main() -> None:
     """Parses command line arguments and initiates the job processing workflow."""
