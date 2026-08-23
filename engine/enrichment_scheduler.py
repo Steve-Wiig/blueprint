@@ -1,3 +1,12 @@
+"""Enrichment Scheduler Script
+
+This module is designed to be executed as a standalone script, not imported as a library.
+It processes pending enrichment jobs from PostgreSQL using quota tracking in SQLite.
+
+Usage:
+    python enrichment_scheduler.py --pg-dsn "postgresql://..." [--sqlite-path ":memory:"]
+"""
+
 import argparse
 import json
 import sqlite3
@@ -133,7 +142,11 @@ def process_jobs(pg_conn: psycopg2.extensions.connection, sq_conn: sqlite3.Conne
     sq_conn.commit()
 
 def main() -> None:
-    """Parses command line arguments and initiates the job processing workflow."""
+    """Parses command line arguments and initiates the job processing workflow.
+
+    This function is the entry point when the module is executed as a script.
+    It is not intended to be called when importing this module as a library.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--pg-dsn", required=True, help="PostgreSQL DSN")
     parser.add_argument(
