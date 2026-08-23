@@ -1,12 +1,3 @@
-"""
-Queue Manager for SOC Triage System.
-
-This module implements a lightweight SQLite-backed queue manager that
-handles job enqueuing, claiming, heartbeating, stale job recovery, and
-completion. It supports severity-based prioritization and backpressure
-mechanisms for low‑priority jobs.
-"""
-
 import sqlite3
 import logging
 from datetime import datetime, timedelta
@@ -62,16 +53,21 @@ class TriageQueueManager:
                 lease_expires_at TIMESTAMP,
                 last_heartbeat_at TIMESTAMP,
                 shed_reason TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_modified_by TEXT
             );
+
             CREATE INDEX IF NOT EXISTS idx_triage_queue_pending
                 ON triage_queue (status, severity, created_at);
+
             CREATE TABLE IF NOT EXISTS triage_queue_counters (
                 name TEXT PRIMARY KEY,
                 value INTEGER NOT NULL DEFAULT 0
             );
+
             INSERT OR IGNORE INTO triage_queue_counters (name, value)
                 VALUES ('pending_count', 0);
+
             CREATE TRIGGER IF NOT EXISTS triage_queue_pending_inc
                 AFTER INSERT ON triage_queue
                 WHEN NEW.status = 'pending'
@@ -80,6 +76,7 @@ class TriageQueueManager:
                     SET value = value + 1
                     WHERE name = 'pending_count';
                 END;
+
             CREATE TRIGGER IF NOT EXISTS triage_queue_pending_dec
                 AFTER UPDATE ON triage_queue
                 WHEN OLD.status = 'pending' AND NEW.status != 'pending'
@@ -88,6 +85,7 @@ class TriageQueueManager:
                     SET value = value - 1
                     WHERE name = 'pending_count';
                 END;
+
             CREATE TRIGGER IF NOT EXISTS triage_queue_pending_dec_delete
                 AFTER DELETE ON triage_queue
                 WHEN OLD.status = 'pending'
@@ -95,6 +93,25 @@ class TriageQueueManager:
                     UPDATE triage_queue_counters
                     SET value = value - 1
                     WHERE name = 'pending_count';
+                END;
+
+            -- Audit table for immutable status change logs
+            CREATE TABLE IF NOT EXISTS triage_queue_audit (
+                audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id INTEGER NOT NULL,
+                old_status TEXT,
+                new_status TEXT,
+                changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                changed_by TEXT
+            );
+
+            -- Trigger to capture every status transition
+            CREATE TRIGGER IF NOT EXISTS triage_queue_audit_status_change
+                AFTER UPDATE OF status ON triage_queue
+                WHEN OLD.status IS NOT NEW.status
+                BEGIN
+                    INSERT INTO triage_queue_audit (job_id, old_status, new_status, changed_by)
+                    VALUES (NEW.id, OLD.status, NEW.status, COALESCE(NEW.last_modified_by, 'system'));
                 END;
         """)
         self.conn.commit()
@@ -122,15 +139,18 @@ class TriageQueueManager:
             self.cursor.execute(
                 """
                 INSERT INTO triage_queue
-                    (severity, payload_ref, status, shed_reason)
-                VALUES (?, ?, 'shed', 'emergency_backpressure')
+                    (severity, payload_ref, status, shed_reason, last_modified_by)
+                VALUES (?, ?, 'shed', 'emergency_backpressure', 'system')
                 """,
                 (severity, payload_ref),
             )
             self.conn.commit()
             return 1
         self.cursor.execute(
-            "INSERT INTO triage_queue (severity, payload_ref) VALUES (?, ?)",
+            """
+            INSERT INTO triage_queue (severity, payload_ref, last_modified_by)
+            VALUES (?, ?, 'system')
+            """,
             (severity, payload_ref),
         )
         self.conn.commit()
@@ -150,32 +170,39 @@ class TriageQueueManager:
         Optional[int]
             The ID of the claimed job, or None if no job is available.
         """
-        query = """
+        # Find the next pending job
+        candidate = self.cursor.execute(
+            """
+            SELECT id FROM triage_queue
+            WHERE status = 'pending'
+            ORDER BY CASE severity
+                WHEN 'critical' THEN 1
+                WHEN 'high' THEN 2
+                WHEN 'medium' THEN 3
+                WHEN 'low' THEN 4
+                ELSE 5 END,
+                created_at ASC
+            LIMIT 1
+            """
+        ).fetchone()
+        if not candidate:
+            return None
+
+        job_id = candidate[0]
+        self.cursor.execute(
+            """
             UPDATE triage_queue
             SET status = 'processing',
                 started_at = CURRENT_TIMESTAMP,
                 attempts = attempts + 1,
-                lease_expires_at = datetime('now', '+15 minutes')
-            WHERE id = (
-                SELECT id FROM triage_queue
-                WHERE status = 'pending'
-                ORDER BY CASE severity
-                    WHEN 'critical' THEN 1
-                    WHEN 'high' THEN 2
-                    WHEN 'medium' THEN 3
-                    WHEN 'low' THEN 4
-                    ELSE 5 END,
-                    created_at ASC
-                LIMIT 1
-            )
-            RETURNING id
-        """
-        try:
-            res = self.cursor.execute(query).fetchone()
-            self.conn.commit()
-            return res[0] if res else None
-        except sqlite3.OperationalError:
-            return None
+                lease_expires_at = datetime('now', '+15 minutes'),
+                last_modified_by = ?
+            WHERE id = ?
+            """,
+            (worker_id, job_id),
+        )
+        self.conn.commit()
+        return job_id
 
     def heartbeat(self, job_id: int) -> None:
         """
@@ -207,7 +234,8 @@ class TriageQueueManager:
             UPDATE triage_queue
             SET status = 'pending',
                 started_at = NULL,
-                lease_expires_at = NULL
+                lease_expires_at = NULL,
+                last_modified_by = 'system'
             WHERE status = 'processing'
               AND lease_expires_at < CURRENT_TIMESTAMP
               AND attempts < ?
@@ -219,7 +247,8 @@ class TriageQueueManager:
             """
             UPDATE triage_queue
             SET status = 'failed',
-                shed_reason = 'max_attempts_exceeded_after_stale_recovery'
+                shed_reason = 'max_attempts_exceeded_after_stale_recovery',
+                last_modified_by = 'system'
             WHERE status = 'processing'
               AND lease_expires_at < CURRENT_TIMESTAMP
               AND attempts >= ?
@@ -228,7 +257,7 @@ class TriageQueueManager:
         )
         self.conn.commit()
 
-    def complete_job(self, job_id: int, success: bool = True, reason: Optional[str] = None) -> None:
+    def complete_job(self, job_id: int, success: bool = True, reason: Optional[str] = None, changed_by: Optional[str] = None) -> None:
         """
         Mark a job as completed or failed.
 
@@ -240,22 +269,29 @@ class TriageQueueManager:
             Whether the job succeeded. Defaults to True.
         reason : Optional[str], optional
             Reason for failure if success is False.
+        changed_by : Optional[str], optional
+            Identifier of the entity performing the completion. Defaults to 'system'.
         """
+        actor = changed_by or 'system'
         if success:
             self.cursor.execute(
-                "UPDATE triage_queue SET status = 'completed' WHERE id = ?", (job_id,)
+                """
+                UPDATE triage_queue
+                SET status = 'completed',
+                    last_modified_by = ?
+                WHERE id = ?
+                """,
+                (actor, job_id),
             )
         else:
             self.cursor.execute(
                 """
                 UPDATE triage_queue
                 SET status = CASE WHEN attempts >= ? THEN 'failed' ELSE 'pending' END,
-                    shed_reason = ?
+                    shed_reason = ?,
+                    last_modified_by = ?
                 WHERE id = ?
                 """,
-                (self.max_attempts, reason, job_id),
+                (self.max_attempts, reason or 'unspecified', actor, job_id),
             )
         self.conn.commit()
-
-if __name__ == "__main__":
-    exit(0)
