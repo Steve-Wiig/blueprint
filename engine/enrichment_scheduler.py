@@ -11,7 +11,7 @@ import argparse
 import json
 import sqlite3
 import psycopg2
-from typing import Tuple, Dict, List
+from typing import Tuple, Dict, List, Optional
 
 def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensions.connection, sqlite3.Connection]:
     """Establishes connections to PostgreSQL and SQLite databases.
@@ -31,33 +31,61 @@ def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensio
         print(f"Connection error: {e}")
         raise RuntimeError("Failed to establish database connections") from e
 
-def check_quota(sq_conn: sqlite3.Connection, provider: str) -> int:
-    """Checks the remaining quota for a specific provider in the SQLite database.
+def check_quota(
+    sq_conn: sqlite3.Connection,
+    provider: str,
+    cache: Optional[Dict[str, int]] = None
+) -> int:
+    """Checks the remaining quota for a specific provider.
+
+    If a cache dictionary is supplied and contains the provider, the cached value is returned
+    to avoid an extra database query.
 
     Args:
         sq_conn: The SQLite database connection.
         provider: The name of the enrichment provider.
+        cache: Optional dict mapping providers to their remaining quota.
 
     Returns:
         The remaining quota as an integer.
     """
+    if cache is not None and provider in cache:
+        return cache[provider]
+
     cursor = sq_conn.cursor()
-    cursor.execute("SELECT remaining FROM quota_ledger WHERE provider = ?", (provider,))
+    cursor.execute(
+        "SELECT remaining FROM quota_ledger WHERE provider = ?",
+        (provider,)
+    )
     row = cursor.fetchone()
     return row[0] if row else 0
 
-def get_provider_cost(sq_conn: sqlite3.Connection, provider: str) -> int:
+def get_provider_cost(
+    sq_conn: sqlite3.Connection,
+    provider: str,
+    cache: Optional[Dict[str, int]] = None
+) -> int:
     """Retrieves the cost per enrichment for a provider.
+
+    If a cache dictionary is supplied and contains the provider, the cached value is returned
+    to avoid an extra database query.
 
     Args:
         sq_conn: The SQLite database connection.
         provider: The name of the enrichment provider.
+        cache: Optional dict mapping providers to their cost.
 
     Returns:
         The cost as an integer. Defaults to 1 if not specified.
     """
+    if cache is not None and provider in cache:
+        return cache[provider]
+
     cursor = sq_conn.cursor()
-    cursor.execute("SELECT cost FROM provider_costs WHERE provider = ?", (provider,))
+    cursor.execute(
+        "SELECT cost FROM provider_costs WHERE provider = ?",
+        (provider,)
+    )
     row = cursor.fetchone()
     return row[0] if row else 1
 
@@ -75,7 +103,10 @@ def update_quota(sq_conn: sqlite3.Connection, provider: str, cost: int) -> None:
         (cost, provider)
     )
 
-def _fetch_provider_data(sq_conn: sqlite3.Connection, providers: List[str]) -> Tuple[Dict[str, int], Dict[str, int]]:
+def _fetch_provider_data(
+    sq_conn: sqlite3.Connection,
+    providers: List[str]
+) -> Tuple[Dict[str, int], Dict[str, int]]:
     """Fetches quota and cost for multiple providers in bulk.
 
     Args:
@@ -87,19 +118,28 @@ def _fetch_provider_data(sq_conn: sqlite3.Connection, providers: List[str]) -> T
     """
     if not providers:
         return {}, {}
-    
+
     placeholders = ','.join(['?'] * len(providers))
     cursor = sq_conn.cursor()
-    
-    cursor.execute(f"SELECT provider, remaining FROM quota_ledger WHERE provider IN ({placeholders})", providers)
+
+    cursor.execute(
+        f"SELECT provider, remaining FROM quota_ledger WHERE provider IN ({placeholders})",
+        providers
+    )
     quota_dict = {row[0]: row[1] for row in cursor.fetchall()}
-    
-    cursor.execute(f"SELECT provider, cost FROM provider_costs WHERE provider IN ({placeholders})", providers)
+
+    cursor.execute(
+        f"SELECT provider, cost FROM provider_costs WHERE provider IN ({placeholders})",
+        providers
+    )
     cost_dict = {row[0]: row[1] for row in cursor.fetchall()}
-    
+
     return quota_dict, cost_dict
 
-def process_jobs(pg_conn: psycopg2.extensions.connection, sq_conn: sqlite3.Connection) -> None:
+def process_jobs(
+    pg_conn: psycopg2.extensions.connection,
+    sq_conn: sqlite3.Connection
+) -> None:
     """Fetches pending enrichment jobs and processes them if quota is available.
 
     Args:
@@ -115,14 +155,16 @@ def process_jobs(pg_conn: psycopg2.extensions.connection, sq_conn: sqlite3.Conne
     if not jobs:
         return
 
+    # Pre‑fetch quota and cost for all involved providers to avoid N+1 queries.
     providers = list({job[2] for job in jobs})
     quota_cache, cost_cache = _fetch_provider_data(sq_conn, providers)
 
     for job_id, ioc, provider in jobs:
         quota = quota_cache.get(provider, 0)
         cost = cost_cache.get(provider, 1)
+
         if quota < cost:
-            continue
+            continue  # Not enough quota; skip this job.
 
         try:
             # Mock enrichment logic
@@ -133,7 +175,10 @@ def process_jobs(pg_conn: psycopg2.extensions.connection, sq_conn: sqlite3.Conne
                 (json.dumps(result), job_id)
             )
             update_quota(sq_conn, provider, cost)
+
+            # Update in‑memory cache to reflect the consumed quota.
             quota_cache[provider] = quota - cost
+
             pg_conn.commit()
         except Exception as e:
             pg_conn.rollback()
