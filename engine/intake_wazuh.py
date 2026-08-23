@@ -5,6 +5,7 @@ import sys
 import logging
 import os
 from datetime import datetime, timezone
+from typing import Dict, Any, Tuple, Optional
 
 DB_PATH = os.getenv('TRIAGE_DB_PATH', '/var/lib/local-soc/triage_queue.db')
 LOG_FILE = os.getenv('TRIAGE_LOG_FILE', '/var/log/local-soc/intake.log')
@@ -20,12 +21,32 @@ Attributes:
 
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO)
 
-def sanitize_payload(data):
-    """Section 34 Sanitization Pipeline: Strict schema enforcement."""
+def sanitize_payload(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[str]]:
+    """
+    Sanitize and validate incoming Wazuh alert payload.
+
+    Enforces a strict schema by whitelisting allowed keys and preserving native
+    data types for downstream processing. Validates and normalizes severity level.
+
+    Args:
+        data: Raw alert dictionary from Wazuh JSON input.
+
+    Returns:
+        A tuple of (sanitized_dict, error_message). On success, sanitized_dict
+        contains 'id', 'severity', 'payload', 'timestamp' keys and error_message is None.
+        On failure, returns (None, error_description).
+
+    Behavior:
+        - Whitelists keys: agent, rule_id, description, src_ip, dst_ip
+        - Preserves original value types (no string coercion)
+        - Extracts severity from data['rule']['level'], clamps to range 0-5
+        - Generates UUIDv4 for event ID
+        - Adds UTC ISO8601 timestamp
+    """
     try:
         # Whitelist allowed keys to prevent injection/malformed data
         allowed_keys = {'agent', 'rule_id', 'description', 'src_ip', 'dst_ip'}
-        sanitized_payload = {k: str(data.get(k, "N/A")) for k in allowed_keys}
+        sanitized_payload = {k: data.get(k) for k in allowed_keys if k in data}
         
         # Validate severity mapping
         raw_level = int(data.get("rule", {}).get("level", 3))
@@ -40,7 +61,7 @@ def sanitize_payload(data):
     except Exception as e:
         return None, str(e)
 
-def intake_adapter(raw_payload):
+def intake_adapter(raw_payload: str) -> int:
     """Section 35.2 Intake Flow."""
     try:
         data = json.loads(raw_payload)
