@@ -115,9 +115,57 @@ class TriageQueueManager:
                     INSERT INTO triage_queue_audit (job_id, old_status, new_status, changed_by)
                     VALUES (NEW.id, OLD.status, NEW.status, COALESCE(NEW.last_modified_by, 'system'));
                 END;
+
+            -- Approvals table for critical status changes
+            CREATE TABLE IF NOT EXISTS triage_queue_approvals (
+                job_id INTEGER NOT NULL,
+                target_status TEXT CHECK(target_status IN ('completed', 'failed')),
+                approved_by TEXT NOT NULL,
+                approved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (job_id, target_status)
+            );
         """)
         self.conn.commit()
         logger.debug("Database schema initialized")
+
+    def _get_job_severity(self, job_id: int) -> Optional[str]:
+        row = self.cursor.execute("SELECT severity FROM triage_queue WHERE id = ?", (job_id,)).fetchone()
+        return row[0] if row else None
+
+    def _check_approval(self, job_id: int, target_status: str) -> bool:
+        """
+        Check if an approval exists for the job and target status.
+        """
+        row = self.cursor.execute(
+            "SELECT 1 FROM triage_queue_approvals WHERE job_id = ? AND target_status = ?",
+            (job_id, target_status),
+        ).fetchone()
+        return row is not None
+
+    def approve_job(self, job_id: int, target_status: str, approver: str) -> None:
+        """
+        Record an approval for a critical job to transition to target_status.
+
+        Parameters
+        ----------
+        job_id : int
+            Identifier of the job.
+        target_status : str
+            The status being approved ('completed' or 'failed').
+        approver : str
+            Identifier of the approver.
+        """
+        if target_status not in ('completed', 'failed'):
+            raise ValueError("target_status must be 'completed' or 'failed'")
+        self.cursor.execute(
+            """
+            INSERT OR REPLACE INTO triage_queue_approvals (job_id, target_status, approved_by)
+            VALUES (?, ?, ?)
+            """,
+            (job_id, target_status, approver),
+        )
+        self.conn.commit()
+        logger.info("Approval recorded for job %d to %s by %s", job_id, target_status, approver)
 
     def enqueue(self, severity: str, payload_ref: str) -> int:
         """
@@ -251,20 +299,36 @@ class TriageQueueManager:
             (self.max_attempts,),
         )
         reset_count = self.cursor.rowcount
+
         # Fail stale jobs that have exhausted attempts
-        self.cursor.execute(
+        stale_jobs = self.cursor.execute(
             """
-            UPDATE triage_queue
-            SET status = 'failed',
-                shed_reason = 'max_attempts_exceeded_after_stale_recovery',
-                last_modified_by = 'system'
+            SELECT id, severity FROM triage_queue
             WHERE status = 'processing'
               AND lease_expires_at < CURRENT_TIMESTAMP
               AND attempts >= ?
             """,
             (self.max_attempts,),
-        )
-        failed_count = self.cursor.rowcount
+        ).fetchall()
+
+        failed_count = 0
+        for job_id, severity in stale_jobs:
+            if severity == 'critical':
+                if not self._check_approval(job_id, 'failed'):
+                    logger.warning("Critical job %d requires approval to fail; skipping", job_id)
+                    continue
+            self.cursor.execute(
+                """
+                UPDATE triage_queue
+                SET status = 'failed',
+                    shed_reason = 'max_attempts_exceeded_after_stale_recovery',
+                    last_modified_by = 'system'
+                WHERE id = ?
+                """,
+                (job_id,),
+            )
+            failed_count += self.cursor.rowcount
+
         self.conn.commit()
         if reset_count or failed_count:
             logger.info("Reaped stale jobs: reset=%d, failed=%d", reset_count, failed_count)
@@ -285,6 +349,24 @@ class TriageQueueManager:
             Identifier of the entity performing the completion. Defaults to 'system'.
         """
         actor = changed_by or 'system'
+        # Fetch job details
+        job = self.cursor.execute(
+            "SELECT severity, attempts FROM triage_queue WHERE id = ?", (job_id,)
+        ).fetchone()
+        if not job:
+            logger.warning("Job %d not found for completion", job_id)
+            return
+        severity, attempts = job
+        if success:
+            new_status = 'completed'
+        else:
+            new_status = 'failed' if attempts >= self.max_attempts else 'pending'
+
+        # Validate approval for critical jobs
+        if severity == 'critical' and new_status in ('completed', 'failed'):
+            if not self._check_approval(job_id, new_status):
+                raise RuntimeError(f"Approval required for critical job {job_id} to transition to {new_status}")
+
         if success:
             self.cursor.execute(
                 """
