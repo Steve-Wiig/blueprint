@@ -1,5 +1,8 @@
+import logging
 import sqlite3
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 class TriageQueueManager:
     """
@@ -35,6 +38,7 @@ class TriageQueueManager:
         self.lease_interval: int = 900  # 15 minutes
         self.max_attempts: int = 3
         self.emergency_depth: int = 1000
+        logger.info("TriageQueueManager initialized with db_path=%s", db_path)
 
     def _init_schema(self) -> None:
         """
@@ -113,6 +117,7 @@ class TriageQueueManager:
                 END;
         """)
         self.conn.commit()
+        logger.debug("Database schema initialized")
 
     def enqueue(self, severity: str, payload_ref: str) -> int:
         """
@@ -143,6 +148,7 @@ class TriageQueueManager:
                 (severity, payload_ref),
             )
             self.conn.commit()
+            logger.warning("Job shed due to emergency backpressure: severity=%s, payload_ref=%s", severity, payload_ref)
             return 1
         self.cursor.execute(
             """
@@ -152,6 +158,7 @@ class TriageQueueManager:
             (severity, payload_ref),
         )
         self.conn.commit()
+        logger.info("Job enqueued: severity=%s, payload_ref=%s", severity, payload_ref)
         return 0
 
     def claim_job(self, worker_id: str) -> Optional[int]:
@@ -184,6 +191,7 @@ class TriageQueueManager:
             """
         ).fetchone()
         if not candidate:
+            logger.debug("No pending jobs available for worker %s", worker_id)
             return None
 
         job_id = candidate[0]
@@ -200,6 +208,7 @@ class TriageQueueManager:
             (worker_id, job_id),
         )
         self.conn.commit()
+        logger.info("Job %d claimed by worker %s", job_id, worker_id)
         return job_id
 
     def heartbeat(self, job_id: int) -> None:
@@ -221,6 +230,7 @@ class TriageQueueManager:
             (job_id,),
         )
         self.conn.commit()
+        logger.debug("Heartbeat updated for job %d", job_id)
 
     def reap_stale_jobs(self) -> None:
         """
@@ -240,6 +250,7 @@ class TriageQueueManager:
             """,
             (self.max_attempts,),
         )
+        reset_count = self.cursor.rowcount
         # Fail stale jobs that have exhausted attempts
         self.cursor.execute(
             """
@@ -253,7 +264,10 @@ class TriageQueueManager:
             """,
             (self.max_attempts,),
         )
+        failed_count = self.cursor.rowcount
         self.conn.commit()
+        if reset_count or failed_count:
+            logger.info("Reaped stale jobs: reset=%d, failed=%d", reset_count, failed_count)
 
     def complete_job(self, job_id: int, success: bool = True, reason: Optional[str] = None, changed_by: Optional[str] = None) -> None:
         """
@@ -281,6 +295,7 @@ class TriageQueueManager:
                 """,
                 (actor, job_id),
             )
+            logger.info("Job %d completed successfully by %s", job_id, actor)
         else:
             self.cursor.execute(
                 """
@@ -292,4 +307,5 @@ class TriageQueueManager:
                 """,
                 (self.max_attempts, reason or 'unspecified', actor, job_id),
             )
+            logger.warning("Job %d marked as failed by %s: %s", job_id, actor, reason or 'unspecified')
         self.conn.commit()
