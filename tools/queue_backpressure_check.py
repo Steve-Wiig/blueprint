@@ -64,6 +64,15 @@ def check_backpressure(lab_url: str | None, dry_run: bool = False) -> int:
     except requests.RequestException as e:
         print(f"FAIL: Connection error: {e}")
         return ERROR_CODES['API_ERROR']
+    except ValueError as e:
+        print(f"FAIL: Data parsing error: {e}")
+        return ERROR_CODES['CONFIG_ERROR']
+    except KeyError as e:
+        print(f"FAIL: Missing key in response: {e}")
+        return ERROR_CODES['CONFIG_ERROR']
+    except TypeError as e:
+        print(f"FAIL: Type mismatch: {e}")
+        return ERROR_CODES['CONFIG_ERROR']
     except Exception as e:
         print(f"FAIL: Unexpected error: {e}")
         return ERROR_CODES['API_ERROR']
