@@ -5,6 +5,7 @@ link them into a cryptographic chain, and persist them to a PostgreSQL database.
 """
 
 import sys
+import os
 import hashlib
 from typing import Dict, Any
 
@@ -149,7 +150,12 @@ def seal_audit_chain(
 
 
 def main() -> None:
-    seal_audit_chain({"dbname": "soc_ledger", "user": "sealer_role"})
+    db_config = {}
+    if dbname := os.getenv("SOC_DBNAME"):
+        db_config["dbname"] = dbname
+    if user := os.getenv("SOC_USER"):
+        db_config["user"] = user
+    seal_audit_chain(db_config)
 
 
 if __name__ == "__main__":
