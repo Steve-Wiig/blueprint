@@ -6,20 +6,29 @@ import os
 import sys
 import argparse
 import json
+from typing import Dict, Any, List
 
 # LOCAL-SOC-SLM Blueprint v11.6.0 Constants
-REQUIRED_PARTITIONS = ["alerts", "threat_intel", "audit_logs"]
-MAX_SHARD_SIZE_GB = 16
-INDEX_SCHEMA_VERSION = "11.6.0"
+REQUIRED_PARTITIONS: List[str] = ["alerts", "threat_intel", "audit_logs"]
+MAX_SHARD_SIZE_GB: int = 16
+INDEX_SCHEMA_VERSION: str = "11.6.0"
 
-def validate_partition_config(config_path, dry_run=False):
+class PartitionSettings(Dict[str, Any]):
+    max_shard_gb: int
+    indexing_enabled: bool
+
+class PartitionConfig(Dict[str, Any]):
+    version: str
+    partitions: Dict[str, PartitionSettings]
+
+def validate_partition_config(config_path: str, dry_run: bool = False) -> int:
     if not os.path.exists(config_path):
         print(f"CONFIG ERROR: Partition config not found at {config_path}")
         return 2
 
     try:
         with open(config_path, 'r') as f:
-            config = json.load(f)
+            config: PartitionConfig = json.load(f)
     except json.JSONDecodeError:
         print("FAIL: Invalid JSON format in partition config")
         return 1
@@ -37,7 +46,7 @@ def validate_partition_config(config_path, dry_run=False):
 
     # Verify shard constraints
     for name, settings in config.get("partitions", {}).items():
-        shard_size = settings.get("max_shard_gb", 0)
+        shard_size: int = settings.get("max_shard_gb", 0)
         if shard_size > MAX_SHARD_SIZE_GB:
             print(f"FAIL: Partition {name} exceeds max shard size of {MAX_SHARD_SIZE_GB}GB")
             return 1
@@ -51,7 +60,7 @@ def validate_partition_config(config_path, dry_run=False):
     
     return 0
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Vector Partition Index Check")
     parser.add_argument("--config", default="config/vector_partitions.json", help="Path to partition config")
     parser.add_argument("--dry-run", action="store_true", help="Validate without committing")
