@@ -7,6 +7,19 @@ It verifies that document and query embeddings use the correct prefixes
 ("search_document: " and "search_query: ") and produce vectors of the
 required dimension (768). This ensures compatibility with the vector
 database and retrieval pipeline.
+
+The module provides:
+- EmbeddingService: A wrapper class that automatically applies required prefixes
+- Contract verification via main() for CI/CD integration
+- Constants defining the required prefixes and dimension
+
+Example:
+    >>> from typing import Callable
+    >>> def my_encoder(text: str) -> list[float]:
+    ...     return [0.1] * 768
+    >>> svc = EmbeddingService(my_encoder)
+    >>> doc_vec = svc.embed_document("alert summary")
+    >>> query_vec = svc.embed_query("similar alerts")
 """
 
 import sys
@@ -40,6 +53,18 @@ class EmbeddingService:
     This class wraps an encoder function and automatically prepends the
     appropriate prefix ("search_document: " or "search_query: ") before
     encoding. This ensures consistent prefix usage across the platform.
+
+    Attributes:
+        encoder: Callable that takes a string and returns a list of floats
+                 representing the embedding vector.
+
+    Example:
+        >>> def encoder(text: str) -> list[float]:
+        ...     return [0.0] * 768
+        >>> svc = EmbeddingService(encoder)
+        >>> vec = svc.embed_document("test document")
+        >>> len(vec)
+        768
     """
 
     encoder: Callable[[str], list[float]]
@@ -50,7 +75,12 @@ class EmbeddingService:
 
         Args:
             encoder: Callable that takes a string and returns a list of floats
-                     representing the embedding vector.
+                     representing the embedding vector. The encoder is expected
+                     to handle the prefixed text and return a vector of dimension
+                     REQUIRED_DIM (768).
+
+        Raises:
+            TypeError: If encoder is not callable.
         """
         self.encoder = encoder
 
@@ -58,11 +88,22 @@ class EmbeddingService:
         """
         Generate an embedding for a document with the required prefix.
 
+        Prepends "search_document: " to the input text before passing to
+        the encoder. This prefix is required by the vector database for
+        document-type embeddings.
+
         Args:
-            text: The document text to embed.
+            text: The document text to embed. Should not include any prefix.
 
         Returns:
-            Embedding vector of length REQUIRED_DIM (768).
+            Embedding vector of length REQUIRED_DIM (768) as returned by
+            the underlying encoder.
+
+        Example:
+            >>> svc = EmbeddingService(lambda t: [0.0]*768)
+            >>> vec = svc.embed_document("CPU usage spike detected")
+            >>> len(vec)
+            768
         """
         return self.encoder(REQUIRED_DOC_PREFIX + text)
 
@@ -70,11 +111,22 @@ class EmbeddingService:
         """
         Generate an embedding for a query with the required prefix.
 
+        Prepends "search_query: " to the input text before passing to
+        the encoder. This prefix is required by the vector database for
+        query-type embeddings to enable asymmetric retrieval.
+
         Args:
-            text: The query text to embed.
+            text: The query text to embed. Should not include any prefix.
 
         Returns:
-            Embedding vector of length REQUIRED_DIM (768).
+            Embedding vector of length REQUIRED_DIM (768) as returned by
+            the underlying encoder.
+
+        Example:
+            >>> svc = EmbeddingService(lambda t: [0.0]*768)
+            >>> vec = svc.embed_query("CPU spike alerts")
+            >>> len(vec)
+            768
         """
         return self.encoder(REQUIRED_QUERY_PREFIX + text)
 
