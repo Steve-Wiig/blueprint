@@ -13,6 +13,7 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,17 @@ SEVERITY_PRIORITY = {
     'low': 4,
 }
 DEFAULT_PRIORITY = 5
+
+
+@dataclass
+class WorkerConfig:
+    """Configuration for the triage worker."""
+    db: str
+    slm_url: str
+    lease: int
+    max_retries: int
+    base_delay: float
+
 
 def get_db(db_path: str) -> sqlite3.Connection:
     """Establishes a connection to the SQLite database.
@@ -98,15 +110,15 @@ def reap_stale(conn: sqlite3.Connection) -> None:
     )
     conn.commit()
 
-def run_worker(args: argparse.Namespace) -> None:
+def run_worker(config: WorkerConfig) -> None:
     """Main loop for the triage worker.
 
     Claims pending jobs, processes them via an SLM endpoint, and updates the database.
 
     Args:
-        args: Parsed command-line arguments containing db path, slm_url, and lease duration.
+        config: Worker configuration containing db path, slm_url, and lease duration.
     """
-    conn = get_db(args.db)
+    conn = get_db(config.db)
     
     while True:
         reap_stale(conn)
@@ -126,7 +138,7 @@ def run_worker(args: argparse.Namespace) -> None:
                     LIMIT 1
                 )
                 RETURNING id, payload_ref
-            """, (datetime.now(timezone.utc), datetime.now(timezone.utc) + timedelta(seconds=args.lease)))
+            """, (datetime.now(timezone.utc), datetime.now(timezone.utc) + timedelta(seconds=config.lease)))
             
             row = cursor.fetchone()
         conn.commit()
@@ -138,14 +150,14 @@ def run_worker(args: argparse.Namespace) -> None:
         job_id, payload = row['id'], row['payload_ref']
         
         # Retry logic with exponential backoff for SLM call
-        max_retries = args.max_retries
-        base_delay = args.base_delay
+        max_retries = config.max_retries
+        base_delay = config.base_delay
         last_exception = None
         
         for attempt in range(max_retries + 1):
             try:
                 # Call SLM Endpoint
-                resp = requests.post(args.slm_url, json={"ref": payload}, timeout=30)
+                resp = requests.post(config.slm_url, json={"ref": payload}, timeout=30)
                 
                 # Retry on 5xx server errors
                 if 500 <= resp.status_code < 600:
@@ -191,8 +203,16 @@ if __name__ == "__main__":
     parser.add_argument("--base-delay", type=float, default=1.0, help="Base delay in seconds for exponential backoff")
     args = parser.parse_args()
     
+    config = WorkerConfig(
+        db=args.db,
+        slm_url=args.slm_url,
+        lease=args.lease,
+        max_retries=args.max_retries,
+        base_delay=args.base_delay
+    )
+    
     try:
-        run_worker(args)
+        run_worker(config)
     except KeyboardInterrupt:
         sys.exit(0)
     except Exception:
