@@ -63,8 +63,10 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
         sanitized_alert_json: A dictionary containing the alert data to be parsed.
 
     Returns:
-        int: 0 if successful or no IOCs found, 1 for general extraction errors,
-            2 for database-related errors.
+        int: 0 if successful or no IOCs found.
+
+    Raises:
+        RuntimeError: If extraction or database operations fail.
     """
     try:
         matches_by_type: Dict[IOCType, set] = {ioc_type: set() for ioc_type in _PATTERNS}
@@ -105,11 +107,11 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
         return 0
 
     except psycopg2.Error as e:
-        logger.error("Database error: %s", e)
-        return 2
+        logger.exception("Database error")
+        raise RuntimeError("Database error") from e
     except (TypeError, ValueError, AttributeError, KeyError) as e:
-        logger.error("Extraction error: %s", e)
-        return 1
+        logger.exception("Extraction error")
+        raise RuntimeError("Extraction failed") from e
 
 
 if __name__ == "__main__":
