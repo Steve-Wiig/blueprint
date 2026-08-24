@@ -17,6 +17,20 @@ EXIT_ENV_NOT_SET: int = 3
 
 
 def _load_defaults_config() -> Dict[str, Any]:
+    """
+    Load default configuration from JSON file with caching.
+
+    Reads the configuration file specified by SLM_DEFAULTS_CONFIG environment
+    variable or falls back to 'config/vector_index_defaults.json'. Caches the
+    result for subsequent calls.
+
+    Returns:
+        Dict[str, Any]: Parsed configuration dictionary. Returns empty dict if
+        file not found, invalid JSON, or read error occurs.
+
+    Side Effects:
+        Populates the module-level _DEFAULTS_CACHE global variable.
+    """
     global _DEFAULTS_CACHE
     if _DEFAULTS_CACHE is not None:
         return _DEFAULTS_CACHE
@@ -34,6 +48,16 @@ def _load_defaults_config() -> Dict[str, Any]:
 
 
 def _get_required_partitions() -> List[str]:
+    """
+    Get list of required partition names from environment or defaults.
+
+    Checks SLM_REQUIRED_PARTITIONS environment variable first (comma-separated),
+    then falls back to 'required_partitions' key in defaults config, finally
+    returns hardcoded default list.
+
+    Returns:
+        List[str]: List of required partition names (e.g., ['alerts', 'threat_intel', 'audit_logs']).
+    """
     env_val = os.environ.get("SLM_REQUIRED_PARTITIONS")
     if env_val:
         return [p.strip() for p in env_val.split(",") if p.strip()]
@@ -46,6 +70,16 @@ def _get_required_partitions() -> List[str]:
 
 
 def _get_max_shard_size_gb() -> int:
+    """
+    Get maximum shard size in GB from environment or defaults.
+
+    Checks SLM_MAX_SHARD_SIZE_GB environment variable first, then falls back
+    to 'max_shard_size_gb' key in defaults config, finally returns hardcoded
+    default of 16 GB.
+
+    Returns:
+        int: Maximum allowed shard size in gigabytes.
+    """
     env_val = os.environ.get("SLM_MAX_SHARD_SIZE_GB")
     if env_val:
         try:
@@ -64,6 +98,16 @@ def _get_max_shard_size_gb() -> int:
 
 
 def _get_index_schema_version() -> str:
+    """
+    Get expected index schema version from environment or defaults.
+
+    Checks SLM_INDEX_SCHEMA_VERSION environment variable first, then falls back
+    to 'index_schema_version' key in defaults config, finally returns hardcoded
+    default of '11.6.0'.
+
+    Returns:
+        str: Expected schema version string.
+    """
     env_val = os.environ.get("SLM_INDEX_SCHEMA_VERSION")
     if env_val:
         return env_val
@@ -104,14 +148,16 @@ def validate_partition_config(config_path: str, dry_run: bool = False) -> int:
 
     Args:
         config_path: Path to the partition configuration JSON file.
-        dry_run: If True, performs validation without committing changes. Defaults to False.
+        dry_run: If True, performs validation without committing changes and prints
+            detailed step-by-step output. Defaults to False.
 
     Returns:
         int: Exit code indicating validation result:
-            0 - Validation passed successfully.
-            1 - Validation failed (missing partition, version mismatch, shard size exceeded, or indexing disabled).
-            2 - Config file not found at specified path.
-            3 - Environment variable SLM_ENV not set (handled by main()).
+            0 (EXIT_SUCCESS) - Validation passed successfully.
+            1 (EXIT_VALIDATION_FAILED) - Validation failed (missing partition, version mismatch,
+                shard size exceeded, or indexing disabled).
+            2 (EXIT_CONFIG_NOT_FOUND) - Config file not found at specified path.
+            3 (EXIT_ENV_NOT_SET) - Environment variable SLM_ENV not set (handled by main()).
 
     Raises:
         json.JSONDecodeError: If the config file contains invalid JSON (caught internally, returns 1).
@@ -214,6 +260,20 @@ def validate_partition_config(config_path: str, dry_run: bool = False) -> int:
 
 
 def main() -> int:
+    """
+    Main entry point for the vector partition index integrity check.
+
+    Parses command-line arguments, validates SLM_ENV environment variable is set,
+    and delegates to validate_partition_config().
+
+    Command-line Arguments:
+        --config: Path to partition config file (default: config/vector_partitions.json)
+        --dry-run: Validate without committing changes, with verbose output
+
+    Returns:
+        int: Exit code from validate_partition_config() or EXIT_ENV_NOT_SET if
+        SLM_ENV environment variable is not set.
+    """
     parser = argparse.ArgumentParser(description="Vector Partition Index Check")
     parser.add_argument("--config", default="config/vector_partitions.json", help="Path to partition config")
     parser.add_argument("--dry-run", action="store_true", help="Validate without committing")
