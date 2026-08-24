@@ -7,11 +7,19 @@ import argparse
 import os
 from typing import Any, List, Optional, Set
 
+try:
+    import jsonschema
+    from jsonschema import Draft7Validator
+    JSONSCHEMA_AVAILABLE = True
+except ImportError:
+    JSONSCHEMA_AVAILABLE = False
+
 # Exit code constants
 EXIT_OK = 0
 EXIT_VIOLATION = 1
 EXIT_CONFIG_ERROR = 2
 EXIT_CI_MISSING = 3
+EXIT_META_SCHEMA_ERROR = 4
 
 # DEFAULT FORBIDDEN FIELDS - used as fallback when no policy file or env var is provided
 DEFAULT_FORBIDDEN_FIELDS = {
@@ -60,8 +68,29 @@ def load_forbidden_fields(policy_file: Optional[str] = None, env_var: str = "FOR
     return DEFAULT_FORBIDDEN_FIELDS
 
 
+def validate_meta_schema(data: Any) -> List[str]:
+    """Validate schema against JSON Schema Draft 7 meta-schema.
+
+    Args:
+        data: Parsed JSON schema object.
+
+    Returns:
+        List of validation error messages, empty if valid.
+    """
+    if not JSONSCHEMA_AVAILABLE:
+        return ["jsonschema library not installed; meta-schema validation skipped"]
+
+    try:
+        Draft7Validator.check_schema(data)
+        return []
+    except jsonschema.SchemaError as e:
+        return [f"Meta-schema validation failed: {e.message}"]
+    except Exception as e:
+        return [f"Meta-schema validation error: {str(e)}"]
+
+
 def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = None) -> int:
-    """Validate schema file for forbidden fields.
+    """Validate schema file for forbidden fields and meta-schema compliance.
 
     Args:
         schema_path: Path to JSON schema file.
@@ -69,7 +98,7 @@ def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = Non
 
     Returns:
         EXIT_OK if validation passes, EXIT_VIOLATION if forbidden fields found or invalid JSON,
-        EXIT_CONFIG_ERROR if schema file not found.
+        EXIT_CONFIG_ERROR if schema file not found, EXIT_META_SCHEMA_ERROR if meta-schema validation fails.
 
     Side Effects:
         Prints error messages to stdout for failures.
@@ -92,6 +121,12 @@ def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = Non
     except json.JSONDecodeError:
         print("FAIL: Invalid JSON schema format")
         return EXIT_VIOLATION
+
+    meta_errors = validate_meta_schema(data)
+    if meta_errors:
+        for err in meta_errors:
+            print(f"FAIL: {err}")
+        return EXIT_META_SCHEMA_ERROR
 
     # Iterative check for forbidden keys in nested schema definitions using a stack
     def find_forbidden(obj: Any) -> List[str]:
@@ -139,7 +174,7 @@ def main() -> int:
     Parses command-line arguments, validates CI context, and executes schema validation.
 
     Returns:
-        EXIT_OK on success, EXIT_VIOLATION on validation failure, EXIT_CONFIG_ERROR on config error, EXIT_CI_MISSING if CI context missing.
+        EXIT_OK on success, EXIT_VIOLATION on validation failure, EXIT_CONFIG_ERROR on config error, EXIT_CI_MISSING if CI context missing, EXIT_META_SCHEMA_ERROR if meta-schema validation fails.
 
     Side Effects:
         Prints status messages to stdout. Exits process via sys.exit when run as script.
