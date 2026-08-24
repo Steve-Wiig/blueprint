@@ -4,7 +4,6 @@ import os
 import sys
 import argparse
 import requests
-from unittest.mock import MagicMock
 
 try:
     import requests
@@ -29,15 +28,17 @@ CONFIG = {
     },
 }
 
+class MockResponse:
+    def __init__(self, status_code):
+        self.status_code = status_code
+
 def get_mock_response(method, url, **kwargs):
-    mock = MagicMock()
     if "agents" in url:
-        mock.status_code = 200
+        return MockResponse(200)
     elif "restart" in url or "interfaces" in url:
-        mock.status_code = 403
+        return MockResponse(403)
     else:
-        mock.status_code = 404
-    return mock
+        return MockResponse(404)
 
 def check_service(service, cfg, lab_url, dry_run=False):
     user = os.getenv(cfg["user_env"], "mock_user") if dry_run else os.getenv(cfg["user_env"])
