@@ -2,7 +2,7 @@ import sqlite3
 import hashlib
 import yaml
 import sys
-from typing import Dict
+from typing import Dict, Optional
 
 class ModelRegistryClient:
     def __init__(self, db_path: str, routing_config_path: str):
@@ -20,7 +20,7 @@ class ModelRegistryClient:
             self._conn.row_factory = sqlite3.Row
         return self._conn
 
-    def get_adapter(self, task_type: str) -> Dict:
+    def get_adapter(self, task_type: str) -> Optional[Dict]:
         adapter_id = self.routing_config.get(task_type)
         if not adapter_id:
             return None
