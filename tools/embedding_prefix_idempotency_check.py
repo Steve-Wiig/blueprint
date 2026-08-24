@@ -43,7 +43,18 @@ def check_idempotency(input_text: str, prefix: str) -> bool:
     return True
 
 def main(dry_run: bool = False) -> int:
-    """Run idempotency verification tests. Returns 0 on success, 1 on failure."""
+    """
+    Run embedding prefix idempotency verification tests.
+
+    Args:
+        dry_run: If True, runs with mock test data covering both document
+            and query prefixes. If False, runs production test cases for
+            document prefix only.
+
+    Returns:
+        0 if all tests pass, 1 if any test fails. In dry-run mode, always
+        returns 0 after printing results.
+    """
     test_cases = MOCK_TEST_CASES if dry_run else PRODUCTION_TEST_CASES
     
     if dry_run:
