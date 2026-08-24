@@ -37,6 +37,10 @@ PATTERNS: dict[str, str] = {
     "PASSWORD_PARAM": r"(password=[a-zA-Z0-9!@#$%^&*()_+]{8,64})"
 }
 
+COMPILED_PATTERNS: dict[str, re.Pattern] = {
+    name: re.compile(pattern, re.IGNORECASE) for name, pattern in PATTERNS.items()
+}
+
 DRY_RUN_PAYLOADS: List[str] = [
     "AKIAIOSFODNN7EXAMPLE",
     "ghp_1234567890abcdef1234567890abcdef1234",
@@ -63,8 +67,8 @@ def scan_text(text: str) -> List[Tuple[str, str]]:
         re.error: If a regex pattern is invalid (should not occur with static patterns).
     """
     found: List[Tuple[str, str]] = []
-    for name, pattern in PATTERNS.items():
-        matches = re.findall(pattern, text, re.IGNORECASE)
+    for name, compiled_pattern in COMPILED_PATTERNS.items():
+        matches = compiled_pattern.findall(text)
         for match in matches:
             if match not in ALLOWLIST_SHA256 and match not in ALLOWLIST_UUID:
                 found.append((name, match))
