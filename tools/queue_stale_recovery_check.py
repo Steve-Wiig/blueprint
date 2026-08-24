@@ -12,7 +12,7 @@ import time
 STALE_THRESHOLD_SECONDS = 300
 REQUIRED_RECOVERY_LOG_PATTERN = "RECOVERY_INITIATED_STALE_MSG"
 
-def check_queue_recovery(dry_run=False):
+def check_queue_recovery(dry_run: bool = False) -> int:
     """
     Verifies that the local message queue interface supports stale message recovery.
     In a production environment, this would query the local message broker status.
@@ -49,7 +49,7 @@ def check_queue_recovery(dry_run=False):
         print(f"FAIL: Unexpected error during check: {e}")
         return 1
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Queue Stale Recovery Check")
     parser.add_argument("--dry-run", action="store_true", help="Skip actual verification")
     args = parser.parse_args()
