@@ -5,8 +5,11 @@ based on sanitized input data.
 """
 
 import argparse
+import os
 import requests
 import json
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from engine.sanitization_pipeline import sanitize_payload
 
@@ -25,8 +28,12 @@ def main() -> None:
     parser.add_argument("--api-key", required=True, help="TheHive API Key")
     parser.add_argument("--url", required=True, help="TheHive Base URL")
     parser.add_argument("--mode", choices=['draft', 'live'], default='draft', help="Adapter mode")
-    
+    parser.add_argument("--log-path", help="Path to the handoff log file (overrides HANDOFF_LOG_PATH env var and default)")
+
     args = parser.parse_args()
+
+    # Determine log path: argument > environment variable > default
+    log_path = Path(args.log_path) if args.log_path else Path(os.environ.get("HANDOFF_LOG_PATH", "handoff_log.txt"))
 
     try:
         raw_data: Any = json.loads(args.case_data)
@@ -54,8 +61,9 @@ def main() -> None:
         
         if response.status_code in [200, 201]:
             case_id = response.json().get('id')
-            with open("handoff_log.txt", "a") as f:
-                f.write(f"REF:{case_id}|STATUS:SUCCESS|MODE:{args.mode}\n")
+            now = datetime.now(timezone.utc)
+            with open(log_path, "a") as f:
+                f.write(f"{now.isoformat()}|REF:{case_id}|STATUS:SUCCESS|MODE:{args.mode}\n")
             raise RuntimeError(f"Library code called exit(0)")
         else:
             raise RuntimeError(f"Library code called exit(1)")
