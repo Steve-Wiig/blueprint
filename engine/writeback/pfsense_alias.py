@@ -26,6 +26,8 @@ def init_db() -> None:
                            status TEXT, created_at TIMESTAMP)''')
         cursor.execute('''CREATE INDEX IF NOT EXISTS idx_alias_proposals_alias_name 
                           ON alias_proposals(alias_name)''')
+        cursor.execute('''CREATE INDEX IF NOT EXISTS idx_alias_proposals_ip_address 
+                          ON alias_proposals(ip_address)''')
         cursor.execute('''CREATE INDEX IF NOT EXISTS idx_alias_proposals_status 
                           ON alias_proposals(status)''')
         conn.commit()
