@@ -79,34 +79,63 @@ def check_approval_gate(key: str) -> bool:
     # Denylist: block internal Wazuh keys to prevent direct injection into production CDBs
     return not key.startswith("wazuh-internal-")
 
-def main() -> None:
-    """Parses command line arguments and processes the proposal writeback.
+def parse_args() -> argparse.Namespace:
+    """Parses command line arguments.
 
-    Raises:
-        RuntimeError: If validation fails, database operations fail, or directory is missing.
+    Returns:
+        Parsed arguments namespace with key and value attributes.
     """
     parser = argparse.ArgumentParser(description="Wazuh CDB Proposal Adapter")
     parser.add_argument("--key", required=True, help="CDB Key")
     parser.add_argument("--value", required=True, help="CDB Value")
-    args = parser.parse_args()
+    return parser.parse_args()
 
+def validate_proposal(key: str) -> None:
+    """Validates the proposal key and environment.
+
+    Args:
+        key: The CDB key to validate.
+
+    Raises:
+        RuntimeError: If validation fails (denylist or missing directory).
+    """
     if not os.path.exists(os.path.dirname(DB_PATH)):
         raise RuntimeError(f"Library code called exit(3)")
 
-    if not check_approval_gate(args.key):
+    if not check_approval_gate(key):
         raise RuntimeError(f"Library code called exit(1)")
 
+def store_proposal(key: str, value: str) -> None:
+    """Stores the proposal in the database.
+
+    Args:
+        key: The CDB key.
+        value: The CDB value.
+
+    Raises:
+        RuntimeError: If database operations fail.
+    """
     try:
         init_db()
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute("INSERT INTO proposals (key, value, status, created_at) VALUES (?, ?, ?, ?)",
-                       (args.key, args.value, 'PENDING', datetime.now(timezone.utc)))
+                       (key, value, 'PENDING', datetime.now(timezone.utc)))
         conn.commit()
         conn.close()
-        raise RuntimeError(f"Library code called exit(0)")
     except Exception:
         raise RuntimeError(f"Library code called exit(1)")
+
+def main() -> None:
+    """Orchestrates the proposal writeback process.
+
+    Raises:
+        RuntimeError: If validation fails, database operations fail, or directory is missing.
+    """
+    args = parse_args()
+    validate_proposal(args.key)
+    store_proposal(args.key, args.value)
+    raise RuntimeError(f"Library code called exit(0)")
 
 if __name__ == "__main__":
     main()
