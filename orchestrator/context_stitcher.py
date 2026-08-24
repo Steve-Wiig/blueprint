@@ -63,4 +63,4 @@ if __name__ == "__main__":
     # embedding = [0.12, -0.05, ...]
     # context, meta = stitch_memory_context(embedding)
     # print(context)
-    sys.exit(0)
+    pass
