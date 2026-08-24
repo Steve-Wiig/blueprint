@@ -94,14 +94,19 @@ def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = Non
 
     Args:
         schema_path: Path to JSON schema file.
-        forbidden_fields: Set of field names to check against. If None, uses defaults loaded from config.
+        forbidden_fields: Set of field names to check against. If None, uses defaults
+            loaded from config.
 
     Returns:
-        EXIT_OK if validation passes, EXIT_VIOLATION if forbidden fields found or invalid JSON,
-        EXIT_CONFIG_ERROR if schema file not found, EXIT_META_SCHEMA_ERROR if meta-schema validation fails.
+        int: Exit code indicating validation result.
+            - EXIT_OK (0): Validation passed, no forbidden fields found.
+            - EXIT_VIOLATION (1): Forbidden fields detected or invalid JSON format.
+            - EXIT_CONFIG_ERROR (2): Schema file not found at given path.
+            - EXIT_META_SCHEMA_ERROR (4): Schema failed JSON Schema Draft 7 meta-schema validation.
 
     Side Effects:
         Prints error messages to stdout for failures.
+        Prints warning if schema file exceeds MAX_SCHEMA_SIZE (100MB).
     """
     if forbidden_fields is None:
         forbidden_fields = load_forbidden_fields()
@@ -130,6 +135,18 @@ def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = Non
 
     # Iterative check for forbidden keys in nested schema definitions using a stack
     def find_forbidden(obj: Any) -> List[str]:
+        """Recursively search for forbidden field names in a JSON schema object.
+
+        Uses an iterative stack-based approach to traverse nested dictionaries and lists,
+        collecting the full path to any forbidden field names found.
+
+        Args:
+            obj: The JSON schema object (dict, list, or primitive) to search.
+
+        Returns:
+            List[str]: List of dot/bracket-notation paths to forbidden fields found.
+                Empty list if no forbidden fields detected.
+        """
         stack = [(obj, '')]
         found = []
         while stack:
