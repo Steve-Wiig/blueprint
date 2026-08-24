@@ -34,7 +34,7 @@ def init_db() -> None:
                           ON proposals(status)''')
         conn.commit()
         conn.close()
-    except Exception:
+    except sqlite3.Error:
         raise RuntimeError(f"Library code called exit(2)")
 
 def check_approval_gate(key: str) -> bool:
