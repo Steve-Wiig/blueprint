@@ -25,9 +25,12 @@ import os
 import io
 from typing import List, Iterator, TextIO
 
-# Threshold chosen to detect base64/hex encoded secrets (entropy ~4.7) while allowing normal words (entropy ~3.5);
-# make configurable via env var or CLI arg
-ENTROPY_THRESHOLD: float = 4.5
+# Threshold tuned for base64 (max 6.0 bits/char) vs hex (max 4.0 bits/char);
+# 4.5 catches base64-encoded secrets but allows hex-encoded data and normal text.
+# Configurable via ENTROPY_THRESHOLD environment variable.
+_ENTROPY_THRESHOLD_ENV = os.environ.get("ENTROPY_THRESHOLD")
+ENTROPY_THRESHOLD: float = float(_ENTROPY_THRESHOLD_ENV) if _ENTROPY_THRESHOLD_ENV is not None else 4.5
+
 ALLOWLIST_PATTERNS: List[str] = [
     r'[a-fA-F0-9]{64}',  # SHA256 hash (256-bit digest); allowlisted as deterministic checksums are non-secret, low-entropy patterns
     r'[a-fA-F0-9]{40}',  # SHA1 hash (160-bit digest); allowlisted for compatibility with legacy checksums and hash-based verification
