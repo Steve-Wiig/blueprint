@@ -22,7 +22,8 @@ import re
 import math
 import collections
 import os
-from typing import List
+import io
+from typing import List, Iterator
 
 # Threshold chosen to detect base64/hex encoded secrets (entropy ~4.7) while allowing normal words (entropy ~3.5);
 # make configurable via env var or CLI arg
@@ -84,11 +85,26 @@ def is_allowlisted(token: str) -> bool:
     return ALLOWLIST_REGEX.fullmatch(token) is not None
 
 
+def _tokenize(text: str) -> Iterator[str]:
+    """
+    Generate whitespace-separated tokens from text without loading all into memory.
+
+    Args:
+        text: Input text to tokenize.
+
+    Yields:
+        Individual tokens (non-whitespace sequences) from the text.
+    """
+    for match in re.finditer(r'\S+', text):
+        yield match.group()
+
+
 def sanitize_pass(text: str) -> str:
     """
     Perform a single sanitization pass on input text.
 
-    Splits text into whitespace-separated tokens, preserves allowlisted tokens,
+    Processes text token by token using a generator to avoid loading
+    all tokens into memory at once. Preserves allowlisted tokens,
     and redacts high-entropy tokens (>4.5 bits/char) as "[REDACTED]".
 
     Args:
@@ -97,19 +113,25 @@ def sanitize_pass(text: str) -> str:
     Returns:
         Sanitized text with high-entropy tokens redacted.
     """
-    tokens = text.split()
-    sanitized = []
-    for token in tokens:
+    output = io.StringIO()
+    first = True
+    
+    for token in _tokenize(text):
+        if not first:
+            output.write(' ')
+        first = False
+        
         if is_allowlisted(token):
-            sanitized.append(token)
+            output.write(token)
             continue
 
         entropy = calculate_entropy(token)
         if entropy > ENTROPY_THRESHOLD:
-            sanitized.append("[REDACTED]")
+            output.write("[REDACTED]")
         else:
-            sanitized.append(token)
-    return " ".join(sanitized)
+            output.write(token)
+    
+    return output.getvalue()
 
 
 def main(input_data: str) -> int:
