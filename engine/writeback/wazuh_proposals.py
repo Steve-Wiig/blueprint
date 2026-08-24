@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 # LOCAL-SOC-SLM Blueprint v11.6.0 - Wazuh Proposal Adapter
 # Appendix Q.3: Writeback Isolation Layer
 
-DB_PATH = "/var/lib/wazuh-slm/proposals.db"
+DB_PATH = os.environ.get("WAZUH_PROPOSALS_DB", "/var/lib/wazuh-slm/proposals.db")
 
 def init_db() -> None:
     """Initializes the SQLite database and creates the proposals table if it does not exist.
