@@ -2,7 +2,6 @@
 
 import sqlite3
 import argparse
-import sys
 from datetime import datetime, timezone
 
 DB_PATH = "quota_ledger.db"
