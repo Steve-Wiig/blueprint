@@ -25,11 +25,15 @@ Usage as library:
 
 import argparse
 import json
+import logging
 import sqlite3
 import warnings
 import psycopg2
 from datetime import datetime, timezone
 from typing import Tuple, Dict, List, Optional, Any
+
+
+logger = logging.getLogger(__name__)
 
 
 def sanitize(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -78,7 +82,7 @@ def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensio
         sq_conn = sqlite3.connect(sqlite_path)
         return pg_conn, sq_conn
     except Exception as e:
-        print(f"Connection error: {e}")
+        logger.exception("Connection error")
         raise RuntimeError("Failed to establish database connections") from e
 
 
