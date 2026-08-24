@@ -16,11 +16,43 @@ from datetime import datetime, timezone
 
 DB_PATH = os.environ.get("WAZUH_PROPOSALS_DB", "/var/lib/wazuh-slm/proposals.db")
 
+
+class ProposalError(Exception):
+    """Base exception for proposal adapter errors."""
+    def __init__(self, message: str, exit_code: int):
+        super().__init__(message)
+        self.exit_code = exit_code
+
+
+class ProposalRejectedError(ProposalError):
+    """Raised when a proposal is rejected (denylist, validation)."""
+    def __init__(self, message: str = "Proposal rejected"):
+        super().__init__(message, 1)
+
+
+class ProposalStorageError(ProposalError):
+    """Raised when database/storage operations fail."""
+    def __init__(self, message: str = "Storage operation failed"):
+        super().__init__(message, 2)
+
+
+class ProposalDirectoryError(ProposalError):
+    """Raised when required directory is missing."""
+    def __init__(self, message: str = "Required directory missing"):
+        super().__init__(message, 3)
+
+
+class ProposalSuccess(ProposalError):
+    """Raised on successful proposal submission."""
+    def __init__(self, message: str = "Proposal stored successfully"):
+        super().__init__(message, 0)
+
+
 def init_db() -> None:
     """Initializes the SQLite database and creates the proposals table if it does not exist.
 
     Raises:
-        RuntimeError: If database initialization fails.
+        ProposalStorageError: If database initialization fails.
     """
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -63,8 +95,9 @@ def init_db() -> None:
         
         conn.commit()
         conn.close()
-    except sqlite3.Error:
-        raise RuntimeError(f"Library code called exit(2)")
+    except sqlite3.Error as e:
+        raise ProposalStorageError(f"Database initialization failed: {e}")
+
 
 def check_approval_gate(key: str) -> bool:
     """Validates if a key is permitted for a proposal.
@@ -81,6 +114,7 @@ def check_approval_gate(key: str) -> bool:
     # Denylist: block internal Wazuh keys to prevent direct injection into production CDBs
     return not key.startswith("wazuh-internal-")
 
+
 def parse_args() -> argparse.Namespace:
     """Parses command line arguments.
 
@@ -92,6 +126,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--value", required=True, help="CDB Value")
     return parser.parse_args()
 
+
 def validate_proposal(key: str) -> None:
     """Validates the proposal key and environment.
 
@@ -99,13 +134,15 @@ def validate_proposal(key: str) -> None:
         key: The CDB key to validate.
 
     Raises:
-        RuntimeError: If validation fails (denylist or missing directory).
+        ProposalDirectoryError: If the database directory does not exist.
+        ProposalRejectedError: If the key is blocked by denylist.
     """
     if not os.path.exists(os.path.dirname(DB_PATH)):
-        raise RuntimeError(f"Library code called exit(3)")
+        raise ProposalDirectoryError(f"Database directory does not exist: {os.path.dirname(DB_PATH)}")
 
     if not check_approval_gate(key):
-        raise RuntimeError(f"Library code called exit(1)")
+        raise ProposalRejectedError(f"Key '{key}' is reserved for internal Wazuh use")
+
 
 def store_proposal(key: str, value: str) -> None:
     """Stores the proposal in the database.
@@ -115,7 +152,7 @@ def store_proposal(key: str, value: str) -> None:
         value: The CDB value.
 
     Raises:
-        RuntimeError: If database operations fail.
+        ProposalStorageError: If database operations fail.
     """
     try:
         init_db()
@@ -125,19 +162,27 @@ def store_proposal(key: str, value: str) -> None:
                        (key, value, 'PENDING', datetime.now(timezone.utc)))
         conn.commit()
         conn.close()
-    except Exception:
-        raise RuntimeError(f"Library code called exit(1)")
+    except ProposalError:
+        raise
+    except Exception as e:
+        raise ProposalStorageError(f"Failed to store proposal: {e}")
+
 
 def main() -> None:
     """Orchestrates the proposal writeback process.
 
     Raises:
-        RuntimeError: If validation fails, database operations fail, or directory is missing.
+        ProposalError: On any failure or success (with appropriate exit_code).
     """
     args = parse_args()
     validate_proposal(args.key)
     store_proposal(args.key, args.value)
-    raise RuntimeError(f"Library code called exit(0)")
+    raise ProposalSuccess("Proposal stored successfully")
+
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except ProposalError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(e.exit_code)
