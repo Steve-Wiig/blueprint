@@ -47,14 +47,20 @@ def calculate_entropy(data: str) -> float:
         data: The input string to analyze.
 
     Returns:
-        The calculated Shannon entropy as a float.
+        float: The calculated Shannon entropy.
+
+    Raises:
+        TypeError: If data is not a string.
     """
-    if not data: return 0
-    entropy = 0
+    if not isinstance(data, str):
+        raise TypeError(f"Expected str, got {type(data).__name__}")
+    if not data:
+        return 0.0
+    entropy = 0.0
     for x in range(256):
         p_x = float(data.count(chr(x))) / len(data)
         if p_x > 0:
-            entropy += - p_x * math.log(p_x, 2)
+            entropy += -p_x * math.log(p_x, 2)
     return entropy
 
 def _redact_regex_patterns(payload: str, metadata: Dict[str, Any]) -> str:
