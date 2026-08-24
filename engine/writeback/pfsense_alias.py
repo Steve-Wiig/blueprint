@@ -7,10 +7,11 @@ Alias-Table Writeback Adapter (Proposal-Only Mode)
 """
 
 import argparse
+import os
 import sqlite3
 from datetime import datetime, timezone
 
-DB_PATH = "soc_proposals.db"
+DB_PATH = os.getenv("SOC_PROPOSALS_DB", "soc_proposals.db")
 
 def init_db() -> None:
     """Initializes the SQLite database and creates the alias_proposals table if it does not exist.
