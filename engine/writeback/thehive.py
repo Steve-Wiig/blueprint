@@ -5,7 +5,6 @@ based on sanitized input data.
 """
 
 import argparse
-import sys
 import requests
 import json
 from typing import Any
