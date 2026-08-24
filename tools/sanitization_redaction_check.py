@@ -39,7 +39,8 @@ def redact(pattern_key: str, text: str) -> str:
         return pattern.sub(r"\1[REDACTED]", text)
     return pattern.sub("[REDACTED]", text)
 
-def run_sanitization_check():
+def run_sanitization_check() -> int:
+    """Run sanitization verification. Returns 0 on success, non-zero error code."""
     try:
         if not PATTERNS or not TEST_PAYLOADS:
             return CONFIG_ERROR
