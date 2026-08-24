@@ -1,13 +1,14 @@
 import re
 import argparse
 import sys
+from typing import Dict, Pattern, Tuple
 
 SUCCESS = 0
 PATTERN_MISMATCH = 1
 MISSING_PAYLOAD = 2
 CONFIG_ERROR = 3
 
-PATTERNS = {
+PATTERNS: Dict[str, Tuple[str, bool]] = {
     "aws_key": (r"\b(AKIA[0-9A-Z]{16})\b", False),
     "github_token": (r"\b(ghp_[a-zA-Z0-9]{36})\b", False),
     "jwt_token": (r"\b(eyJ[a-zA-Z0-9_-]{16,}\.[a-zA-Z0-9_-]{16,}\.[a-zA-Z0-9_-]{16,})\b", False),
@@ -18,9 +19,9 @@ PATTERNS = {
     "password_query": (r"(?i)(password=)([^&\s]{8,})", True)
 }
 
-COMPILED_PATTERNS = {k: re.compile(v[0]) for k, v in PATTERNS.items()}
+COMPILED_PATTERNS: Dict[str, Pattern[str]] = {k: re.compile(v[0]) for k, v in PATTERNS.items()}
 
-TEST_PAYLOADS = {
+TEST_PAYLOADS: Dict[str, str] = {
     "aws_key": "Access key is AKIAIOSFODNN7EXAMPLE",
     "github_token": "Token: ghp_1234567890abcdef1234567890abcdef1234",
     "jwt_token": "Header: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
