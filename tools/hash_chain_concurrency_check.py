@@ -14,6 +14,7 @@ from typing import List, Optional
 # Blueprint v11.6.0: Hash Chain Integrity Constraints
 # MAX_CONCURRENT_THREADS increased default to 100, configurable via --threads
 DEFAULT_MAX_CONCURRENT_THREADS = 100
+DEFAULT_STRESS_ITERATIONS = 10
 MIN_LOCK_ACQUISITION_MS = 5
 MIN_IO_LATENCY_MS = 1
 MAX_IO_LATENCY_MS = 10
@@ -81,6 +82,31 @@ def worker(ledger: HashChainLedger, results: List[Optional[int]]) -> None:
         results.append(None)
 
 
+def run_stress_test(num_threads: int) -> bool:
+    """Run a single stress test iteration with the given number of threads.
+
+    Args:
+        num_threads: Number of concurrent threads to use for the test.
+
+    Returns:
+        True if the test passes (no race conditions), False otherwise.
+    """
+    ledger = HashChainLedger()
+    results: List[Optional[int]] = []
+    with ThreadPoolExecutor(max_workers=num_threads) as executor:
+        futures = [executor.submit(worker, ledger, results) for _ in range(num_threads)]
+        for future in futures:
+            future.result()
+
+    if len(results) != num_threads:
+        return False
+    if None in results:
+        return False
+    if len(set(results)) != num_threads:
+        return False
+    return True
+
+
 def main() -> int:
     now = datetime.now(timezone.utc)
     ledger_path = os.getenv("HASH_CHAIN_LEDGER", "/tmp/hash_chain.ledger")
@@ -108,28 +134,13 @@ def main() -> int:
         print(f"CONFIG ERROR: Cannot write to {ledger_path}")
         return 2
 
-    ledger = HashChainLedger()
-    results: List[Optional[int]] = []
-    # Stress test concurrency using ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=args.threads) as executor:
-        futures = [executor.submit(worker, ledger, results) for _ in range(args.threads)]
-        for future in futures:
-            future.result()  # raise any exception
+    # Run stress test multiple times to increase exposure to concurrency issues
+    for iteration in range(DEFAULT_STRESS_ITERATIONS):
+        if not run_stress_test(args.threads):
+            print(f"FAIL: Race condition detected in hash chain indexing (iteration {iteration + 1})")
+            return 1
 
-    # Verify integrity: No race conditions should lead to duplicate indices or lost writes
-    if len(results) != args.threads:
-        print("FAIL: Thread result mismatch")
-        return 1
-
-    if None in results:
-        print("FAIL: Exception occurred during concurrent write")
-        return 1
-
-    if len(set(results)) != args.threads:
-        print("FAIL: Race condition detected in hash chain indexing")
-        return 1
-
-    print(f"PASS: Hash chain concurrency verified with {args.threads} threads")
+    print(f"PASS: Hash chain concurrency verified with {args.threads} threads over {DEFAULT_STRESS_ITERATIONS} iterations")
     return 0
 
 
