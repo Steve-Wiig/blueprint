@@ -15,7 +15,6 @@ from typing import List, Optional
 # MAX_CONCURRENT_THREADS increased default to 100, configurable via --threads
 DEFAULT_MAX_CONCURRENT_THREADS = 100
 MIN_LOCK_ACQUISITION_MS = 5
-LEDGER_PATH = os.getenv("HASH_CHAIN_LEDGER", "/tmp/hash_chain.ledger")
 
 
 class HashChainLedger:
@@ -82,6 +81,7 @@ def worker(ledger: HashChainLedger, results: List[Optional[int]]) -> None:
 
 def main() -> int:
     now = datetime.now(timezone.utc)
+    ledger_path = os.getenv("HASH_CHAIN_LEDGER", "/tmp/hash_chain.ledger")
     parser = argparse.ArgumentParser(description="Hash Chain Concurrency Validator")
     parser.add_argument(
         "--dry-run",
@@ -102,8 +102,8 @@ def main() -> int:
         print("PASS: Dry run complete. Environment ready.")
         return 0
 
-    if not os.access(os.path.dirname(LEDGER_PATH) or ".", os.W_OK):
-        print(f"CONFIG ERROR: Cannot write to {LEDGER_PATH}")
+    if not os.access(os.path.dirname(ledger_path) or ".", os.W_OK):
+        print(f"CONFIG ERROR: Cannot write to {ledger_path}")
         return 2
 
     ledger = HashChainLedger()
