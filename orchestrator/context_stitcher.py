@@ -1,4 +1,4 @@
-"""Context stitcher for SOC orchestrator. Retrieves semantic memory from case_embeddings for SLM injection."""
+"""Memory context stitcher for SOC orchestrator. Retrieves semantically similar cases for SLM injection."""
 import psycopg2
 import sys
 from datetime import datetime, timezone, timedelta
