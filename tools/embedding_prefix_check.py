@@ -23,6 +23,7 @@ Example:
 """
 
 import sys
+import argparse
 from typing import Callable
 
 REQUIRED_DOC_PREFIX = "search_document: "
@@ -131,20 +132,26 @@ class EmbeddingService:
         return self.encoder(REQUIRED_QUERY_PREFIX + text)
 
 
-def main() -> int:
+def run_verification(dry_run: bool = False) -> int:
     """
     Run the CI gate verification for embedding prefix and dimension contract.
 
-    Creates an EmbeddingService with a mock encoder, generates embeddings
-    for a test document and query, then verifies:
-    1. Both embeddings have the correct dimension (768)
-    2. The document embedding was called with "search_document: " prefix
-    3. The query embedding was called with "search_query: " prefix
+    Args:
+        dry_run: If True, skip actual encoding calls and only verify service
+                 instantiation and constants.
 
     Returns:
         0 if all checks pass, 1 if any check fails.
     """
     svc = EmbeddingService(fake_encode)
+
+    if dry_run:
+        print("DRY-RUN: EmbeddingService instantiated successfully.")
+        print(f"DRY-RUN: Required document prefix: '{REQUIRED_DOC_PREFIX}'")
+        print(f"DRY-RUN: Required query prefix: '{REQUIRED_QUERY_PREFIX}'")
+        print(f"DRY-RUN: Required dimension: {REQUIRED_DIM}")
+        print("PASS: Dry-run verification completed.")
+        return 0
 
     doc_text = "accepted triage summary"
     query_text = "similar alert lookup"
@@ -170,6 +177,26 @@ def main() -> int:
 
     print("PASS: Embedding prefix and dimension contract verified.")
     return 0
+
+
+def main() -> int:
+    """
+    Parse arguments and run the CI gate verification.
+
+    Returns:
+        0 if all checks pass, 1 if any check fails.
+    """
+    parser = argparse.ArgumentParser(
+        description="Verify embedding prefix and dimension contract"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Skip actual encoding calls, only verify service instantiation and constants"
+    )
+    args = parser.parse_args()
+
+    return run_verification(dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
