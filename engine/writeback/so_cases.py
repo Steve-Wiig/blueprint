@@ -13,6 +13,7 @@ from typing import Any, Dict
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 DRAFT_CASE_ID = 'DRAFT_ID_000'
+DEFAULT_LEDGER_PATH = 'handoffs_ledger.log'
 
 
 def sanitize_input(data: Any) -> Dict[str, str]:
@@ -101,7 +102,7 @@ def write_to_ledger(payload_ref: str, case_id: str) -> None:
         RuntimeError: If the ledger file cannot be written to.
     """
     try:
-        with open("handoffs_ledger.log", "a") as f:
+        with open(DEFAULT_LEDGER_PATH, "a") as f:
             f.write(f"{datetime.now(timezone.utc).isoformat()} | {payload_ref} | {case_id}\n")
     except IOError:
         raise RuntimeError(f"Library code called exit(2)")
