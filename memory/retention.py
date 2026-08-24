@@ -120,8 +120,7 @@ def main() -> None:
     """
     Main entry point for the IOC Retention Manager CLI.
     
-    Parses command-line arguments, validates database credentials,
-    and executes the retention policy.
+    Parses command-line arguments and executes the retention policy.
     
     Raises:
         RuntimeError: If required database password is missing or other errors occur.
@@ -130,9 +129,6 @@ def main() -> None:
     parser.add_argument("--db-url", required=True, help="Postgres connection string")
     args = parser.parse_args()
     
-    if not os.environ.get("PGPASSWORD") and "password=" not in args.db_url:
-        raise RuntimeError("Database password not provided via PGPASSWORD or connection string")
-        
     run_retention(args.db_url)
 
 
