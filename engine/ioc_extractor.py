@@ -46,14 +46,17 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
             2 for database-related errors.
     """
     try:
-        extracted: List[Tuple[str, str, str, datetime]] = []
+        matches_by_type: Dict[str, set] = {ioc_type: set() for ioc_type in _PATTERNS}
 
-        for ioc_type, regex in _PATTERNS.items():
-            matches = set()
-            for text in _iter_strings(sanitized_alert_json):
-                matches.update(regex.findall(text))
+        for text in _iter_strings(sanitized_alert_json):
+            for ioc_type, regex in _PATTERNS.items():
+                matches_by_type[ioc_type].update(regex.findall(text))
+
+        extracted: List[Tuple[str, str, str, datetime]] = []
+        now = datetime.now(timezone.utc)
+        for ioc_type, matches in matches_by_type.items():
             for match in matches:
-                extracted.append((match, ioc_type, "pending", datetime.now(timezone.utc)))
+                extracted.append((match, ioc_type, "pending", now))
 
         if not extracted:
             return 0
