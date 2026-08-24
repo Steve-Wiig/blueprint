@@ -77,8 +77,6 @@ def main():
         return 1
 
 if __name__ == "__main__":
-    import argparse
-    import sys
     parser = argparse.ArgumentParser(description="Hash Chain Verifier")
     parser.add_argument("--dry-run", action="store_true", help="Run with mock chain data")
     args = parser.parse_args()
