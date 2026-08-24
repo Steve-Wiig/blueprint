@@ -19,18 +19,21 @@ class IOCType(Enum):
     EMAIL = "email"
 
 
-_IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", re.IGNORECASE)
-_DOMAIN_RE = re.compile(r"\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b", re.IGNORECASE)
-_URL_RE = re.compile(r"https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+", re.IGNORECASE)
-_SHA256_RE = re.compile(r"\b[a-fA-F0-9]{64}\b", re.IGNORECASE)
-_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", re.IGNORECASE)
+_COMBINED_RE = re.compile(
+    r"(?P<ipv4>\b(?:\d{1,3}\.){3}\d{1,3}\b)"
+    r"|(?P<domain>\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b)"
+    r"|(?P<url>https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+)"
+    r"|(?P<sha256>\b[a-fA-F0-9]{64}\b)"
+    r"|(?P<email>\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b)",
+    re.IGNORECASE,
+)
 
-_PATTERNS = {
-    IOCType.IPV4: _IPV4_RE,
-    IOCType.DOMAIN: _DOMAIN_RE,
-    IOCType.URL: _URL_RE,
-    IOCType.SHA256: _SHA256_RE,
-    IOCType.EMAIL: _EMAIL_RE,
+_GROUP_TO_IOC = {
+    "ipv4": IOCType.IPV4,
+    "domain": IOCType.DOMAIN,
+    "url": IOCType.URL,
+    "sha256": IOCType.SHA256,
+    "email": IOCType.EMAIL,
 }
 
 
@@ -77,11 +80,15 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
         RuntimeError: If extraction or database operations fail.
     """
     try:
-        matches_by_type: Dict[IOCType, set] = {ioc_type: set() for ioc_type in _PATTERNS}
+        matches_by_type: Dict[IOCType, set] = {ioc_type: set() for ioc_type in IOCType}
 
         for text in _iter_strings(sanitized_alert_json):
-            for ioc_type, regex in _PATTERNS.items():
-                matches_by_type[ioc_type].update(regex.findall(text))
+            for match in _COMBINED_RE.finditer(text):
+                for group_name, ioc_type in _GROUP_TO_IOC.items():
+                    value = match.group(group_name)
+                    if value:
+                        matches_by_type[ioc_type].add(value)
+                        break
 
         extracted: List[Tuple[str, str, str, datetime]] = []
         now = datetime.now(timezone.utc)
