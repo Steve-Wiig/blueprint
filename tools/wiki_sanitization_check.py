@@ -2,21 +2,22 @@
 import re
 import sys
 import argparse
+from typing import List, Tuple
 
 # LOCAL-SOC-SLM Blueprint v11.6.0 - Credential Sanitization Tool
 # Appendix O.16 & Section 34.1 Compliance
 
-ALLOWLIST_SHA256 = {
+ALLOWLIST_SHA256: set[str] = {
     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
 }
 
-ALLOWLIST_UUID = {
+ALLOWLIST_UUID: set[str] = {
     "00000000-0000-0000-0000-000000000000",
     "deadbeef-dead-beef-dead-beefdeadbeef"
 }
 
-PATTERNS = {
+PATTERNS: dict[str, str] = {
     "AWS_KEY": r"(AKIA[0-9A-Z]{16})",
     "GITHUB_TOKEN": r"(ghp_[a-zA-Z0-9]{36})",
     "BEARER_JWT": r"(eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9._-]{10,}\.[a-zA-Z0-9._-]{10,})",
@@ -26,7 +27,7 @@ PATTERNS = {
     "PASSWORD_PARAM": r"(password=[a-zA-Z0-9!@#$%^&*()_+]{8,64})"
 }
 
-DRY_RUN_PAYLOADS = [
+DRY_RUN_PAYLOADS: List[str] = [
     "AKIAIOSFODNN7EXAMPLE",
     "ghp_1234567890abcdef1234567890abcdef1234",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
@@ -36,8 +37,8 @@ DRY_RUN_PAYLOADS = [
     "password=supersecret123"
 ]
 
-def scan_text(text):
-    found = []
+def scan_text(text: str) -> List[Tuple[str, str]]:
+    found: List[Tuple[str, str]] = []
     for name, pattern in PATTERNS.items():
         matches = re.findall(pattern, text, re.IGNORECASE)
         for match in matches:
@@ -45,7 +46,7 @@ def scan_text(text):
                 found.append((name, match))
     return found
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("files", nargs="*")
