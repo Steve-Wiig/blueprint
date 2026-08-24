@@ -62,29 +62,6 @@ class MockResponse:
         self.status_code: int = status_code
 
 
-def get_mock_response(method: str, url: str, **kwargs: Any) -> MockResponse:
-    """
-    Return a mock response based on URL pattern for dry-run mode.
-
-    Args:
-        method: HTTP method (unused, for signature compatibility).
-        url: Request URL to match against patterns.
-        **kwargs: Additional arguments (unused).
-
-    Returns:
-        MockResponse with status_code set based on URL content:
-        - 200 for URLs containing "agents"
-        - 403 for URLs containing "restart" or "interfaces"
-        - 404 for all other URLs
-    """
-    if "agents" in url:
-        return MockResponse(200)
-    elif "restart" in url or "interfaces" in url:
-        return MockResponse(403)
-    else:
-        return MockResponse(404)
-
-
 def check_service(service: str, cfg: dict, lab_url: str, dry_run: bool = False) -> bool:
     """
     Verify credential permissions for a single service.
@@ -119,8 +96,8 @@ def check_service(service: str, cfg: dict, lab_url: str, dry_run: bool = False) 
 
     try:
         if dry_run:
-            read_resp = get_mock_response("GET", read_url)
-            forbidden_resp = get_mock_response(cfg["forbidden_method"], forbidden_url)
+            read_resp = MockResponse(200)
+            forbidden_resp = MockResponse(403)
         else:
             read_resp = requests.get(read_url, auth=auth, timeout=10, verify=False)
             forbidden_resp = requests.request(cfg["forbidden_method"], forbidden_url, auth=auth, timeout=10, verify=False)
