@@ -102,6 +102,7 @@ def run_retention(db_url: str, retention_days: int = None) -> None:
                 SELECT relname FROM pg_class 
                 WHERE relname LIKE 'iocs_%' 
                 AND relkind = 'r'
+                AND relnamespace = 'public'::regnamespace
                 AND SUBSTRING(relname FROM 6 FOR 10) < %s;
             """, (cutoff_str,))
             partitions = [row[0] for row in cur.fetchall()]
