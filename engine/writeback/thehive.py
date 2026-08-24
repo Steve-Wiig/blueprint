@@ -19,14 +19,14 @@ def _setup_logger(log_path: Path) -> logging.Logger:
     logger = logging.getLogger("thehive_writeback.handoff")
     logger.setLevel(logging.INFO)
     logger.propagate = False
-    
+
     # Clear existing handlers to avoid duplicates
     logger.handlers.clear()
-    
+
     handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(message)s"))
     logger.addHandler(handler)
-    
+
     _logger = logger
     return logger
 
@@ -50,7 +50,7 @@ def build_payload(raw_data: Any, mode: str) -> Any:
     return sanitize_payload(raw_data)
 
 
-def create_case(url: str, api_key: str, payload: Any) -> str:
+def call_thehive_api(url: str, api_key: str, payload: Any) -> str:
     """Create case in TheHive and return case ID."""
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -73,11 +73,11 @@ def create_case(url: str, api_key: str, payload: Any) -> str:
 def log_handoff(log_path: Path, case_id: str, mode: str) -> None:
     """Log successful case creation to handoff log."""
     global _logger, _log_path
-    
+
     if _logger is None or _log_path != log_path:
         _setup_logger(log_path)
         _log_path = log_path
-    
+
     now = datetime.now(timezone.utc)
     _logger.info(f"{now.isoformat()}|REF:{case_id}|STATUS:SUCCESS|MODE:{mode}")
 
@@ -104,7 +104,7 @@ def main() -> None:
     sanitized_data = build_payload(raw_data, args.mode)
 
     try:
-        case_id = create_case(args.url, args.api_key, sanitized_data)
+        case_id = call_thehive_api(args.url, args.api_key, sanitized_data)
         log_handoff(log_path, case_id, args.mode)
         raise RuntimeError(f"Library code called exit(0)")
     except requests.exceptions.RequestException:
