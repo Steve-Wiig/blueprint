@@ -26,6 +26,9 @@ class ModelRegistryClient:
     and provides methods for retrieving adapter information and verifying
     file integrity against stored SHA256 hashes.
 
+    This class is not thread-safe. Each thread should create its own instance
+    or use external synchronization when sharing an instance across threads.
+
     Attributes:
         db_path: Path to the SQLite database file.
         routing_config: Dictionary mapping task types to adapter IDs.
@@ -39,7 +42,15 @@ class ModelRegistryClient:
             routing_config_path: Path to the YAML routing configuration file.
 
         Raises:
-            ValueError: If the routing configuration file cannot be loaded.
+            ValueError: If the routing configuration file cannot be loaded
+                or parsed as valid YAML.
+            FileNotFoundError: If the routing configuration file does not exist.
+            yaml.YAMLError: If the routing configuration contains invalid YAML.
+
+        Note:
+            The database connection is established lazily on first use via
+            `_get_connection()`. The connection uses `check_same_thread=False`
+            to allow use across threads, but the class itself is not thread-safe.
         """
         self.db_path = db_path
         self._conn: sqlite3.Connection = None
@@ -54,6 +65,10 @@ class ModelRegistryClient:
 
         Returns:
             An active sqlite3.Connection with row_factory set to sqlite3.Row.
+
+        Note:
+            This method is not thread-safe. Concurrent calls from multiple
+            threads may result in multiple connections being created.
         """
         if self._conn is None:
             self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
@@ -63,19 +78,31 @@ class ModelRegistryClient:
     def get_adapter(self, task_type: str) -> Dict:
         """Retrieve adapter information for a given task type.
 
+        Looks up the adapter ID from the routing configuration, then queries
+        the model_registry table for the adapter's metadata.
+
         Args:
-            task_type: The task type to look up in the routing configuration.
+            task_type: The task type to look up in the routing configuration
+                (e.g., "triage_analysis", "threat_classification").
 
         Returns:
-            A dictionary containing adapter_id, sha256, and status if found
-            and the status is one of 'canary', 'active', or 'retired'.
+            A dictionary containing the following keys:
+                - adapter_id (str): The unique identifier of the adapter.
+                - sha256 (str): The expected SHA256 hash of the adapter binary.
+                - status (str): The adapter status, one of "canary", "active", or "retired".
 
         Raises:
             AdapterNotFoundError: If no adapter is configured for the task type
-                or the adapter is not found in the registry.
-            InvalidStatusError: If the adapter status is not one of
-                'canary', 'active', or 'retired'.
-            DatabaseError: If a database operation fails.
+                in the routing configuration, or if the adapter ID is not found
+                in the model_registry table.
+            InvalidStatusError: If the adapter's status in the registry is not
+                one of "canary", "active", or "retired".
+            DatabaseError: If a database operation fails (e.g., connection error,
+                query execution error, schema mismatch).
+
+        Note:
+            This method is not thread-safe. Concurrent calls from multiple threads
+            sharing the same instance may result in race conditions.
         """
         adapter_id = self.routing_config.get(task_type)
         if not adapter_id:
@@ -102,16 +129,31 @@ class ModelRegistryClient:
         except Exception as e:
             raise DatabaseError(f"Database error retrieving adapter {adapter_id}: {e}")
 
-    def verify_integrity(self, adapter_data: Dict, file_path: str) -> bool:
+    def verify_integrity(self, adapter_data: Dict, file_path: str) -> Optional[bool]:
         """Verify the SHA256 integrity of an adapter file.
+
+        Computes the SHA256 hash of the file at `file_path` and compares it
+        against the expected hash stored in `adapter_data`.
 
         Args:
             adapter_data: Dictionary containing the expected 'sha256' hash.
+                Typically the return value from `get_adapter()`.
             file_path: Path to the adapter binary file to verify.
 
         Returns:
-            True if the file's SHA256 matches the expected hash, False otherwise.
-            Returns None if the file is not found.
+            True if the file's SHA256 matches the expected hash.
+            False if the file exists but the hash does not match.
+            None if the file is not found at `file_path`.
+
+        Raises:
+            KeyError: If `adapter_data` does not contain a 'sha256' key.
+            PermissionError: If the file exists but cannot be read.
+            OSError: For other I/O related errors during file reading.
+
+        Note:
+            This method reads the file in 4096-byte chunks to handle large
+            files efficiently without excessive memory usage.
+            This method is thread-safe as it does not access shared state.
         """
         sha256_hash = hashlib.sha256()
         try:
@@ -123,7 +165,15 @@ class ModelRegistryClient:
             return None
 
     def close(self):
-        """Close the database connection if open."""
+        """Close the database connection if open.
+
+        This method is idempotent; calling it multiple times has no effect
+        after the first call.
+
+        Note:
+            This method is not thread-safe. Ensure no other threads are
+            using the connection before calling.
+        """
         if self._conn is not None:
             self._conn.close()
             self._conn = None
@@ -143,6 +193,9 @@ class ModelRegistryClient:
             exc_type: Exception type if an exception was raised.
             exc_val: Exception value if an exception was raised.
             exc_tb: Exception traceback if an exception was raised.
+
+        Returns:
+            False to propagate any exception that occurred.
         """
         self.close()
 
