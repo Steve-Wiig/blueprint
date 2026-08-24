@@ -107,7 +107,7 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
     except psycopg2.Error as e:
         logger.error("Database error: %s", e)
         return 2
-    except Exception as e:
+    except (TypeError, ValueError, AttributeError, KeyError) as e:
         logger.error("Extraction error: %s", e)
         return 1
 
