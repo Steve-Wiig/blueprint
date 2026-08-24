@@ -57,6 +57,79 @@ def calculate_entropy(data: str) -> float:
             entropy += - p_x * math.log(p_x, 2)
     return entropy
 
+def _redact_regex_patterns(payload: str, metadata: Dict[str, Any]) -> str:
+    """Redacts sensitive patterns using compiled regex rules.
+
+    Args:
+        payload: The input string to redact.
+        metadata: Dictionary to update with redaction counts.
+
+    Returns:
+        The payload with regex patterns redacted.
+    """
+    for label, compiled_pattern in COMPILED_REGEX_RULES.items():
+        matches = compiled_pattern.findall(payload)
+        if matches:
+            payload = compiled_pattern.sub(f"[REDACTED_{label.upper()}]", payload)
+            metadata["regex_redaction_count"] += len(matches)
+    return payload
+
+def _check_allowlist(token: str) -> bool:
+    """Checks if a token matches any allowlisted pattern.
+
+    Args:
+        token: The token to check against allowlist patterns.
+
+    Returns:
+        True if token matches an allowlist pattern, False otherwise.
+    """
+    return any(p.match(token) for p in ALLOWLIST_PATTERNS_COMPILED.values())
+
+def _analyze_entropy(payload: str, field_path: Optional[str], metadata: Dict[str, Any]) -> str:
+    """Analyzes payload for high-entropy tokens and redacts or quarantines them.
+
+    Args:
+        payload: The input string to analyze.
+        field_path: Optional field path to determine quarantine behavior.
+        metadata: Dictionary to update with entropy redaction counts and actions.
+
+    Returns:
+        The payload with high-entropy tokens redacted, or quarantine reference.
+    """
+    tokens = re.findall(r'[a-zA-Z0-9+/=]{17,}', payload)
+    for token in tokens:
+        if calculate_entropy(token) > 4.5:
+            is_allowed = _check_allowlist(token)
+            
+            if not is_allowed:
+                if field_path in ANALYTICAL_FIELDS:
+                    metadata["sanitization_action"] = "quarantine_ref"
+                    metadata["quarantine_reason"] = "high_entropy_analytical_payload"
+                    return "[QUARANTINED_REF]"
+                else:
+                    payload = payload.replace(token, "[REDACTED_HIGH_ENTROPY]")
+                    metadata["entropy_redaction_count"] += 1
+    return payload
+
+def _build_metadata(payload: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Builds final metadata including action determination and payload hash.
+
+    Args:
+        payload: The sanitized payload string.
+        metadata: The metadata dictionary to finalize.
+
+    Returns:
+        The completed metadata dictionary.
+    """
+    if "sanitization_action" not in metadata:
+        if not metadata["regex_redaction_count"] and not metadata["entropy_redaction_count"]:
+            metadata["sanitization_action"] = "preserve_allowlisted"
+        else:
+            metadata["sanitization_action"] = "redact_inline"
+    
+    metadata["redaction_manifest_sha256"] = hashlib.sha256(payload.encode()).hexdigest()
+    return metadata
+
 def sanitize_payload(payload: str, field_path: Optional[str] = None) -> Dict[str, Any]:
     """Sanitizes a payload by redacting sensitive patterns and high-entropy strings.
 
@@ -72,29 +145,17 @@ def sanitize_payload(payload: str, field_path: Optional[str] = None) -> Dict[str
     metadata = {"sanitizer_version": "11.6.0", "regex_redaction_count": 0, "entropy_redaction_count": 0}
     
     # Pass 1: Regex Redaction
-    for label, compiled_pattern in COMPILED_REGEX_RULES.items():
-        matches = compiled_pattern.findall(payload)
-        if matches:
-            payload = compiled_pattern.sub(f"[REDACTED_{label.upper()}]", payload)
-            metadata["regex_redaction_count"] += len(matches)
-
-    # Pass 2: Shannon Entropy
-    tokens = re.findall(r'[a-zA-Z0-9+/=]{17,}', payload)
-    for token in tokens:
-        if calculate_entropy(token) > 4.5:
-            # Check Allowlist
-            is_allowed = any(p.match(token) for p in ALLOWLIST_PATTERNS_COMPILED.values())
-            
-            if not is_allowed:
-                if field_path in ANALYTICAL_FIELDS:
-                    metadata["sanitization_action"] = "quarantine_ref"
-                    metadata["quarantine_reason"] = "high_entropy_analytical_payload"
-                    return {"payload": "[QUARANTINED_REF]", "metadata": metadata}
-                else:
-                    payload = payload.replace(token, "[REDACTED_HIGH_ENTROPY]")
-                    metadata["entropy_redaction_count"] += 1
-
-    metadata["sanitization_action"] = metadata.get("sanitization_action", "preserve_allowlisted" if not metadata["regex_redaction_count"] and not metadata["entropy_redaction_count"] else "redact_inline")
-    metadata["redaction_manifest_sha256"] = hashlib.sha256(payload.encode()).hexdigest()
+    payload = _redact_regex_patterns(payload, metadata)
+    
+    # Pass 2: Shannon Entropy Analysis
+    payload = _analyze_entropy(payload, field_path, metadata)
+    
+    # Early return if quarantined
+    if payload == "[QUARANTINED_REF]":
+        metadata = _build_metadata(payload, metadata)
+        return {"payload": payload, "metadata": metadata}
+    
+    # Build final metadata
+    metadata = _build_metadata(payload, metadata)
     
     return {"payload": payload, "metadata": metadata}
