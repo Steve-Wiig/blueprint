@@ -26,17 +26,17 @@ def check_idempotency(input_text: str, prefix: str) -> bool:
     Verifies that applying the prefix multiple times does not result in 
     nested prefixing (e.g., 'prefix: prefix: text').
     """
-    # Simulate the embedding service logic
+    # 1. Simulate the embedding service logic
     if input_text.startswith(prefix):
         processed = input_text
     else:
         processed = prefix + input_text
     
-    # Check for double prefixing
+    # 2. Check for double prefixing
     if processed.startswith(prefix + prefix):
         return False
     
-    # Check for single prefixing
+    # 3. Check for single prefixing
     if not processed.startswith(prefix):
         return False
         
