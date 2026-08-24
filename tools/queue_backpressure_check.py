@@ -95,4 +95,10 @@ def main() -> int:
     return check_backpressure(lab_url, args.dry_run)
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        exit_code = main()
+        if exit_code != 0:
+            raise RuntimeError(f"CI gate failed with exit code {exit_code}")
+    except Exception as e:
+        logger.error("CI gate execution failed: %s", e)
+        raise
