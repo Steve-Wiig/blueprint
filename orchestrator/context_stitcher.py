@@ -4,8 +4,13 @@ import sys
 from datetime import datetime, timezone, timedelta
 
 
-class DatabaseRetrievalError(Exception):
-    """Custom exception for database retrieval failures in stitch_memory_context."""
+class DatabaseError(Exception):
+    """Custom exception for database-related failures in stitch_memory_context."""
+    pass
+
+
+class StitcherError(Exception):
+    """Custom exception for stitching logic failures in stitch_memory_context."""
     pass
 
 
@@ -52,11 +57,9 @@ def stitch_memory_context(query_embedding: list[float], top_k: int = 5, max_age_
         return formatted_context, metadata
 
     except psycopg2.Error as e:
-        sys.stderr.write(f"Database error: {e}")
-        raise DatabaseRetrievalError(f"Failed to retrieve memory context: {e}") from e
+        raise DatabaseError(f"Failed to retrieve memory context from database: {e}") from e
     except Exception as e:
-        sys.stderr.write(f"Stitcher error: {e}")
-        raise DatabaseRetrievalError(f"Unexpected error during stitching: {e}") from e
+        raise StitcherError(f"Unexpected error during memory context stitching: {e}") from e
 
 if __name__ == "__main__":
     # Example usage for orchestrator integration
