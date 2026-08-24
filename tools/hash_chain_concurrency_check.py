@@ -15,6 +15,8 @@ from typing import List, Optional
 # MAX_CONCURRENT_THREADS increased default to 100, configurable via --threads
 DEFAULT_MAX_CONCURRENT_THREADS = 100
 MIN_LOCK_ACQUISITION_MS = 5
+MIN_IO_LATENCY_MS = 1
+MAX_IO_LATENCY_MS = 10
 
 
 class HashChainLedger:
@@ -45,7 +47,7 @@ class HashChainLedger:
         """
         with self.lock:
             # Simulate I/O latency for ledger write
-            time.sleep(random.uniform(0.001, 0.01))
+            time.sleep(random.uniform(MIN_IO_LATENCY_MS / 1000, MAX_IO_LATENCY_MS / 1000))
             self.chain.append(hash_val)
             return len(self.chain)
 
