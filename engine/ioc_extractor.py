@@ -91,10 +91,10 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
                     matches_by_type[ioc_type].add(value)
 
         extracted: List[Tuple[str, str, str, datetime]] = []
-        now = datetime.now(timezone.utc)
+        seen = datetime.now(timezone.utc)
         for ioc_type, matches in matches_by_type.items():
             for match in matches:
-                extracted.append((match, ioc_type.value, "pending", now))
+                extracted.append((match, ioc_type.value, "pending", seen))
 
         if not extracted:
             return 0
@@ -112,7 +112,7 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
         """
         execute_values(cur, query, extracted)
 
-        audit_records = [(value, ioc_type, "insert", now) for value, ioc_type, _, _ in extracted]
+        audit_records = [(value, ioc_type, "insert", seen) for value, ioc_type, _, _ in extracted]
         audit_query = """
             INSERT INTO ioc_audit (value, type, action, timestamp)
             VALUES %s
@@ -127,7 +127,7 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
             "IOC extraction audit: alert_id=%s ioc_count=%s timestamp=%s",
             alert_id,
             ioc_count,
-            now.isoformat(),
+            seen.isoformat(),
         )
         return 0
 
