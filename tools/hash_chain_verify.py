@@ -6,13 +6,13 @@ import json
 import sys
 import os
 
-def compute_row_hash(row):
+def compute_row_hash(row: dict) -> str:
     """Recomputes hash for a single row excluding the hash field itself."""
     data = {k: v for k, v in row.items() if k != "hash"}
     serialized = json.dumps(data, sort_keys=True, separators=(',', ':'), ensure_ascii=True)
     return hashlib.sha256(serialized.encode()).hexdigest()
 
-def verify_chain(chain_data):
+def verify_chain(chain_data: list[dict]) -> bool:
     """
     Verifies:
     1. chain_seq ordering (0..N)
@@ -48,7 +48,7 @@ def verify_chain(chain_data):
         
     return True
 
-def main():
+def main() -> int:
     # Expecting path to JSON chain file as argument
     if len(sys.argv) < 2:
         print("CONFIG ERROR: Missing chain file path")
