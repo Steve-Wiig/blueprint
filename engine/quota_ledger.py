@@ -21,6 +21,7 @@ def init_db() -> None:
                 last_reset_date TEXT
             )
         ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_last_reset ON quota_ledger(last_reset_date)')
         conn.commit()
         conn.close()
     except sqlite3.Error:
