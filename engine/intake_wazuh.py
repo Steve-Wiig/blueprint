@@ -12,6 +12,8 @@ LOG_FILE = os.getenv('TRIAGE_LOG_FILE', '/var/log/local-soc/intake.log')
 
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO)
 
+STATUS_PENDING = 'pending'
+
 _connection: sqlite3.Connection | None = None
 
 def _get_connection() -> sqlite3.Connection:
@@ -77,18 +79,19 @@ def intake_adapter(raw_payload: str) -> int:
         cursor.execute("""
             INSERT INTO triage_queue (
                 id, severity, payload, status, created_at, attempts
-            ) VALUES (?, ?, ?, 'pending', ?, 0)
+            ) VALUES (?, ?, ?, ?, ?, 0)
         """, (
             sanitized['id'],
             sanitized['severity'],
             json.dumps(sanitized['payload']),
+            STATUS_PENDING,
             sanitized['timestamp']
         ))
         
         _audit_log(conn, 'intake', sanitized['id'], {
             'severity': sanitized['severity'],
             'payload': sanitized['payload'],
-            'status': 'pending'
+            'status': STATUS_PENDING
         })
         
         conn.commit()
