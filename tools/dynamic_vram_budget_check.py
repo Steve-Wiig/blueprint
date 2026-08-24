@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 import re
 
 def get_gpu_info() -> ET.Element | None:
+    """Returns parsed XML root element from nvidia-smi -q -x, or None on failure."""
     try:
         result = subprocess.run(
             ['nvidia-smi', '-q', '-x'],
