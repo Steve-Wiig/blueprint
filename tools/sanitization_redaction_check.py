@@ -8,14 +8,14 @@ MISSING_PAYLOAD = 2
 CONFIG_ERROR = 3
 
 PATTERNS = {
-    "aws_key": r"\b(AKIA[0-9A-Z]{16})\b",
-    "github_token": r"\b(ghp_[a-zA-Z0-9]{36})\b",
-    "jwt_token": r"\b(eyJ[a-zA-Z0-9_-]{16,}\.[a-zA-Z0-9_-]{16,}\.[a-zA-Z0-9_-]{16,})\b",
-    "ssh_key": r"(-----BEGIN[ A-Z0-9]+PRIVATE KEY-----)",
-    "slack_token": r"\b(xox[baprs]-[0-9a-zA-Z]{10,48})\b",
-    "auth_header": r"(?i)(Authorization:\s+(?:Bearer|Basic|Token)\s+)([a-zA-Z0-9\._\-\+/=]+)",
-    "api_key_query": r"(?i)(api_key=)([a-zA-Z0-9]{20,})",
-    "password_query": r"(?i)(password=)([^&\s]{8,})"
+    "aws_key": (r"\b(AKIA[0-9A-Z]{16})\b", False),
+    "github_token": (r"\b(ghp_[a-zA-Z0-9]{36})\b", False),
+    "jwt_token": (r"\b(eyJ[a-zA-Z0-9_-]{16,}\.[a-zA-Z0-9_-]{16,}\.[a-zA-Z0-9_-]{16,})\b", False),
+    "ssh_key": (r"(-----BEGIN[ A-Z0-9]+PRIVATE KEY-----)", False),
+    "slack_token": (r"\b(xox[baprs]-[0-9a-zA-Z]{10,48})\b", False),
+    "auth_header": (r"(?i)(Authorization:\s+(?:Bearer|Basic|Token)\s+)([a-zA-Z0-9\._\-\+/=]+)", True),
+    "api_key_query": (r"(?i)(api_key=)([a-zA-Z0-9]{20,})", True),
+    "password_query": (r"(?i)(password=)([^&\s]{8,})", True)
 }
 
 TEST_PAYLOADS = {
@@ -30,8 +30,8 @@ TEST_PAYLOADS = {
 }
 
 def redact(pattern_key, text):
-    pattern = PATTERNS[pattern_key]
-    if pattern_key in ["auth_header", "api_key_query", "password_query"]:
+    pattern, preserve_prefix = PATTERNS[pattern_key]
+    if preserve_prefix:
         return re.sub(pattern, r"\1[REDACTED]", text)
     return re.sub(pattern, "[REDACTED]", text)
 
@@ -40,7 +40,7 @@ def run_sanitization_check():
         if not PATTERNS or not TEST_PAYLOADS:
             return CONFIG_ERROR
         
-        for key, pattern in PATTERNS.items():
+        for key, (pattern, _) in PATTERNS.items():
             payload = TEST_PAYLOADS.get(key)
             if not payload:
                 return MISSING_PAYLOAD
