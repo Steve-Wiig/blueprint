@@ -17,7 +17,7 @@ DB_PATH = "soc_proposals.db"
 def init_db() -> None:
     """Initializes the SQLite database and creates the alias_proposals table if it does not exist.
 
-    Exits with status code 2 if a database error occurs.
+    Raises RuntimeError if a database error occurs.
     """
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -32,7 +32,7 @@ def init_db() -> None:
         conn.commit()
         conn.close()
     except Exception:
-        raise RuntimeError(f"Library code called exit(2)")
+        raise RuntimeError("Database initialization failed")
 
 def store_proposal(name: str, ip: str) -> None:
     """Stores a new alias proposal in the database.
@@ -41,7 +41,7 @@ def store_proposal(name: str, ip: str) -> None:
         name: The name of the alias to be created.
         ip: The IP address associated with the alias.
 
-    Exits with status code 1 if a database error occurs.
+    Raises RuntimeError if a database error occurs.
     """
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -52,7 +52,7 @@ def store_proposal(name: str, ip: str) -> None:
         conn.close()
         print(f"PROPOSAL_STORED: {name} -> {ip}")
     except Exception:
-        raise RuntimeError(f"Library code called exit(1)")
+        raise RuntimeError("Failed to store proposal")
 
 def rollback_plan() -> None:
     """Prints instructions for rolling back pending alias proposals."""
@@ -61,7 +61,7 @@ def rollback_plan() -> None:
 def main() -> None:
     """Parses command line arguments and executes the alias proposal workflow.
 
-    Exits with status code 0 on success, or 2 if an invalid mode is provided.
+    Raises RuntimeError on success or if an invalid mode is provided.
     """
     parser = argparse.ArgumentParser(description="pfSense Alias Writeback Adapter")
     parser.add_argument("--name", required=True, help="Alias name")
@@ -75,9 +75,9 @@ def main() -> None:
     if args.mode == 'proposal':
         store_proposal(args.name, args.ip)
         rollback_plan()
-        raise RuntimeError(f"Library code called exit(0)")
+        raise RuntimeError("Operation completed successfully")
     else:
-        raise RuntimeError(f"Library code called exit(2)")
+        raise RuntimeError("Invalid operation mode")
 
 if __name__ == "__main__":
     main()
