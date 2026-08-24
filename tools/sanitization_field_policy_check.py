@@ -23,6 +23,10 @@ DEFAULT_FORBIDDEN_FIELDS = {
     "aws_secret_access_key"
 }
 
+# MAX_SCHEMA_SIZE limits the file size for standard JSON parsing to avoid OOM on large schemas.
+# Files exceeding this threshold (100MB) will trigger a warning recommending ijson for streaming parsing.
+MAX_SCHEMA_SIZE = 100 * 1024 * 1024  # 100 MB
+
 
 def load_forbidden_fields(policy_file: Optional[str] = None, env_var: str = "FORBIDDEN_FIELDS") -> Set[str]:
     """Load forbidden fields from a policy file, environment variable, or defaults.
@@ -78,6 +82,11 @@ def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = Non
         return EXIT_CONFIG_ERROR
 
     try:
+        if os.path.getsize(schema_path) > MAX_SCHEMA_SIZE:
+            print(f"WARNING: Schema file is {os.path.getsize(schema_path) // (1024*1024)}MB, "
+                  "exceeding the recommended 100MB limit. "
+                  "This may cause OOM with standard JSON parsing. "
+                  "Consider using ijson for iterative parsing.")
         with open(schema_path, 'r') as f:
             data = json.load(f)
     except json.JSONDecodeError:
