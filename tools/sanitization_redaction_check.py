@@ -18,6 +18,8 @@ PATTERNS = {
     "password_query": (r"(?i)(password=)([^&\s]{8,})", True)
 }
 
+COMPILED_PATTERNS = {k: re.compile(v[0]) for k, v in PATTERNS.items()}
+
 TEST_PAYLOADS = {
     "aws_key": "Access key is AKIAIOSFODNN7EXAMPLE",
     "github_token": "Token: ghp_1234567890abcdef1234567890abcdef1234",
@@ -30,22 +32,23 @@ TEST_PAYLOADS = {
 }
 
 def redact(pattern_key, text):
-    pattern, preserve_prefix = PATTERNS[pattern_key]
+    pattern = COMPILED_PATTERNS[pattern_key]
+    preserve_prefix = PATTERNS[pattern_key][1]
     if preserve_prefix:
-        return re.sub(pattern, r"\1[REDACTED]", text)
-    return re.sub(pattern, "[REDACTED]", text)
+        return pattern.sub(r"\1[REDACTED]", text)
+    return pattern.sub("[REDACTED]", text)
 
 def run_sanitization_check():
     try:
         if not PATTERNS or not TEST_PAYLOADS:
             return CONFIG_ERROR
         
-        for key, (pattern, _) in PATTERNS.items():
+        for key in PATTERNS:
             payload = TEST_PAYLOADS.get(key)
             if not payload:
                 return MISSING_PAYLOAD
             
-            if not re.search(pattern, payload):
+            if not COMPILED_PATTERNS[key].search(payload):
                 return PATTERN_MISMATCH
             
             redacted = redact(key, payload)
