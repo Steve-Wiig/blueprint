@@ -2,28 +2,29 @@
 # CI Gate: Embedding Prefix & Dimension Contract
 import sys
 import argparse
+from typing import Callable
 
 REQUIRED_DOC_PREFIX = "search_document: "
 REQUIRED_QUERY_PREFIX = "search_query: "
 REQUIRED_DIM = 768
 
-calls = []
+calls: list[str] = []
 
-def fake_encode(text):
+def fake_encode(text: str) -> list[float]:
     calls.append(text)
     return [0.0] * REQUIRED_DIM
 
 class EmbeddingService:
-    def __init__(self, encoder):
+    def __init__(self, encoder: Callable[[str], list[float]]) -> None:
         self.encoder = encoder
     
-    def embed_document(self, text):
+    def embed_document(self, text: str) -> list[float]:
         return self.encoder(REQUIRED_DOC_PREFIX + text)
     
-    def embed_query(self, text):
+    def embed_query(self, text: str) -> list[float]:
         return self.encoder(REQUIRED_QUERY_PREFIX + text)
 
-def main():
+def main() -> int:
     svc = EmbeddingService(fake_encode)
     
     doc_text = "accepted triage summary"
