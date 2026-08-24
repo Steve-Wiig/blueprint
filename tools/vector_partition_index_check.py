@@ -191,11 +191,6 @@ def _get_index_schema_version() -> str:
     return "11.6.0"
 
 
-REQUIRED_PARTITIONS: List[str] = _get_required_partitions()
-MAX_SHARD_SIZE_GB: int = _get_max_shard_size_gb()
-INDEX_SCHEMA_VERSION: str = _get_index_schema_version()
-
-
 def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
     """Validate vector partition configuration against schema constraints and sharding rules.
 
@@ -227,14 +222,18 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
             returns 1).
         OSError: If file cannot be read due to permissions (propagates to caller).
     """
+    required_partitions = _get_required_partitions()
+    max_shard_size_gb = _get_max_shard_size_gb()
+    index_schema_version = _get_index_schema_version()
+
     config_path_str = str(config_path)
     if dry_run:
         print("DRY-RUN: Starting validation checks...")
         print(f"  [1/6] File existence check: {config_path_str}")
         print(f"  [2/6] JSON parsing: will validate JSON format")
-        print(f"  [3/6] Required partitions: {', '.join(REQUIRED_PARTITIONS)}")
-        print(f"  [4/6] Schema version: expected {INDEX_SCHEMA_VERSION}")
-        print(f"  [5/6] Max shard size per partition: {MAX_SHARD_SIZE_GB} GB")
+        print(f"  [3/6] Required partitions: {', '.join(required_partitions)}")
+        print(f"  [4/6] Schema version: expected {index_schema_version}")
+        print(f"  [5/6] Max shard size per partition: {max_shard_size_gb} GB")
         print(f"  [6/6] Indexing enabled check")
 
     if not config_path.is_file():
@@ -259,7 +258,7 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
         print("  [2/6] PASSED")
 
     # Required partitions
-    missing = set(REQUIRED_PARTITIONS) - set(data.get("partitions", {}).keys())
+    missing = set(required_partitions) - set(data.get("partitions", {}).keys())
     if missing:
         if dry_run:
             print(f"  [3/6] FAILED – missing partitions: {', '.join(missing)}")
@@ -268,9 +267,9 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
         print("  [3/6] PASSED")
 
     # Schema version
-    if data.get("version") != INDEX_SCHEMA_VERSION:
+    if data.get("version") != index_schema_version:
         if dry_run:
-            print(f"  [4/6] FAILED – version {data.get('version')} does not match expected {INDEX_SCHEMA_VERSION}")
+            print(f"  [4/6] FAILED – version {data.get('version')} does not match expected {index_schema_version}")
         return EXIT_VALIDATION_ERROR
     if dry_run:
         print("  [4/6] PASSED")
@@ -278,7 +277,7 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
     # Shard size and indexing checks
     for name, settings in data["partitions"].items():
         max_shard = settings.get("max_shard_gb")
-        if max_shard is None or max_shard > MAX_SHARD_SIZE_GB:
+        if max_shard is None or max_shard > max_shard_size_gb:
             if dry_run:
                 print(f"  [5/6] FAILED – partition '{name}' shard size {max_shard} GB exceeds limit")
             return EXIT_VALIDATION_ERROR
