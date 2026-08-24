@@ -10,6 +10,11 @@ from typing import Optional
 from dataclasses import dataclass
 
 
+# Default fraction of total GPU memory to use as VRAM budget (90%).
+# Leaves 10% headroom for system/other processes.
+DEFAULT_BUDGET_FACTOR = 0.9
+
+
 @dataclass
 class VramCheckResult:
     """Result of VRAM budget check."""
@@ -115,7 +120,7 @@ def check_vram_budget() -> VramCheckResult:
                     exit_code=2
                 )
         else:
-            budget_mb = int(total_mb * 0.9)
+            budget_mb = int(total_mb * DEFAULT_BUDGET_FACTOR)
 
     except (AttributeError, ValueError, TypeError):
         return VramCheckResult(
