@@ -63,6 +63,9 @@ ANALYTICAL_FIELDS: set[str] = {
     "script.block", "bash.command", "shell.args", "file.contents"
 }
 
+# Pre-compiled token pattern for entropy analysis
+TOKEN_PATTERN: Pattern[str] = re.compile(rf'[a-zA-Z0-9+/=]{{{MIN_TOKEN_LENGTH},}}')
+
 def calculate_entropy(data: str) -> float:
     """Calculates the Shannon entropy of a given string.
 
@@ -115,8 +118,21 @@ def _check_allowlist(token: str) -> bool:
     """
     return any(p.match(token) for p in ALLOWLIST_PATTERNS_COMPILED.values())
 
+def _should_quarantine(token: str) -> bool:
+    """Checks if a token should trigger quarantine (high entropy, not allowlisted).
+
+    Args:
+        token: The token to evaluate.
+
+    Returns:
+        True if token has high entropy and is not allowlisted.
+    """
+    return calculate_entropy(token) > ENTROPY_THRESHOLD and not _check_allowlist(token)
+
 def _analyze_entropy(payload: str, field_path: Optional[str], metadata: Dict[str, Any]) -> str:
     """Analyzes payload for high-entropy tokens and redacts or quarantines them.
+
+    Uses single-pass re.sub with callback for efficient replacement.
 
     Args:
         payload: The input string to analyze.
@@ -126,23 +142,26 @@ def _analyze_entropy(payload: str, field_path: Optional[str], metadata: Dict[str
     Returns:
         The payload with high-entropy tokens redacted, or quarantine reference.
     """
-    # Use configurable MIN_TOKEN_LENGTH for token extraction
-    token_pattern = re.compile(rf'[a-zA-Z0-9+/=]{{{MIN_TOKEN_LENGTH},}}')
-    tokens = token_pattern.findall(payload)
-    
-    for token in tokens:
-        if calculate_entropy(token) > ENTROPY_THRESHOLD:
-            is_allowed = _check_allowlist(token)
-            
-            if not is_allowed:
-                if field_path in ANALYTICAL_FIELDS:
-                    metadata["sanitization_action"] = "quarantine_ref"
-                    metadata["quarantine_reason"] = "high_entropy_analytical_payload"
-                    return "[QUARANTINED_REF]"
-                else:
-                    payload = payload.replace(token, "[REDACTED_HIGH_ENTROPY]")
-                    metadata["entropy_redaction_count"] += 1
-    return payload
+    is_analytical = field_path in ANALYTICAL_FIELDS
+
+    # For analytical fields, first scan to check if quarantine is needed
+    if is_analytical:
+        for match in TOKEN_PATTERN.finditer(payload):
+            token = match.group()
+            if _should_quarantine(token):
+                metadata["sanitization_action"] = "quarantine_ref"
+                metadata["quarantine_reason"] = "high_entropy_analytical_payload"
+                return "[QUARANTINED_REF]"
+
+    # Single-pass redaction using re.sub with callback
+    def replace_token(match: re.Match[str]) -> str:
+        token = match.group()
+        if _should_quarantine(token):
+            metadata["entropy_redaction_count"] += 1
+            return "[REDACTED_HIGH_ENTROPY]"
+        return token
+
+    return TOKEN_PATTERN.sub(replace_token, payload)
 
 def _build_metadata(payload: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
     """Builds final metadata including action determination and payload hash.
