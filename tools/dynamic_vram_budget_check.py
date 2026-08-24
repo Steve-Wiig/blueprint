@@ -8,10 +8,9 @@ import xml.etree.ElementTree as ET
 from typing import Optional
 from dataclasses import dataclass
 
-
-# Default fraction of total GPU memory to use as VRAM budget (90%).
-# Leaves 10% headroom for system/other processes.
-DEFAULT_BUDGET_FACTOR = 0.9
+"""Default fraction of total GPU memory to use as VRAM budget (90%).
+Leaves 10% headroom for system/other processes."""
+DEFAULT_VRAM_BUDGET_RATIO = 0.9
 
 
 @dataclass
@@ -117,7 +116,7 @@ def check_vram_budget() -> VramCheckResult:
                     exit_code=2
                 )
         else:
-            budget_mb = int(total_mb * DEFAULT_BUDGET_FACTOR)
+            budget_mb = int(total_mb * DEFAULT_VRAM_BUDGET_RATIO)
 
     except (AttributeError, ValueError, TypeError):
         return VramCheckResult(
