@@ -7,12 +7,22 @@ JWT bearer tokens, SSH private keys, Slack tokens, API keys, and passwords.
 Supports allowlisting of known safe values and dry-run testing mode.
 
 Compliance: LOCAL-SOC-SLM Blueprint v11.6.0 - Appendix O.16 & Section 34.1
+
+This module provides credential detection capabilities for security automation workflows.
+It uses compiled regular expressions for efficient pattern matching and maintains
+allowlists of known safe values to reduce false positives.
+
+Example:
+    >>> from credential_sanitizer import scan_text
+    >>> violations = scan_text("AKIAIOSFODNN7EXAMPLE")
+    >>> print(violations)
+    [('AWS_KEY', 'AKIAIOSFODNN7EXAMPLE')]
 """
 
 import re
 import sys
 import argparse
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Pattern
 
 # LOCAL-SOC-SLM Blueprint v11.6.0 - Credential Sanitization Tool
 # Appendix O.16 & Section 34.1 Compliance
@@ -27,7 +37,7 @@ ALLOWLIST_UUID: set[str] = {
     "deadbeef-dead-beef-dead-beefdeadbeef"
 }
 
-PATTERNS: dict[str, str] = {
+PATTERNS: Dict[str, str] = {
     "AWS_KEY": r"(AKIA[0-9A-Z]{16})",
     "GITHUB_TOKEN": r"(ghp_[a-zA-Z0-9]{36})",
     "BEARER_JWT": r"(eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9._-]{10,}\.[a-zA-Z0-9._-]{10,})",
@@ -37,7 +47,7 @@ PATTERNS: dict[str, str] = {
     "PASSWORD_PARAM": r"(password=[a-zA-Z0-9!@#$%^&*()_+]{8,64})"
 }
 
-COMPILED_PATTERNS: dict[str, re.Pattern] = {
+COMPILED_PATTERNS: Dict[str, Pattern[str]] = {
     name: re.compile(pattern, re.IGNORECASE) for name, pattern in PATTERNS.items()
 }
 
@@ -56,16 +66,32 @@ def scan_text(text: str) -> List[Tuple[str, str]]:
     """
     Scan text for credential patterns.
 
+    Searches the input text for known credential patterns including AWS keys,
+    GitHub tokens, JWTs, SSH keys, Slack tokens, API keys, and passwords.
+    Matches are filtered against allowlists to reduce false positives.
+
     Args:
-        text: The input text to scan for credentials.
+        text: The input text to scan for credentials. Can be any string content
+            including file contents, log entries, or configuration data.
 
     Returns:
         List of tuples containing (pattern_name, matched_value) for each
-        credential found that is not in the allowlists.
+        credential found that is not in the allowlists. Returns empty list if
+        no violations are detected.
 
     Raises:
         re.error: If a regex pattern is invalid (should not occur with static patterns).
+        TypeError: If text is not a string.
+
+    Example:
+        >>> scan_text("api_key=secret123")
+        [('API_KEY_PARAM', 'api_key=secret123')]
+        >>> scan_text("safe content")
+        []
     """
+    if not isinstance(text, str):
+        raise TypeError(f"Expected str, got {type(text).__name__}")
+
     found: List[Tuple[str, str]] = []
     for name, compiled_pattern in COMPILED_PATTERNS.items():
         matches = compiled_pattern.findall(text)
@@ -77,7 +103,7 @@ def scan_text(text: str) -> List[Tuple[str, str]]:
 
 def main() -> None:
     """
-    Main entry point for credential scanning.
+    Main entry point for credential scanning CLI.
 
     Parses command-line arguments and scans specified files for credentials.
     Supports dry-run mode for testing with built-in test payloads.
@@ -88,28 +114,45 @@ def main() -> None:
 
     Raises:
         RuntimeError: Always raised with exit code encoded in message.
-            Exit codes: 0 = success/no violations, 1 = violations found,
-            2 = file read error.
+            Exit codes:
+                0 = success/no violations found
+                1 = violations found in scanned files
+                2 = file read error
+
+    Example:
+        $ python credential_sanitizer.py --dry-run
+        PASS: Dry-run successful.
+        $ python credential_sanitizer.py config.yaml secrets.env
+        FAIL: Found AWS_KEY in config.yaml
     """
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("files", nargs="*")
+    parser = argparse.ArgumentParser(
+        description="Scan files for credential patterns",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s --dry-run                    # Run self-test
+  %(prog)s file1.txt file2.yaml         # Scan specific files
+  cat secrets.txt | %(prog)s -          # Scan stdin (not implemented)
+        """
+    )
+    parser.add_argument("--dry-run", action="store_true", help="Run self-test with built-in payloads")
+    parser.add_argument("files", nargs="*", help="Files to scan for credentials")
     args = parser.parse_args()
 
     if args.dry_run:
         print("Running dry-run with test payloads...")
-        for p in DRY_RUN_PAYLOADS:
-            res = scan_text(p)
-            if not res:
-                print(f"FAIL: Dry-run payload missed: {p}")
-                raise RuntimeError(f"Library code called exit(1)")
+        for payload in DRY_RUN_PAYLOADS:
+            result = scan_text(payload)
+            if not result:
+                print(f"FAIL: Dry-run payload missed: {payload}")
+                raise RuntimeError("Library code called exit(1)")
         print("PASS: Dry-run successful.")
-        raise RuntimeError(f"Library code called exit(0)")
+        raise RuntimeError("Library code called exit(0)")
 
     exit_code = 0
     for file_path in args.files:
         try:
-            with open(file_path, 'r') as f:
+            with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
                 violations = scan_text(content)
                 if violations:
@@ -118,7 +161,7 @@ def main() -> None:
                     exit_code = 1
         except Exception as e:
             print(f"CONFIG ERROR: Could not read {file_path}: {e}")
-            raise RuntimeError(f"Library code called exit(2)")
+            raise RuntimeError("Library code called exit(2)")
             
     raise RuntimeError(f"Library code called sys.exit({exit_code})")
 
