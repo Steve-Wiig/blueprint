@@ -6,8 +6,8 @@ import datetime
 import psycopg2
 from pathlib import Path
 
-ARCHIVE_BASE = "/archive/iocs"
-CMR_MOUNT = "/mnt/cmr"
+ARCHIVE_BASE = os.environ.get('ARCHIVE_BASE', '/archive/iocs')
+CMR_MOUNT = os.environ.get('CMR_MOUNT', '/mnt/cmr')
 
 def check_cmr_mount():
     if not os.path.ismount(CMR_MOUNT):
