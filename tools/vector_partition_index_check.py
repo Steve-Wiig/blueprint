@@ -63,7 +63,7 @@ import sys
 import argparse
 import json
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, TypedDict
 
 _DEFAULTS_CACHE: Optional[Dict[str, Any]] = None
 
@@ -76,6 +76,16 @@ EXIT_ENV_ERROR: int = 3
 EXIT_VALIDATION_FAILED: int = EXIT_VALIDATION_ERROR
 EXIT_CONFIG_NOT_FOUND: int = EXIT_CONFIG_ERROR
 EXIT_ENV_NOT_SET: int = EXIT_ENV_ERROR
+
+
+class PartitionSettings(TypedDict):
+    max_shard_gb: int
+    indexing_enabled: bool
+
+
+class PartitionConfig(TypedDict):
+    version: str
+    partitions: Dict[str, PartitionSettings]
 
 
 def _load_defaults_config() -> Dict[str, Any]:
@@ -186,16 +196,6 @@ MAX_SHARD_SIZE_GB: int = _get_max_shard_size_gb()
 INDEX_SCHEMA_VERSION: str = _get_index_schema_version()
 
 
-class PartitionSettings(Dict[str, Any]):
-    max_shard_gb: int
-    indexing_enabled: bool
-
-
-class PartitionConfig(Dict[str, Any]):
-    version: str
-    partitions: Dict[str, PartitionSettings]
-
-
 def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
     """
     Validate vector partition configuration against schema constraints and sharding rules.
@@ -284,8 +284,8 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
         print(f"  [4/6] PASS: Schema version matches {INDEX_SCHEMA_VERSION}")
 
     # Verify shard constraints
-    shard_violations = []
-    indexing_violations = []
+    shard_violations: List[tuple[str, int]] = []
+    indexing_violations: List[str] = []
     for name, settings in config.get("partitions", {}).items():
         shard_size: int = settings.get("max_shard_gb", 0)
         if shard_size > MAX_SHARD_SIZE_GB:
@@ -327,14 +327,10 @@ def main() -> int:
     Main entry point for the vector partition index integrity check.
 
     Parses command-line arguments, validates SLM_ENV environment variable is set,
-    and delegates to validate_partition_config().
-
-    Command-line Arguments:
-        --config: Path to partition config file (default: config/vector_partitions.json)
-        --dry-run: Perform validation without committing changes with verbose output.
+    and delegates to validate_partition_config.
 
     Returns:
-        int: Exit code (0=success, 1=validation error, 2=config error, 3=env error).
+        int: Exit code from validation (0=success, 1=validation error, 2=config error, 3=env error).
     """
     parser = argparse.ArgumentParser(
         description="Vector Partition Index Integrity Check",
@@ -350,14 +346,15 @@ def main() -> int:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Perform validation without committing changes with verbose output"
+        help="Perform validation without committing changes, with verbose output"
     )
+    
     args = parser.parse_args()
-
+    
     if not os.environ.get("SLM_ENV"):
         print("ENV ERROR: SLM_ENV environment variable not set")
         return EXIT_ENV_ERROR
-
+    
     return validate_partition_config(args.config, args.dry_run)
 
 
