@@ -23,6 +23,8 @@ import math
 import collections
 from typing import List
 
+# Threshold chosen to detect base64/hex encoded secrets (entropy ~4.7) while allowing normal words (entropy ~3.5);
+# make configurable via env var or CLI arg
 ENTROPY_THRESHOLD: float = 4.5
 ALLOWLIST_PATTERNS: List[str] = [
     r'[a-fA-F0-9]{64}',  # SHA256
