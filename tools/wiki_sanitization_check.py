@@ -22,20 +22,22 @@ Example:
 import re
 import sys
 import argparse
-from typing import List, Tuple, Dict, Pattern
+from typing import List, Tuple, Dict, Pattern, Set
 
 # LOCAL-SOC-SLM Blueprint v11.6.0 - Credential Sanitization Tool
 # Appendix O.16 & Section 34.1 Compliance
 
-ALLOWLIST_SHA256: set[str] = {
+ALLOWLIST_SHA256: Set[str] = {
     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
 }
 
-ALLOWLIST_UUID: set[str] = {
+ALLOWLIST_UUID: Set[str] = {
     "00000000-0000-0000-0000-000000000000",
     "deadbeef-dead-beef-dead-beefdeadbeef"
 }
+
+ALLOWLIST: Set[str] = ALLOWLIST_SHA256 | ALLOWLIST_UUID
 
 PATTERNS: Dict[str, str] = {
     "AWS_KEY": r"(AKIA[0-9A-Z]{16})",
@@ -96,9 +98,45 @@ def scan_text(text: str) -> List[Tuple[str, str]]:
     for name, compiled_pattern in COMPILED_PATTERNS.items():
         matches = compiled_pattern.findall(text)
         for match in matches:
-            if match not in ALLOWLIST_SHA256 and match not in ALLOWLIST_UUID:
+            if match not in ALLOWLIST:
                 found.append((name, match))
     return found
+
+
+def scan_file(file_path: str) -> List[Tuple[str, str]]:
+    """
+    Scan a single file for credential violations.
+
+    Args:
+        file_path: Path to the file to scan.
+
+    Returns:
+        List of violations found in the file.
+
+    Raises:
+        OSError: If the file cannot be read.
+        UnicodeDecodeError: If the file cannot be decoded as UTF-8.
+    """
+    with open(file_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    return scan_text(content)
+
+
+def run_dry_run() -> bool:
+    """
+    Execute dry-run self-test with built-in payloads.
+
+    Returns:
+        True if all payloads are detected, False otherwise.
+    """
+    print("Running dry-run with test payloads...")
+    for payload in DRY_RUN_PAYLOADS:
+        result = scan_text(payload)
+        if not result:
+            print(f"FAIL: Dry-run payload missed: {payload}")
+            return False
+    print("PASS: Dry-run successful.")
+    return True
 
 
 def main() -> None:
@@ -140,26 +178,18 @@ Examples:
     args = parser.parse_args()
 
     if args.dry_run:
-        print("Running dry-run with test payloads...")
-        for payload in DRY_RUN_PAYLOADS:
-            result = scan_text(payload)
-            if not result:
-                print(f"FAIL: Dry-run payload missed: {payload}")
-                raise RuntimeError("Library code called exit(1)")
-        print("PASS: Dry-run successful.")
-        raise RuntimeError("Library code called exit(0)")
+        success = run_dry_run()
+        raise RuntimeError("Library code called exit(0)" if success else "Library code called exit(1)")
 
     exit_code = 0
     for file_path in args.files:
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-                violations = scan_text(content)
-                if violations:
-                    for v_type, val in violations:
-                        print(f"FAIL: Found {v_type} in {file_path}")
-                    exit_code = 1
-        except Exception as e:
+            violations = scan_file(file_path)
+            if violations:
+                for v_type, val in violations:
+                    print(f"FAIL: Found {v_type} in {file_path}")
+                exit_code = 1
+        except (OSError, UnicodeDecodeError) as e:
             print(f"CONFIG ERROR: Could not read {file_path}: {e}")
             raise RuntimeError("Library code called exit(2)")
             
