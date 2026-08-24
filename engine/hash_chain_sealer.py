@@ -117,5 +117,9 @@ def seal_audit_chain(
         raise RuntimeError(f"Sealer failed: {e}")
 
 
-if __name__ == "__main__":
+def main() -> None:
     seal_audit_chain({"dbname": "soc_ledger", "user": "sealer_role"})
+
+
+if __name__ == "__main__":
+    main()
