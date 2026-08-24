@@ -2,8 +2,32 @@
 """
 CI Gate: Changelog Completeness Check
 
-Verifies that every commit since the last tag has a corresponding entry in CHANGELOG.md.
-This script is designed to run in CI pipelines to enforce changelog maintenance.
+This module verifies that every commit since the last Git tag has a corresponding
+entry in CHANGELOG.md. It is designed to run in CI pipelines to enforce
+changelog maintenance discipline.
+
+The script operates by:
+1. Finding the most recent Git tag (using `git describe --tags --abbrev=0`)
+2. Enumerating all commits since that tag (using `git log <tag>..HEAD`)
+3. Parsing CHANGELOG.md for commit hashes (7-12 hex characters)
+4. Reporting any commits missing from the changelog
+
+Exit codes:
+    0: All commits accounted for in CHANGELOG.md (PASS)
+    1: One or more commits missing from CHANGELOG.md (FAIL)
+    2: Configuration error - no Git tags found to compare against
+    3: Environment error - not a Git repository (no .git directory)
+
+Side effects:
+    - Reads from .git directory and CHANGELOG.md
+    - Executes git subprocesses
+    - Prints results to stdout
+    - Returns exit code for CI integration
+
+Usage:
+    python verify_changelog.py [--dry-run]
+
+    --dry-run: Validate logic without failing (returns 0 even if missing entries)
 """
 
 import os
@@ -18,9 +42,26 @@ def main() -> int:
     """
     Verify CHANGELOG.md completeness against git commit history.
 
+    Parses command-line arguments, retrieves commits since the latest tag,
+    scans CHANGELOG.md for commit hashes, and reports any missing entries.
+
+    Args:
+        None (uses sys.argv via argparse):
+            --dry-run (bool): If set, returns 0 even when commits are missing.
+                              Useful for testing CI logic without blocking pipelines.
+
     Returns:
-        int: Exit code - 0 for success, 1 for missing entries, 2 for config errors,
-             3 for environment issues (not a git repo).
+        int: Exit code indicating verification result:
+            0 = PASS (all commits have changelog entries, or --dry-run)
+            1 = FAIL (one or more commits missing from CHANGELOG.md)
+            2 = CONFIG ERROR (no Git tags found to establish baseline)
+            3 = ENV NOT AVAILABLE (not a Git repository; .git directory missing)
+
+    Side effects:
+        - Executes `git describe` and `git log` subprocesses
+        - Reads CHANGELOG.md from current working directory
+        - Prints human-readable status messages to stdout
+        - Does not modify any files
     """
     parser = argparse.ArgumentParser(description="Verify CHANGELOG completeness")
     parser.add_argument("--dry-run", action="store_true", help="Validate logic without failing")
