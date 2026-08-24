@@ -1,12 +1,9 @@
-"""Module for sealing audit chains using cryptographic hashing.
-
-This module provides functionality to process pending handoff records,
-link them into a cryptographic chain, and persist them to a PostgreSQL database.
-"""
-
 import sys
 import os
 import hashlib
+import logging
+import json
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 import psycopg2
@@ -18,6 +15,32 @@ DEFAULT_BATCH_SIZE = 10000
 GENESIS_HASH = (
     "0000000000000000000000000000000000000000000000000000000000000000"
 )
+
+logger = logging.getLogger(__name__)
+
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        log_data = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "level": record.levelname,
+            "message": record.getMessage(),
+            "module": record.module,
+            "function": record.funcName,
+            "line": record.lineno,
+        }
+        if record.exc_info:
+            log_data["exception"] = self.formatException(record.exc_info)
+        for key, value in record.__dict__.items():
+            if key not in {
+                "name", "msg", "args", "created", "filename", "funcName",
+                "levelname", "levelno", "lineno", "module", "msecs",
+                "message", "pathname", "process", "processName",
+                "relativeCreated", "thread", "threadName", "exc_info",
+                "exc_text", "stack_info"
+            }:
+                log_data[key] = value
+        return json.dumps(log_data)
 
 
 def seal_audit_chain(
@@ -45,6 +68,8 @@ def seal_audit_chain(
     cur = None
     pending_cur = None
     lock_acquired = False
+    last_seq = 0
+    pending_count = 0
     try:
         conn = psycopg2.connect(**db_config)
         cur = conn.cursor()
@@ -84,6 +109,7 @@ def seal_audit_chain(
             if not pending_rows:
                 break
 
+            pending_count = len(pending_rows)
             rows_to_insert = []
             for row_id, row_ts, payload_sha in pending_rows:
                 last_seq += 1
@@ -121,7 +147,16 @@ def seal_audit_chain(
         conn.close()
 
     except Exception as e:
-        print(f"Sealer Error: {e}", file=sys.stderr)
+        logger.error(
+            "Sealer failed",
+            extra={
+                "lock_id": lock_id,
+                "batch_size": batch_size,
+                "pending_count": pending_count,
+                "last_seq": last_seq,
+            },
+            exc_info=True,
+        )
         if conn:
             conn.rollback()
         raise RuntimeError(f"Sealer failed: {e}")
@@ -150,6 +185,13 @@ def seal_audit_chain(
 
 
 def main() -> None:
+    # Configure structured JSON logging for production observability
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(JsonFormatter())
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(handler)
+
     db_config = {}
     if dbname := os.getenv("SOC_DBNAME"):
         db_config["dbname"] = dbname
