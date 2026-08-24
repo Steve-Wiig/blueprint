@@ -10,10 +10,14 @@ import requests
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 DRAFT_CASE_ID = 'DRAFT_ID_000'
 DEFAULT_LEDGER_PATH = 'handoffs_ledger.log'
+
+
+def configure_logging() -> None:
+    """Configure logging for the application."""
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 
 def sanitize_input(data: Any) -> Dict[str, str]:
@@ -110,6 +114,8 @@ def write_to_ledger(payload_ref: str, case_id: str) -> None:
 
 def main() -> None:
     """Parses command line arguments and executes the case writeback process."""
+    configure_logging()
+    
     parser = argparse.ArgumentParser(description="SO Case Writeback Adapter")
     parser.add_argument("--url", required=True)
     parser.add_argument("--key", required=True)
