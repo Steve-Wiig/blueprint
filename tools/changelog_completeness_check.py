@@ -54,13 +54,14 @@ def main() -> int:
         print("FAIL: CHANGELOG.md missing")
         return 1
 
-    with open("CHANGELOG.md", "r") as f:
-        changelog_content: str = f.read()
-
-    # Parse changelog once: extract all commit hashes (7+ char hex) into a set for O(1) lookup
-    # Matches abbreviated commit hashes (7-12 chars) typically used in changelogs
+    # Parse changelog line-by-line to build a set of commit hashes found,
+    # avoiding loading the entire file into memory for large changelogs.
     commit_hash_pattern: Pattern[str] = re.compile(r'\b([0-9a-f]{7,12})\b')
-    changelog_hashes: set[str] = set(commit_hash_pattern.findall(changelog_content.lower()))
+    changelog_hashes: set[str] = set()
+
+    with open("CHANGELOG.md", "r") as f:
+        for line in f:
+            changelog_hashes.update(commit_hash_pattern.findall(line.lower()))
 
     missing_entries: list[str] = []
     for commit in commits:
