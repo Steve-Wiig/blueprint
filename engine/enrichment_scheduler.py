@@ -10,6 +10,9 @@ Public API (safe to import and use):
     - update_quota: Decrement quota for a provider
     - process_jobs: Process pending enrichment jobs in batches
     - sanitize: Redact sensitive fields from enrichment results
+    - JobStatus: Enum for job status values
+    - EnrichmentProvider: Abstract base class for enrichment providers
+    - MockEnrichmentProvider: Default mock implementation
 
 Script-only entrypoint:
     - main: Command-line entry point (guarded by if __name__ == "__main__")
@@ -18,9 +21,9 @@ Usage as script:
     python enrichment_scheduler.py --pg-dsn "postgresql://..." [--sqlite-path ":memory:"]
 
 Usage as library:
-    from enrichment_scheduler import get_db_connections, process_jobs
+    from enrichment_scheduler import get_db_connections, process_jobs, MockEnrichmentProvider
     pg_conn, sq_conn = get_db_connections(pg_dsn, sqlite_path)
-    process_jobs(pg_conn, sq_conn)
+    process_jobs(pg_conn, sq_conn, provider=MockEnrichmentProvider())
 """
 
 import argparse
@@ -28,12 +31,50 @@ import json
 import logging
 import sqlite3
 import warnings
-import psycopg2
+from abc import ABC, abstractmethod
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Tuple, Dict, List, Optional, Any
+
+import psycopg2
 
 
 logger = logging.getLogger(__name__)
+
+
+class JobStatus(str, Enum):
+    """Enumeration of possible job statuses."""
+    PENDING = "PENDING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class EnrichmentProvider(ABC):
+    """Abstract base class for enrichment providers.
+
+    Implementations must provide a `process` method that takes an IOC value
+    and returns a dictionary with enrichment results.
+    """
+
+    @abstractmethod
+    def process(self, ioc: str) -> Dict[str, Any]:
+        """Process an IOC and return enrichment data.
+
+        Args:
+            ioc: The indicator of compromise to enrich.
+
+        Returns:
+            A dictionary containing enrichment results.
+        """
+        pass
+
+
+class MockEnrichmentProvider(EnrichmentProvider):
+    """Default mock enrichment provider for testing and development."""
+
+    def process(self, ioc: str) -> Dict[str, Any]:
+        """Return mock enrichment data for the given IOC."""
+        return {"status": "enriched", "data": f"mock_data_for_{ioc}"}
 
 
 def sanitize(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -228,14 +269,19 @@ def _fetch_provider_data(
 
 def process_jobs(
     pg_conn: psycopg2.extensions.connection,
-    sq_conn: sqlite3.Connection
+    sq_conn: sqlite3.Connection,
+    provider: Optional[EnrichmentProvider] = None
 ) -> None:
     """Fetches pending enrichment jobs in batches and processes them if quota is available.
 
     Args:
         pg_conn: The PostgreSQL database connection.
         sq_conn: The SQLite database connection.
+        provider: An optional EnrichmentProvider instance. Defaults to MockEnrichmentProvider.
     """
+    if provider is None:
+        provider = MockEnrichmentProvider()
+
     BATCH_SIZE = 1000
     last_id = 0
     quota_cache: Dict[str, int] = {}
@@ -244,15 +290,15 @@ def process_jobs(
     while True:
         pg_cur = pg_conn.cursor()
         pg_cur.execute(
-            "SELECT id, ioc_value, provider FROM enrichment_jobs WHERE status = 'PENDING' AND id > %s ORDER BY id LIMIT %s",
-            (last_id, BATCH_SIZE)
+            "SELECT id, ioc_value, provider FROM enrichment_jobs WHERE status = %s AND id > %s ORDER BY id LIMIT %s",
+            (JobStatus.PENDING.value, last_id, BATCH_SIZE)
         )
         jobs = pg_cur.fetchall()
         if not jobs:
             break
 
         # Collect unique providers in this batch that are not yet cached
-        providers_in_batch = {provider for _, _, provider in jobs}
+        providers_in_batch = {provider_name for _, _, provider_name in jobs}
         providers_needed = [p for p in providers_in_batch if p not in quota_cache]
         if providers_needed:
             quota_dict, cost_dict = _fetch_provider_data(sq_conn, providers_needed)
@@ -260,16 +306,16 @@ def process_jobs(
             cost_cache.update(cost_dict)
 
         try:
-            for job_id, ioc, provider in jobs:
+            for job_id, ioc, provider_name in jobs:
                 last_id = job_id  # advance pagination marker
-                quota = quota_cache.get(provider, 0)
-                cost = cost_cache.get(provider, 1)
+                quota = quota_cache.get(provider_name, 0)
+                cost = cost_cache.get(provider_name, 1)
 
                 if quota < cost:
                     continue  # Not enough quota; skip this job.
 
-                # Mock enrichment logic
-                result = {"status": "enriched", "data": f"mock_data_for_{ioc}"}
+                # Use injected enrichment provider
+                result = provider.process(ioc)
                 sanitized_result = sanitize(result)
                 result_json = json.dumps(sanitized_result)
                 processed_at = datetime.now(timezone.utc)
@@ -277,16 +323,16 @@ def process_jobs(
                 # Append-only audit log before updating job status
                 pg_cur.execute(
                     "INSERT INTO enrichment_audit_log (job_id, status, result, processed_at) VALUES (%s, %s, %s, %s)",
-                    (job_id, 'COMPLETED', result_json, processed_at)
+                    (job_id, JobStatus.COMPLETED.value, result_json, processed_at)
                 )
                 pg_cur.execute(
-                    "UPDATE enrichment_jobs SET status = 'COMPLETED', result = %s WHERE id = %s",
-                    (result_json, job_id)
+                    "UPDATE enrichment_jobs SET status = %s, result = %s WHERE id = %s",
+                    (JobStatus.COMPLETED.value, result_json, job_id)
                 )
-                update_quota(sq_conn, provider, cost)
+                update_quota(sq_conn, provider_name, cost)
 
                 # Update in‑memory cache to reflect the consumed quota.
-                quota_cache[provider] = quota - cost
+                quota_cache[provider_name] = quota - cost
 
             # Commit the whole batch at once
             pg_conn.commit()
