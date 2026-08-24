@@ -56,7 +56,7 @@ def archive_partition(conn: PgConnection, partition_name: str) -> None:
         archive_dir.mkdir(parents=True, exist_ok=True)
         output_file = archive_dir / f"{partition_name}.jsonl.zst"
 
-        query = f"SELECT row_to_json(t) FROM {partition_name} t;"
+        query = f"COPY (SELECT * FROM {partition_name}) TO STDOUT WITH (FORMAT JSON);"
         
         with open(output_file, 'wb') as f:
             psql_cmd = ["psql", "-t", "-c", query]
