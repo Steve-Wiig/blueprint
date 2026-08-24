@@ -10,6 +10,12 @@ from typing import Dict, Any, List, Optional
 
 _DEFAULTS_CACHE: Optional[Dict[str, Any]] = None
 
+EXIT_SUCCESS: int = 0
+EXIT_VALIDATION_FAILED: int = 1
+EXIT_CONFIG_NOT_FOUND: int = 2
+EXIT_ENV_NOT_SET: int = 3
+
+
 def _load_defaults_config() -> Dict[str, Any]:
     global _DEFAULTS_CACHE
     if _DEFAULTS_CACHE is not None:
@@ -26,6 +32,7 @@ def _load_defaults_config() -> Dict[str, Any]:
     _DEFAULTS_CACHE = {}
     return _DEFAULTS_CACHE
 
+
 def _get_required_partitions() -> List[str]:
     env_val = os.environ.get("SLM_REQUIRED_PARTITIONS")
     if env_val:
@@ -36,6 +43,7 @@ def _get_required_partitions() -> List[str]:
         return defaults["required_partitions"]
     
     return ["alerts", "threat_intel", "audit_logs"]
+
 
 def _get_max_shard_size_gb() -> int:
     env_val = os.environ.get("SLM_MAX_SHARD_SIZE_GB")
@@ -54,6 +62,7 @@ def _get_max_shard_size_gb() -> int:
     
     return 16
 
+
 def _get_index_schema_version() -> str:
     env_val = os.environ.get("SLM_INDEX_SCHEMA_VERSION")
     if env_val:
@@ -65,17 +74,21 @@ def _get_index_schema_version() -> str:
     
     return "11.6.0"
 
+
 REQUIRED_PARTITIONS: List[str] = _get_required_partitions()
 MAX_SHARD_SIZE_GB: int = _get_max_shard_size_gb()
 INDEX_SCHEMA_VERSION: str = _get_index_schema_version()
+
 
 class PartitionSettings(Dict[str, Any]):
     max_shard_gb: int
     indexing_enabled: bool
 
+
 class PartitionConfig(Dict[str, Any]):
     version: str
     partitions: Dict[str, PartitionSettings]
+
 
 def validate_partition_config(config_path: str, dry_run: bool = False) -> int:
     """
@@ -106,41 +119,42 @@ def validate_partition_config(config_path: str, dry_run: bool = False) -> int:
     """
     if not os.path.exists(config_path):
         print(f"CONFIG ERROR: Partition config not found at {config_path}")
-        return 2
+        return EXIT_CONFIG_NOT_FOUND
 
     try:
         with open(config_path, 'r') as f:
             config: PartitionConfig = json.load(f)
     except json.JSONDecodeError:
         print("FAIL: Invalid JSON format in partition config")
-        return 1
+        return EXIT_VALIDATION_FAILED
 
     # Verify required partitions exist
     for p in REQUIRED_PARTITIONS:
         if p not in config.get("partitions", {}):
             print(f"FAIL: Missing required partition: {p}")
-            return 1
+            return EXIT_VALIDATION_FAILED
 
     # Verify schema version
     if config.get("version") != INDEX_SCHEMA_VERSION:
         print(f"FAIL: Schema version mismatch. Expected {INDEX_SCHEMA_VERSION}")
-        return 1
+        return EXIT_VALIDATION_FAILED
 
     # Verify shard constraints
     for name, settings in config.get("partitions", {}).items():
         shard_size: int = settings.get("max_shard_gb", 0)
         if shard_size > MAX_SHARD_SIZE_GB:
             print(f"FAIL: Partition {name} exceeds max shard size of {MAX_SHARD_SIZE_GB}GB")
-            return 1
+            return EXIT_VALIDATION_FAILED
         
         if not settings.get("indexing_enabled", False):
             print(f"FAIL: Indexing disabled for partition {name}")
-            return 1
+            return EXIT_VALIDATION_FAILED
 
     if dry_run:
         print("DRY-RUN: Configuration validation passed.")
     
-    return 0
+    return EXIT_SUCCESS
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Vector Partition Index Check")
@@ -150,9 +164,10 @@ def main() -> int:
 
     if "SLM_ENV" not in os.environ:
         print("ENV_NOT_AVAILABLE: SLM_ENV not set")
-        return 3
+        return EXIT_ENV_NOT_SET
 
     return validate_partition_config(args.config, args.dry_run)
+
 
 if __name__ == "__main__":
     sys.exit(main())
