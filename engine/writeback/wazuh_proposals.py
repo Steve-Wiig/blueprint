@@ -9,7 +9,7 @@ import sqlite3
 import sys
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 # LOCAL-SOC-SLM Blueprint v11.6.0 - Wazuh Proposal Adapter
 # Appendix Q.3: Writeback Isolation Layer
@@ -20,7 +20,7 @@ def init_db() -> None:
     """Initializes the SQLite database and creates the proposals table if it does not exist.
 
     Raises:
-        SystemExit: If database initialization fails.
+        RuntimeError: If database initialization fails.
     """
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -28,6 +28,10 @@ def init_db() -> None:
         cursor.execute('''CREATE TABLE IF NOT EXISTS proposals 
                           (id INTEGER PRIMARY KEY, key TEXT, value TEXT, 
                            status TEXT, created_at TIMESTAMP)''')
+        cursor.execute('''CREATE INDEX IF NOT EXISTS idx_proposals_key 
+                          ON proposals(key)''')
+        cursor.execute('''CREATE INDEX IF NOT EXISTS idx_proposals_status 
+                          ON proposals(status)''')
         conn.commit()
         conn.close()
     except Exception:
@@ -50,7 +54,7 @@ def main() -> None:
     """Parses command line arguments and processes the proposal writeback.
 
     Raises:
-        SystemExit: If validation fails, database operations fail, or directory is missing.
+        RuntimeError: If validation fails, database operations fail, or directory is missing.
     """
     parser = argparse.ArgumentParser(description="Wazuh CDB Proposal Adapter")
     parser.add_argument("--key", required=True, help="CDB Key")
@@ -68,7 +72,7 @@ def main() -> None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute("INSERT INTO proposals (key, value, status, created_at) VALUES (?, ?, ?, ?)",
-                       (args.key, args.value, 'PENDING', datetime.now()))
+                       (args.key, args.value, 'PENDING', datetime.now(timezone.utc)))
         conn.commit()
         conn.close()
         raise RuntimeError(f"Library code called exit(0)")
