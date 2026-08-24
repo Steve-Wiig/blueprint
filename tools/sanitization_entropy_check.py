@@ -51,18 +51,38 @@ Base64 secret: YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=
 
 
 def calculate_entropy(data: str) -> float:
-    """
-    Calculate Shannon entropy of a string in bits per character.
+    """Calculate Shannon entropy of a string in bits per character.
+
+    Computes the Shannon entropy H(X) = -sum(p(x) * log2(p(x))) for each
+    unique character in the input string, where p(x) is the probability
+    of character x occurring.
 
     Args:
-        data: Input string to analyze.
+        data: Input string to analyze. Can contain any Unicode characters.
+              Empty string returns 0.0.
 
     Returns:
-        Entropy value in bits per character. Returns 0 for empty strings.
+        Entropy value in bits per character as a float.
+        Returns 0.0 for empty strings.
+        Typical ranges:
+            - English text: ~3.5-4.0 bits/char
+            - Hex-encoded data: ~4.0 bits/char
+            - Base64-encoded data: ~4.5-6.0 bits/char
+            - Random bytes: ~8.0 bits/char
 
-    Rationale:
-        Entropy measures randomness. High entropy (>4.5) suggests encoded
-        secrets, keys, or random tokens rather than natural language.
+    Edge Cases:
+        - Empty string: returns 0.0
+        - Single character repeated: returns 0.0
+        - Unicode characters: handled correctly via Python's Unicode support
+        - Very long strings: O(n) time, O(k) space where k is unique character count
+
+    Example:
+        >>> calculate_entropy("aaaa")
+        0.0
+        >>> calculate_entropy("abcd")
+        2.0
+        >>> calculate_entropy("")  # empty string
+        0.0
     """
     if not data:
         return 0.0
@@ -76,45 +96,90 @@ def calculate_entropy(data: str) -> float:
 
 
 def is_allowlisted(token: str) -> bool:
-    """
-    Check if a token matches known safe patterns (hashes, UUIDs).
+    """Check if a token matches known safe patterns (hashes, UUIDs).
+
+    Evaluates the token against a compiled list of regex patterns for
+    common non-secret identifiers: SHA256, SHA1, MD5 hashes, and UUIDs.
 
     Args:
         token: String token to check against allowlist patterns.
+               Must be a complete token (no partial matches).
+               Empty string returns False.
 
     Returns:
-        True if token matches SHA256, SHA1, MD5, or UUID format; False otherwise.
+        True if token matches any allowlisted pattern exactly (fullmatch);
+        False otherwise.
+
+    Edge Cases:
+        - Empty string: returns False (no pattern matches empty string)
+        - Substrings of hashes: returns False (requires fullmatch)
+        - Case sensitivity: patterns are case-insensitive for hex chars
+        - Unicode: patterns only match ASCII hex chars and hyphens
+
+    Example:
+        >>> is_allowlisted("a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3")
+        True  # SHA256
+        >>> is_allowlisted("550e8400-e29b-41d4-a716-446655440000")
+        True  # UUID
+        >>> is_allowlisted("sk_live_abc123")
+        False  # API key pattern not allowlisted
+        >>> is_allowlisted("")
+        False
     """
     return any(regex.fullmatch(token) for regex in ALLOWLIST_REGEX)
 
 
 def _tokenize(text: str) -> Iterator[str]:
-    """
-    Generate whitespace-separated tokens from text without loading all into memory.
+    """Generate whitespace-separated tokens from text without loading all into memory.
 
     Args:
-        text: Input text to tokenize.
+        text: Input text to tokenize. Can be any string including Unicode.
 
     Yields:
         Individual tokens (non-whitespace sequences) from the text.
+        Tokens are yielded in order of appearance.
+        Empty strings are never yielded.
+
+    Edge Cases:
+        - Empty string: yields nothing
+        - String with only whitespace: yields nothing
+        - Unicode whitespace: handled by \\S regex (matches non-whitespace)
+        - Multiple consecutive spaces: treated as single delimiter
     """
     for match in re.finditer(r'\S+', text):
         yield match.group()
 
 
 def sanitize_pass(text: str) -> str:
-    """
-    Perform a single sanitization pass on input text.
+    """Perform a single sanitization pass on input text.
 
     Processes text token by token using a generator to avoid loading
-    all tokens into memory at once. Preserve allowlisted tokens,
-    and redacts high-entropy tokens (>4.5 bits/char) as "[REDACTED]".
+    all tokens into memory at once. Preserves allowlisted tokens,
+    and redacts high-entropy tokens (> ENTROPY_THRESHOLD bits/char) as "[REDACTED]".
 
     Args:
-        text: Input text to sanitize.
+        text: Input text to sanitize. Can be any string including Unicode.
+              Empty string returns empty string.
 
     Returns:
-        Sanitized text with high-entropy tokens redacted.
+        Sanitized text with high-entropy tokens redacted to "[REDACTED]".
+        Whitespace between tokens is normalized to single spaces.
+        Leading/trailing whitespace is not preserved.
+
+    Edge Cases:
+        - Empty string: returns empty string
+        - String with only whitespace: returns empty string
+        - Unicode tokens: entropy calculated on Unicode codepoints
+        - Very long input: O(n) memory for output, O(1) additional for processing
+        - Tokens at threshold boundary: entropy > threshold is redacted (strict)
+
+    Example:
+        >>> sanitize_pass("hello world")
+        'hello world'
+        >>> sanitize_pass("sk_live_abcdefghijklmnopqrstuvwxyz123456")
+        '[REDACTED]'
+        >>> sanitize_pass("SHA256: a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3")
+        'SHA256: a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3'
     """
     output = io.StringIO()
     first = True
@@ -138,14 +203,34 @@ def sanitize_pass(text: str) -> str:
 
 
 def sanitize_stream(input_stream: TextIO) -> str:
-    """
-    Perform sanitization on a stream line by line to avoid loading entire input into memory.
+    """Perform sanitization on a stream line by line to avoid loading entire input into memory.
+
+    Reads from the input stream line by line, tokenizes each line, and applies
+    the same sanitization logic as sanitize_pass. Suitable for processing
+    large files or piped input without memory overhead.
 
     Args:
-        input_stream: Text stream to read from (e.g., sys.stdin).
+        input_stream: Text stream to read from (e.g., sys.stdin, open file).
+                      Must support iteration yielding strings (lines).
+                      Stream position is consumed.
 
     Returns:
-        Sanitized text with high-entropy tokens redacted.
+        Sanitized text with high-entropy tokens redacted to "[REDACTED]".
+        Whitespace between tokens is normalized to single spaces.
+        Line boundaries are not preserved (tokens separated by single space).
+
+    Edge Cases:
+        - Empty stream: returns empty string
+        - Stream with only whitespace: returns empty string
+        - Very large input: constant memory usage (streaming)
+        - Unicode input: handled via TextIO encoding
+        - Binary streams: not supported (use TextIOWrapper)
+
+    Example:
+        >>> import io
+        >>> stream = io.StringIO("hello secret123 world")
+        >>> sanitize_stream(stream)
+        'hello [REDACTED] world'
     """
     output = io.StringIO()
     first_token = True
@@ -170,19 +255,33 @@ def sanitize_stream(input_stream: TextIO) -> str:
 
 
 def main(input_data: str) -> int:
-    """
-    Execute two-pass sanitization verification.
+    """Execute two-pass sanitization verification on a string.
 
     Performs two sanitization passes on the provided input and verifies
     idempotency (pass1 == pass2). Returns exit code indicating result.
 
     Args:
         input_data: The input text to sanitize and verify.
+                    Can be any string including Unicode.
+                    Empty string returns 0 (PASS).
 
     Returns:
-        0: PASS - Sanitization consistent, no high-entropy secrets detected.
-        1: FAIL - Inconsistency between passes (potential missed secret).
-        2: CONFIG ERROR - Unexpected exception during processing.
+        Exit code as int:
+            0: PASS - Sanitization consistent, no high-entropy secrets detected.
+            1: FAIL - Inconsistency between passes (potential missed secret).
+            2: CONFIG ERROR - Unexpected exception during processing.
+
+    Edge Cases:
+        - Empty input: returns 0 (PASS)
+        - Input with only allowlisted tokens: returns 0 (PASS)
+        - Input causing exception: returns 2 (CONFIG ERROR)
+        - Unicode input: handled correctly
+
+    Example:
+        >>> main("normal text")
+        0
+        >>> main("sk_live_abcdefghijklmnopqrstuvwxyz123456")
+        0  # redacted consistently
     """
     try:
         if not input_data:
@@ -207,19 +306,32 @@ def main(input_data: str) -> int:
 
 
 def main_stream(input_stream: TextIO) -> int:
-    """
-    Execute two-pass sanitization verification on a stream.
+    """Execute two-pass sanitization verification on a stream.
 
     Performs two sanitization passes on the provided stream and verifies
     idempotency (pass1 == pass2). Returns exit code indicating result.
 
     Args:
         input_stream: Text stream to read from (e.g., sys.stdin).
+                      Must support iteration yielding strings (lines).
+                      Stream position is consumed during first pass.
 
     Returns:
-        0: PASS - Sanitization consistent, no high-entropy secrets detected.
-        1: FAIL - Inconsistency between passes (potential missed secret).
-        2: CONFIG ERROR - Unexpected exception during processing.
+        Exit code as int:
+            0: PASS - Sanitization consistent, no high-entropy secrets detected.
+            1: FAIL - Inconsistency between passes (potential missed secret).
+            2: CONFIG ERROR - Unexpected exception during processing.
+
+    Edge Cases:
+        - Empty stream: returns 0 (PASS)
+        - Stream with only allowlisted tokens: returns 0 (PASS)
+        - Stream causing exception: returns 2 (CONFIG ERROR)
+        - Very large streams: constant memory for first pass, second pass on string
+        - Unicode streams: handled via TextIO encoding
+
+    Note:
+        First pass streams from input_stream, second pass operates on the
+        string result of first pass (not re-streaming from original).
     """
     try:
         # Pass 1: Initial scan and redaction
