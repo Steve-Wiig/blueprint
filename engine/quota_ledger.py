@@ -2,29 +2,44 @@
 
 import sqlite3
 import argparse
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 DB_PATH = "quota_ledger.db"
 
+
+@contextmanager
+def get_db_connection():
+    """Context manager for database connections with automatic commit/rollback."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        yield conn
+        conn.commit()
+    except sqlite3.Error:
+        conn.rollback()
+        raise RuntimeError("Library code called exit(1)")
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     """Initializes the quota ledger database and creates the table if it does not exist."""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS quota_ledger (
-                adapter_id TEXT PRIMARY KEY,
-                daily_limit INTEGER NOT NULL CHECK (daily_limit > 0),
-                job_limit INTEGER NOT NULL CHECK (job_limit > 0),
-                tokens_used_today INTEGER DEFAULT 0,
-                last_reset_date TEXT
-            )
-        ''')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_last_reset ON quota_ledger(last_reset_date)')
-        conn.commit()
-        conn.close()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS quota_ledger (
+                    adapter_id TEXT PRIMARY KEY,
+                    daily_limit INTEGER NOT NULL CHECK (daily_limit > 0),
+                    job_limit INTEGER NOT NULL CHECK (job_limit > 0),
+                    tokens_used_today INTEGER DEFAULT 0,
+                    last_reset_date TEXT
+                )
+            ''')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_last_reset ON quota_ledger(last_reset_date)')
     except sqlite3.Error:
-        raise RuntimeError(f"Library code called exit(2)")
+        raise RuntimeError("Library code called exit(2)")
+
 
 def check_quota(adapter_id: str, estimated_tokens: int) -> bool:
     """Checks if an adapter has sufficient quota for a given token usage.
@@ -37,26 +52,29 @@ def check_quota(adapter_id: str, estimated_tokens: int) -> bool:
         True if the usage is within limits, False otherwise.
     """
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-        
-        cursor.execute("SELECT daily_limit, job_limit, tokens_used_today, last_reset_date FROM quota_ledger WHERE adapter_id = ?", (adapter_id,))
-        row = cursor.fetchone()
-        conn.close()
-        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+
+            cursor.execute(
+                "SELECT daily_limit, job_limit, tokens_used_today, last_reset_date FROM quota_ledger WHERE adapter_id = ?",
+                (adapter_id,)
+            )
+            row = cursor.fetchone()
+
         if not row:
             return False
-            
+
         daily_limit, job_limit, used, last_reset = row
         if last_reset != today:
             used = 0
-            
+
         if (used + estimated_tokens) > daily_limit or estimated_tokens > job_limit:
             return False
         return True
     except sqlite3.Error:
-        raise RuntimeError(f"Library code called exit(1)")
+        raise RuntimeError("Library code called exit(1)")
+
 
 def record_usage(adapter_id: str, tokens_used: int) -> None:
     """Records token usage for a specific adapter in the database.
@@ -66,21 +84,26 @@ def record_usage(adapter_id: str, tokens_used: int) -> None:
         tokens_used: The number of tokens to record.
     """
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-        
-        cursor.execute("SELECT tokens_used_today, last_reset_date FROM quota_ledger WHERE adapter_id = ?", (adapter_id,))
-        row = cursor.fetchone()
-        
-        if row:
-            used, last_reset = row
-            new_used = (used + tokens_used) if last_reset == today else tokens_used
-            cursor.execute("UPDATE quota_ledger SET tokens_used_today = ?, last_reset_date = ? WHERE adapter_id = ?", (new_used, today, adapter_id))
-        conn.commit()
-        conn.close()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+
+            cursor.execute(
+                "SELECT tokens_used_today, last_reset_date FROM quota_ledger WHERE adapter_id = ?",
+                (adapter_id,)
+            )
+            row = cursor.fetchone()
+
+            if row:
+                used, last_reset = row
+                new_used = (used + tokens_used) if last_reset == today else tokens_used
+                cursor.execute(
+                    "UPDATE quota_ledger SET tokens_used_today = ?, last_reset_date = ? WHERE adapter_id = ?",
+                    (new_used, today, adapter_id)
+                )
     except sqlite3.Error:
-        raise RuntimeError(f"Library code called exit(1)")
+        raise RuntimeError("Library code called exit(1)")
+
 
 def main() -> None:
     """Parses command line arguments and executes the requested quota management operation."""
@@ -92,17 +115,18 @@ def main() -> None:
 
     if args.init:
         init_db()
-        raise RuntimeError(f"Library code called exit(0)")
+        raise RuntimeError("Library code called exit(0)")
     elif args.check:
         if check_quota(args.check[0], int(args.check[1])):
-            raise RuntimeError(f"Library code called exit(0)")
+            raise RuntimeError("Library code called exit(0)")
         else:
-            raise RuntimeError(f"Library code called exit(1)")
+            raise RuntimeError("Library code called exit(1)")
     elif args.record:
         record_usage(args.record[0], int(args.record[1]))
-        raise RuntimeError(f"Library code called exit(0)")
+        raise RuntimeError("Library code called exit(0)")
     else:
-        raise RuntimeError(f"Library code called exit(2)")
+        raise RuntimeError("Library code called exit(2)")
+
 
 if __name__ == "__main__":
     main()
