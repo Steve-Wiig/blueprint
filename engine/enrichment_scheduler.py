@@ -6,6 +6,7 @@ The public API is restricted to the `main` function via __all__.
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import sqlite3
@@ -283,6 +284,9 @@ def process_jobs(
 ) -> None:
     """Fetches pending enrichment jobs in batches and processes them if quota is available.
 
+    Each job attempt (success or failure) is recorded in an append-only audit log with
+    job_id, provider, ioc_hash, quota_cost, status, timestamp, and error_message.
+
     Args:
         pg_conn: The PostgreSQL database connection.
         sq_conn: The SQLite database connection.
@@ -317,42 +321,71 @@ def process_jobs(
                 quota_cache.update(quota_dict)
                 cost_cache.update(cost_dict)
 
-            try:
-                for job_id, ioc, provider_name in jobs:
-                    last_id = job_id  # advance pagination marker
-                    quota = quota_cache.get(provider_name, 0)
-                    cost = cost_cache.get(provider_name, 1)
+            for job_id, ioc, provider_name in jobs:
+                last_id = job_id  # advance pagination marker
+                quota = quota_cache.get(provider_name, 0)
+                cost = cost_cache.get(provider_name, 1)
 
+                # Compute IOC hash for audit trail
+                ioc_hash = hashlib.sha256(ioc.encode()).hexdigest()
+                processed_at = datetime.now(timezone.utc)
+                error_message = None
+                status = JobStatus.FAILED.value
+                result_json = None
+
+                try:
                     if quota < cost:
-                        continue  # Not enough quota; skip this job.
+                        error_message = "Insufficient quota"
+                        # Append-only audit log for quota exhaustion
+                        pg_cur.execute(
+                            "INSERT INTO enrichment_audit_log (job_id, provider, ioc_hash, quota_cost, status, timestamp, error_message) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                            (job_id, provider_name, ioc_hash, cost, JobStatus.FAILED.value, processed_at, error_message)
+                        )
+                        pg_cur.execute(
+                            "UPDATE enrichment_jobs SET status = %s WHERE id = %s",
+                            (JobStatus.FAILED.value, job_id)
+                        )
+                        pg_conn.commit()
+                        sq_conn.commit()
+                        continue
 
                     # Use injected enrichment provider
                     result = provider.process(ioc)
                     sanitized_result = sanitize(result)
                     result_json = json.dumps(sanitized_result)
-                    processed_at = datetime.now(timezone.utc)
+                    status = JobStatus.COMPLETED.value
 
-                    # Append-only audit log before updating job status
+                    # Append-only audit log for successful completion
                     pg_cur.execute(
-                        "INSERT INTO enrichment_audit_log (job_id, status, result, processed_at) VALUES (%s, %s, %s, %s)",
-                        (job_id, JobStatus.COMPLETED.value, result_json, processed_at)
+                        "INSERT INTO enrichment_audit_log (job_id, provider, ioc_hash, quota_cost, status, timestamp, error_message, result) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                        (job_id, provider_name, ioc_hash, cost, status, processed_at, error_message, result_json)
                     )
                     pg_cur.execute(
                         "UPDATE enrichment_jobs SET status = %s, result = %s WHERE id = %s",
-                        (JobStatus.COMPLETED.value, result_json, job_id)
+                        (status, result_json, job_id)
                     )
                     update_quota(sq_conn, provider_name, cost, sq_cur)
 
                     # Update in‑memory cache to reflect the consumed quota.
                     quota_cache[provider_name] = quota - cost
 
-                # Commit the whole batch at once
+                except Exception as e:
+                    error_message = str(e)
+                    status = JobStatus.FAILED.value
+                    # Append-only audit log for processing failure
+                    pg_cur.execute(
+                        "INSERT INTO enrichment_audit_log (job_id, provider, ioc_hash, quota_cost, status, timestamp, error_message) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                        (job_id, provider_name, ioc_hash, cost, status, processed_at, error_message)
+                    )
+                    pg_cur.execute(
+                        "UPDATE enrichment_jobs SET status = %s WHERE id = %s",
+                        (status, job_id)
+                    )
+
+                # Commit each job's audit record and status update immediately for durability
                 pg_conn.commit()
                 sq_conn.commit()
-            except Exception as e:
-                pg_conn.rollback()
-                sq_conn.rollback()
-                raise RuntimeError("Failed to process enrichment job") from e
+
     finally:
         sq_cur.close()
 
@@ -361,9 +394,9 @@ def main() -> None:
     """Parses command line arguments and initiates the job processing workflow.
 
     This function is the entry point when the module is executed as a script.
-    It is not intended to be called when importing this module as a library.
+    It is not intended to be called when imported as a library.
     """
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Process enrichment jobs.")
     parser.add_argument("--pg-dsn", required=True, help="PostgreSQL DSN")
     parser.add_argument("--sqlite-path", default=":memory:", help="SQLite database path")
     args = parser.parse_args()
@@ -376,5 +409,5 @@ def main() -> None:
         sq_conn.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
