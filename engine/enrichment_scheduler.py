@@ -107,7 +107,7 @@ def _fetch_provider_data(
     sq_conn: sqlite3.Connection,
     providers: List[str]
 ) -> Tuple[Dict[str, int], Dict[str, int]]:
-    """Fetches quota and cost for multiple providers in bulk.
+    """Fetches quota and cost for multiple providers in bulk using a single JOIN query.
 
     Args:
         sq_conn: The SQLite database connection.
@@ -123,16 +123,20 @@ def _fetch_provider_data(
     cursor = sq_conn.cursor()
 
     cursor.execute(
-        f"SELECT provider, remaining FROM quota_ledger WHERE provider IN ({placeholders})",
+        f"""
+        SELECT q.provider, q.remaining, c.cost
+        FROM quota_ledger q
+        LEFT JOIN provider_costs c ON q.provider = c.provider
+        WHERE q.provider IN ({placeholders})
+        """,
         providers
     )
-    quota_dict = {row[0]: row[1] for row in cursor.fetchall()}
-
-    cursor.execute(
-        f"SELECT provider, cost FROM provider_costs WHERE provider IN ({placeholders})",
-        providers
-    )
-    cost_dict = {row[0]: row[1] for row in cursor.fetchall()}
+    quota_dict: Dict[str, int] = {}
+    cost_dict: Dict[str, int] = {}
+    for row in cursor.fetchall():
+        provider, remaining, cost = row
+        quota_dict[provider] = remaining
+        cost_dict[provider] = cost if cost is not None else 1
 
     return quota_dict, cost_dict
 
