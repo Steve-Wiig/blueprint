@@ -17,6 +17,8 @@ from typing import NoReturn
 
 DB_PATH: str = os.environ.get("WAZUH_PROPOSALS_DB", "/var/lib/wazuh-slm/proposals.db")
 
+_db_initialized: bool = False
+
 
 class ProposalError(Exception):
     """Base exception for proposal adapter errors."""
@@ -55,6 +57,9 @@ def init_db() -> None:
     Raises:
         ProposalStorageError: If database initialization fails.
     """
+    global _db_initialized
+    if _db_initialized:
+        return
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -96,6 +101,7 @@ def init_db() -> None:
         
         conn.commit()
         conn.close()
+        _db_initialized = True
     except sqlite3.Error as e:
         raise ProposalStorageError(f"Database initialization failed: {e}")
 
