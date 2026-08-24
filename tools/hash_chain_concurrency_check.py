@@ -47,6 +47,8 @@ class HashChainLedger:
             1-based index of the new hash.
         """
         with self.lock:
+            # Simulate lock acquisition overhead
+            time.sleep(random.uniform(MIN_LOCK_ACQUISITION_MS / 1000, MIN_LOCK_ACQUISITION_MS * 2 / 1000))
             # Simulate I/O latency for ledger write
             time.sleep(random.uniform(MIN_IO_LATENCY_MS / 1000, MAX_IO_LATENCY_MS / 1000))
             self.chain.append(hash_val)
