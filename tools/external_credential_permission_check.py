@@ -97,6 +97,18 @@ class MockResponse:
         self.status_code: int = status_code
 
 
+def get_mock_response(status_code: int) -> MockResponse:
+    """Return a mock HTTP response with the given status code.
+
+    Args:
+        status_code: HTTP status code for the mock response.
+
+    Returns:
+        A MockResponse instance with the specified status code.
+    """
+    return MockResponse(status_code)
+
+
 def check_service(service: str, cfg: dict, lab_url: str, dry_run: bool = False) -> bool:
     """
     Verify credential permissions for a single service.
@@ -131,8 +143,8 @@ def check_service(service: str, cfg: dict, lab_url: str, dry_run: bool = False) 
 
     try:
         if dry_run:
-            read_resp = MockResponse(200)
-            forbidden_resp = MockResponse(403)
+            read_resp = get_mock_response(200)
+            forbidden_resp = get_mock_response(403)
         else:
             read_resp = requests.get(read_url, auth=auth, timeout=10, verify=False)
             forbidden_resp = requests.request(cfg["forbidden_method"], forbidden_url, auth=auth, timeout=10, verify=False)
