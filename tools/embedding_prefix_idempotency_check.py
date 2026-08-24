@@ -59,4 +59,6 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", help="Run with test/mock data")
     args = parser.parse_args()
     
-    sys.exit(main())
+    exit_code = main()
+    if exit_code != 0:
+        raise RuntimeError(f"CI check failed with exit code {exit_code}")
