@@ -1,7 +1,7 @@
 import re
 import argparse
 import sys
-from typing import Dict, Pattern, Tuple
+from typing import Dict, Pattern, TypedDict
 from enum import IntEnum
 
 class CheckResult(IntEnum):
@@ -10,18 +10,22 @@ class CheckResult(IntEnum):
     PAYLOAD_MISSING = 2
     INTERNAL_ERROR = 3
 
-PATTERNS: Dict[str, Tuple[str, bool]] = {
-    "aws_key": (r"\b(AKIA[0-9A-Z]{16})\b", False),
-    "github_token": (r"\b(ghp_[a-zA-Z0-9]{36})\b", False),
-    "jwt_token": (r"\b(eyJ[a-zA-Z0-9_-]{16,}\.[a-zA-Z0-9_-]{16,}\.[a-zA-Z0-9_-]{16,})\b", False),
-    "ssh_key": (r"(-----BEGIN[ A-Z0-9]+PRIVATE KEY-----)", False),
-    "slack_token": (r"\b(xox[baprs]-[0-9a-zA-Z]{10,48})\b", False),
-    "auth_header": (r"(?i)(Authorization:\s+(?:Bearer|Basic|Token)\s+)([a-zA-Z0-9\._\-\+/=]+)", True),
-    "api_key_query": (r"(?i)(api_key=)([a-zA-Z0-9]{20,})", True),
-    "password_query": (r"(?i)(password=)([^&\s]{8,})", True)
+class PatternConfig(TypedDict):
+    pattern: str
+    redaction_type: str
+
+PATTERNS: Dict[str, PatternConfig] = {
+    "aws_key": {"pattern": r"\b(AKIA[0-9A-Z]{16})\b", "redaction_type": "full"},
+    "github_token": {"pattern": r"\b(ghp_[a-zA-Z0-9]{36})\b", "redaction_type": "full"},
+    "jwt_token": {"pattern": r"\b(eyJ[a-zA-Z0-9_-]{16,}\.[a-zA-Z0-9_-]{16,}\.[a-zA-Z0-9_-]{16,})\b", "redaction_type": "full"},
+    "ssh_key": {"pattern": r"(-----BEGIN[ A-Z0-9]+PRIVATE KEY-----)", "redaction_type": "full"},
+    "slack_token": {"pattern": r"\b(xox[baprs]-[0-9a-zA-Z]{10,48})\b", "redaction_type": "full"},
+    "auth_header": {"pattern": r"(?i)(Authorization:\s+(?:Bearer|Basic|Token)\s+)([a-zA-Z0-9\._\-\+/=]+)", "redaction_type": "group"},
+    "api_key_query": {"pattern": r"(?i)(api_key=)([a-zA-Z0-9]{20,})", "redaction_type": "group"},
+    "password_query": {"pattern": r"(?i)(password=)([^&\s]{8,})", "redaction_type": "group"}
 }
 
-COMPILED_PATTERNS: Dict[str, Pattern[str]] = {k: re.compile(v[0]) for k, v in PATTERNS.items()}
+COMPILED_PATTERNS: Dict[str, Pattern[str]] = {k: re.compile(v["pattern"]) for k, v in PATTERNS.items()}
 
 TEST_PAYLOADS: Dict[str, str] = {
     "aws_key": "Access key is AKIAIOSFODNN7EXAMPLE",
@@ -37,8 +41,8 @@ TEST_PAYLOADS: Dict[str, str] = {
 def redact(pattern_key: str, text: str) -> str:
     """Redact sensitive pattern in text, preserving prefix for query/header patterns."""
     pattern = COMPILED_PATTERNS[pattern_key]
-    preserve_prefix = PATTERNS[pattern_key][1]
-    if preserve_prefix:
+    redaction_type = PATTERNS[pattern_key]["redaction_type"]
+    if redaction_type == "group":
         return pattern.sub(r"\1[REDACTED]", text)
     return pattern.sub("[REDACTED]", text)
 
