@@ -6,12 +6,35 @@ import os
 import sys
 import argparse
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+
+_DEFAULTS_CACHE: Optional[Dict[str, Any]] = None
+
+def _load_defaults_config() -> Dict[str, Any]:
+    global _DEFAULTS_CACHE
+    if _DEFAULTS_CACHE is not None:
+        return _DEFAULTS_CACHE
+    
+    config_path = os.environ.get("SLM_DEFAULTS_CONFIG", "config/vector_index_defaults.json")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                _DEFAULTS_CACHE = json.load(f)
+                return _DEFAULTS_CACHE
+        except (json.JSONDecodeError, OSError):
+            pass
+    _DEFAULTS_CACHE = {}
+    return _DEFAULTS_CACHE
 
 def _get_required_partitions() -> List[str]:
     env_val = os.environ.get("SLM_REQUIRED_PARTITIONS")
     if env_val:
         return [p.strip() for p in env_val.split(",") if p.strip()]
+    
+    defaults = _load_defaults_config()
+    if "required_partitions" in defaults:
+        return defaults["required_partitions"]
+    
     return ["alerts", "threat_intel", "audit_logs"]
 
 def _get_max_shard_size_gb() -> int:
@@ -21,10 +44,26 @@ def _get_max_shard_size_gb() -> int:
             return int(env_val)
         except ValueError:
             pass
+    
+    defaults = _load_defaults_config()
+    if "max_shard_size_gb" in defaults:
+        try:
+            return int(defaults["max_shard_size_gb"])
+        except (ValueError, TypeError):
+            pass
+    
     return 16
 
 def _get_index_schema_version() -> str:
-    return os.environ.get("SLM_INDEX_SCHEMA_VERSION", "11.6.0")
+    env_val = os.environ.get("SLM_INDEX_SCHEMA_VERSION")
+    if env_val:
+        return env_val
+    
+    defaults = _load_defaults_config()
+    if "index_schema_version" in defaults:
+        return str(defaults["index_schema_version"])
+    
+    return "11.6.0"
 
 REQUIRED_PARTITIONS: List[str] = _get_required_partitions()
 MAX_SHARD_SIZE_GB: int = _get_max_shard_size_gb()
