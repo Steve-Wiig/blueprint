@@ -16,6 +16,14 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+SEVERITY_PRIORITY = {
+    'critical': 1,
+    'high': 2,
+    'medium': 3,
+    'low': 4,
+}
+DEFAULT_PRIORITY = 5
+
 def get_db(db_path: str) -> sqlite3.Connection:
     """Establishes a connection to the SQLite database.
 
@@ -31,10 +39,27 @@ def get_db(db_path: str) -> sqlite3.Connection:
     try:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
-        # Create supporting index for priority claim query
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_triage_claim 
-            ON triage_queue(status, severity, created_at) 
+        
+        # Ensure priority column exists
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(triage_queue)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if 'priority' not in columns:
+            cursor.execute("ALTER TABLE triage_queue ADD COLUMN priority INTEGER DEFAULT ?", (DEFAULT_PRIORITY,))
+            # Populate priority for existing rows based on severity
+            for severity, priority in SEVERITY_PRIORITY.items():
+                cursor.execute(
+                    "UPDATE triage_queue SET priority = ? WHERE severity = ? AND (priority IS NULL OR priority = ?)",
+                    (priority, severity, DEFAULT_PRIORITY)
+                )
+            # Set default for any remaining NULL/unknown severities
+            cursor.execute("UPDATE triage_queue SET priority = ? WHERE priority IS NULL", (DEFAULT_PRIORITY,))
+        
+        # Recreate claim index using priority
+        cursor.execute("DROP INDEX IF EXISTS idx_triage_claim")
+        cursor.execute("""
+            CREATE INDEX idx_triage_claim 
+            ON triage_queue(status, priority, created_at) 
             WHERE status = 'pending'
         """)
         conn.commit()
@@ -97,12 +122,7 @@ def run_worker(args: argparse.Namespace) -> None:
                 WHERE id = (
                     SELECT id FROM triage_queue 
                     WHERE status = 'pending' 
-                    ORDER BY CASE severity 
-                        WHEN 'critical' THEN 1 
-                        WHEN 'high' THEN 2 
-                        WHEN 'medium' THEN 3 
-                        WHEN 'low' THEN 4 
-                        ELSE 5 END, created_at ASC 
+                    ORDER BY priority ASC, created_at ASC 
                     LIMIT 1
                 )
                 RETURNING id, payload_ref
