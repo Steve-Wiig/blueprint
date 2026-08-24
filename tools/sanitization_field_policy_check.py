@@ -31,19 +31,17 @@ def validate_schema(schema_path):
 
     # Recursive check for forbidden keys in nested schema definitions
     def find_forbidden(obj, path=""):
-        violations = []
         if isinstance(obj, dict):
             for k, v in obj.items():
                 current_path = f"{path}.{k}" if path else k
                 if k in FORBIDDEN_FIELDS:
-                    violations.append(current_path)
-                violations.extend(find_forbidden(v, current_path))
+                    yield current_path
+                yield from find_forbidden(v, current_path)
         elif isinstance(obj, list):
             for i, item in enumerate(obj):
-                violations.extend(find_forbidden(item, f"{path}[{i}]"))
-        return violations
+                yield from find_forbidden(item, f"{path}[{i}]")
 
-    found = find_forbidden(data)
+    found = list(find_forbidden(data))
     if found:
         print(f"FAIL: Forbidden fields detected in schema: {', '.join(found)}")
         return 1
