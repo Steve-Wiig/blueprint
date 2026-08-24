@@ -12,6 +12,7 @@ from typing import Any, Dict
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
+
 def sanitize_input(data: Any) -> Dict[str, str]:
     """Sanitizes input dictionary by truncating keys and values.
 
@@ -25,21 +26,44 @@ def sanitize_input(data: Any) -> Dict[str, str]:
         return {}
     return {str(k)[:64]: str(v)[:2048] for k, v in data.items()}
 
-def write_to_ledger(payload_ref: str, case_id: str) -> None:
-    """Writes the case transaction to the local handoff ledger.
+
+def _handle_draft_mode(sanitized: Dict[str, str]) -> str:
+    """Handles draft mode by logging and returning a mock ID.
 
     Args:
-        payload_ref: The reference identifier from the payload.
-        case_id: The ID of the created case.
+        sanitized: The sanitized payload.
+
+    Returns:
+        A draft case identifier.
+    """
+    logging.info(f"DRAFT MODE: Payload sanitized: {sanitized}")
+    return "DRAFT_ID_000"
+
+
+def _make_api_request(api_url: str, api_key: str, sanitized: Dict[str, str]) -> str:
+    """Makes the API request to create a case.
+
+    Args:
+        api_url: The base URL of the API.
+        api_key: The authorization token.
+        sanitized: The sanitized payload.
+
+    Returns:
+        The ID of the created case.
 
     Raises:
-        RuntimeError: If the ledger file cannot be written to.
+        RuntimeError: If the API request fails.
     """
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     try:
-        with open("handoffs_ledger.log", "a") as f:
-            f.write(f"{datetime.now(timezone.utc).isoformat()} | {payload_ref} | {case_id}\n")
-    except IOError:
-        raise RuntimeError(f"Library code called exit(2)")
+        response = requests.post(f"{api_url}/api/cases", json=sanitized, headers=headers, timeout=10)
+        response.raise_for_status()
+        case_id = response.json().get("id")
+        return case_id
+    except Exception as e:
+        logging.error(f"API Failure: {e}")
+        raise RuntimeError(f"Library code called exit(1)")
+
 
 def create_case(api_url: str, api_key: str, payload: Dict[str, Any], draft_mode: bool) -> str:
     """Creates a case via the Security Onion API.
@@ -57,20 +81,29 @@ def create_case(api_url: str, api_key: str, payload: Dict[str, Any], draft_mode:
         RuntimeError: If the API request fails.
     """
     sanitized = sanitize_input(payload)
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     
     if draft_mode:
-        logging.info(f"DRAFT MODE: Payload sanitized: {sanitized}")
-        return "DRAFT_ID_000"
+        return _handle_draft_mode(sanitized)
+    
+    return _make_api_request(api_url, api_key, sanitized)
 
+
+def write_to_ledger(payload_ref: str, case_id: str) -> None:
+    """Writes the case transaction to the local handoff ledger.
+
+    Args:
+        payload_ref: The reference identifier from the payload.
+        case_id: The ID of the created case.
+
+    Raises:
+        RuntimeError: If the ledger file cannot be written to.
+    """
     try:
-        response = requests.post(f"{api_url}/api/cases", json=sanitized, headers=headers, timeout=10)
-        response.raise_for_status()
-        case_id = response.json().get("id")
-        return case_id
-    except Exception as e:
-        logging.error(f"API Failure: {e}")
-        raise RuntimeError(f"Library code called exit(1)")
+        with open("handoffs_ledger.log", "a") as f:
+            f.write(f"{datetime.now(timezone.utc).isoformat()} | {payload_ref} | {case_id}\n")
+    except IOError:
+        raise RuntimeError(f"Library code called exit(2)")
+
 
 def main() -> None:
     """Parses command line arguments and executes the case writeback process."""
@@ -94,6 +127,7 @@ def main() -> None:
     
     print(f"SUCCESS: {case_id}")
     raise RuntimeError(f"Library code called exit(0)")
+
 
 if __name__ == "__main__":
     main()
