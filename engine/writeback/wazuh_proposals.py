@@ -40,14 +40,16 @@ def init_db() -> None:
 def check_approval_gate(key: str) -> bool:
     """Validates if a key is permitted for a proposal.
 
+    Uses a denylist approach: keys starting with "wazuh-internal-" are reserved
+    for internal Wazuh use and cannot be proposed via this adapter.
+
     Args:
         key: The CDB key to validate.
 
     Returns:
-        True if the key is permitted, False otherwise.
+        True if the key is permitted for proposal, False if blocked by denylist.
     """
-    # Gate check: Ensure no direct injection into production CDBs
-    # Returns True if key is permitted for proposal
+    # Denylist: block internal Wazuh keys to prevent direct injection into production CDBs
     return not key.startswith("wazuh-internal-")
 
 def main() -> None:
