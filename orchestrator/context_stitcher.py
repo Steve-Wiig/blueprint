@@ -1,6 +1,5 @@
 """Context stitcher for SOC orchestrator. Retrieves semantic memory from case_embeddings for SLM injection."""
 import psycopg2
-import json
 import sys
 from datetime import datetime, timezone, timedelta
 
@@ -29,7 +28,7 @@ def stitch_memory_context(query_embedding: list[float], top_k: int = 5, max_age_
             LIMIT %s;
         """
 
-        cur.execute(query, (json.dumps(query_embedding), cutoff_date, top_k))
+        cur.execute(query, (query_embedding, cutoff_date, top_k))
         results = cur.fetchall()
 
         context_blocks = []
