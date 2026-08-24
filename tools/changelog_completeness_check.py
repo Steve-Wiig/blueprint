@@ -1,13 +1,27 @@
 #!/usr/bin/env python3
-# CI Gate: Changelog Completeness Check
-# Verifies that every commit since the last tag has a corresponding entry in CHANGELOG.md
+"""
+CI Gate: Changelog Completeness Check
+
+Verifies that every commit since the last tag has a corresponding entry in CHANGELOG.md.
+This script is designed to run in CI pipelines to enforce changelog maintenance.
+"""
+
 import os
 import sys
 import subprocess
 import argparse
 import re
+from typing import List, Optional
 
-def main():
+
+def main() -> int:
+    """
+    Verify CHANGELOG.md completeness against git commit history.
+
+    Returns:
+        int: Exit code - 0 for success, 1 for missing entries, 2 for config errors,
+             3 for environment issues (not a git repo).
+    """
     parser = argparse.ArgumentParser(description="Verify CHANGELOG completeness")
     parser.add_argument("--dry-run", action="store_true", help="Validate logic without failing")
     args = parser.parse_args()
@@ -19,14 +33,19 @@ def main():
 
     try:
         # Get the latest tag
-        latest_tag = subprocess.check_output(["git", "describe", "--tags", "--abbrev=0"], stderr=subprocess.DEVNULL).decode().strip()
+        latest_tag = subprocess.check_output(
+            ["git", "describe", "--tags", "--abbrev=0"],
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
     except subprocess.CalledProcessError:
         print("CONFIG ERROR: No tags found to compare against")
         return 2
 
     # Get list of commits since latest tag
     try:
-        commits = subprocess.check_output(["git", "log", f"{latest_tag}..HEAD", "--pretty=format:%h %s"]).decode().splitlines()
+        commits = subprocess.check_output(
+            ["git", "log", f"{latest_tag}..HEAD", "--pretty=format:%h %s"]
+        ).decode().splitlines()
     except subprocess.CalledProcessError:
         print("FAIL: Could not retrieve commit history")
         return 1
@@ -43,7 +62,7 @@ def main():
     commit_hash_pattern = re.compile(r'\b([0-9a-f]{7,12})\b')
     changelog_hashes = set(commit_hash_pattern.findall(changelog_content.lower()))
 
-    missing_entries = []
+    missing_entries: List[str] = []
     for commit in commits:
         commit_hash = commit.split(" ")[0].lower()
         if commit_hash not in changelog_hashes:
@@ -57,6 +76,7 @@ def main():
 
     print("PASS: All commits accounted for in CHANGELOG.md")
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())
