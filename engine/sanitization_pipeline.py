@@ -94,14 +94,3 @@ def sanitize_payload(payload: str, field_path: Optional[str] = None) -> Dict[str
     metadata["redaction_manifest_sha256"] = hashlib.sha256(payload.encode()).hexdigest()
     
     return {"payload": payload, "metadata": metadata}
-
-if __name__ == "__main__":
-    # Exit codes: 0=PASS, 1=FAIL, 2=CONFIG_ERROR
-    try:
-        # Example usage
-        test_data = "powershell.exe -enc ZWNobyBoZWxsbw=="
-        result = sanitize_payload(test_data, field_path="powershell.encoded_command")
-        print(json.dumps(result))
-        exit(0)
-    except Exception:
-        exit(1)
