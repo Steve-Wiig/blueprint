@@ -21,6 +21,7 @@ import argparse
 import re
 import math
 import collections
+import os
 from typing import List
 
 # Threshold chosen to detect base64/hex encoded secrets (entropy ~4.7) while allowing normal words (entropy ~3.5);
@@ -34,6 +35,15 @@ ALLOWLIST_PATTERNS: List[str] = [
 ]
 
 ALLOWLIST_REGEX = re.compile('|'.join(f'(?:{p})' for p in ALLOWLIST_PATTERNS))
+
+# Default test data for dry-run mode
+DEFAULT_TEST_DATA = """
+Normal text with entropy around 3.5 bits per character.
+SHA256 hash: a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3
+API key: sk_live_abcdefghijklmnopqrstuvwxyz123456
+UUID: 550e8400-e29b-41d4-a716-446655440000
+Base64 secret: YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=
+"""
 
 
 def calculate_entropy(data: str) -> float:
@@ -144,5 +154,11 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", help="Run with test/mock data")
     args = parser.parse_args()
 
-    input_data = sys.stdin.read()
+    if args.dry_run:
+        # Use test data from environment variable or default
+        input_data = os.environ.get("SANITIZER_TEST_DATA", DEFAULT_TEST_DATA)
+        print("DRY-RUN MODE: Using test data")
+    else:
+        input_data = sys.stdin.read()
+
     sys.exit(main(input_data))
