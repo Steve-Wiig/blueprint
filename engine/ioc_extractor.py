@@ -92,6 +92,13 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
         """
         execute_values(cur, query, extracted)
 
+        audit_records = [(value, ioc_type, "insert", now) for value, ioc_type, _, _ in extracted]
+        audit_query = """
+            INSERT INTO ioc_audit (value, type, action, timestamp)
+            VALUES %s
+        """
+        execute_values(cur, audit_query, audit_records)
+
         conn.commit()
         cur.close()
         conn.close()
