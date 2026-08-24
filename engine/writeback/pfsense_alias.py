@@ -7,8 +7,6 @@ Alias-Table Writeback Adapter (Proposal-Only Mode)
 """
 
 import argparse
-import sys
-import json
 import sqlite3
 from datetime import datetime, timezone
 
