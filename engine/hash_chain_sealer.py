@@ -73,8 +73,7 @@ def seal_audit_chain(
             """
             SELECT h.id, h.ts, h.payload_sha256
             FROM handoffs h
-            LEFT JOIN audit_chain a ON a.row_id = h.id
-            WHERE a.row_id IS NULL
+            WHERE NOT EXISTS (SELECT 1 FROM audit_chain a WHERE a.row_id = h.id)
             ORDER BY h.ts ASC, h.id ASC
             """
         )
