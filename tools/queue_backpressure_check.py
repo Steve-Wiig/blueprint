@@ -13,7 +13,7 @@ MAX_QUEUE_DEPTH = int(os.getenv('MAX_QUEUE_DEPTH', '1000'))
 BACKPRESSURE_THRESHOLD = float(os.getenv('BACKPRESSURE_THRESHOLD', '0.85'))
 QUEUE_API_ENDPOINT = os.getenv('QUEUE_API_ENDPOINT', '/api/v1/queue/status')
 
-def check_backpressure(lab_url, dry_run=False):
+def check_backpressure(lab_url: str | None, dry_run: bool = False) -> int:
     """
     Queries the queue status and validates that backpressure signals
     are active if the queue depth exceeds the threshold.
