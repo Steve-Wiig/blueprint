@@ -10,7 +10,6 @@ database and retrieval pipeline.
 """
 
 import sys
-import argparse
 from typing import Callable
 
 REQUIRED_DOC_PREFIX = "search_document: "
@@ -120,8 +119,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="CI Check Tool")
-    parser.add_argument("--dry-run", action="store_true", help="Run with test/mock data")
-    args = parser.parse_args()
-
     sys.exit(main())
