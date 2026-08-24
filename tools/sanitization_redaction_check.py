@@ -39,7 +39,26 @@ TEST_PAYLOADS: dict[str, str] = {
 }
 
 def redact(pattern_key: str, text: str) -> str:
-    """Redact sensitive pattern in text, preserving prefix for query/header patterns."""
+    """Redact sensitive pattern in text, preserving prefix for query/header patterns.
+
+    Args:
+        pattern_key: Key identifying the pattern to redact (must exist in PATTERNS).
+        text: Input text containing potential sensitive data.
+
+    Returns:
+        Text with sensitive portions replaced by "[REDACTED]". For "group" redaction
+        types (auth_header, api_key_query, password_query), the prefix (e.g.,
+        "Authorization: Bearer ", "api_key=", "password=") is preserved.
+
+    Raises:
+        KeyError: If pattern_key is not found in PATTERNS.
+
+    Example:
+        >>> redact("aws_key", "Key: AKIAIOSFODNN7EXAMPLE")
+        'Key: [REDACTED]'
+        >>> redact("auth_header", "Authorization: Bearer token123")
+        'Authorization: Bearer [REDACTED]'
+    """
     pattern = COMPILED_PATTERNS[pattern_key]
     redaction_type = PATTERNS[pattern_key]["redaction_type"]
     if redaction_type == "group":
@@ -47,7 +66,28 @@ def redact(pattern_key: str, text: str) -> str:
     return pattern.sub("[REDACTED]", text)
 
 def run_sanitization_check() -> CheckResult:
-    """Run sanitization verification. Returns CheckResult enum."""
+    """Run sanitization verification against known test payloads.
+
+    Validates that all defined patterns:
+    1. Have corresponding test payloads in TEST_PAYLOADS.
+    2. Match their respective test payloads.
+    3. Successfully redact the matched portion (producing "[REDACTED]").
+
+    Returns:
+        CheckResult enum indicating verification status:
+        - PASS (0): All patterns validated successfully.
+        - PATTERN_MISSING (1): A pattern failed to match its payload or redact.
+        - PAYLOAD_MISSING (2): A pattern lacks a corresponding test payload.
+        - INTERNAL_ERROR (3): Unexpected error or empty configuration.
+
+    Side Effects:
+        None. Reads global PATTERNS, COMPILED_PATTERNS, and TEST_PAYLOADS.
+
+    Example:
+        >>> result = run_sanitization_check()
+        >>> result == CheckResult.PASS
+        True
+    """
     try:
         if not PATTERNS or not TEST_PAYLOADS:
             return CheckResult.INTERNAL_ERROR
