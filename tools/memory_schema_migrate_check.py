@@ -11,7 +11,7 @@ from pathlib import Path
 SCHEMA_VERSION_REQUIRED = "11.6.0"
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
-SCHEMA_PATH = PROJECT_ROOT / "config" / "memory_schema.json"
+SCHEMA_PATH = Path(os.path.join(os.path.dirname(__file__), "config", "memory_schema.json"))
 LEDGER_PATH = (BASE_DIR / ".." / "logs" / "migration_ledger.log").resolve()
 
 def validate_schema(schema_data: dict) -> tuple[bool, str]:
