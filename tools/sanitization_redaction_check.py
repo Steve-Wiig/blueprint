@@ -1,5 +1,4 @@
 import re
-import argparse
 import sys
 from typing import TypedDict
 from enum import IntEnum
@@ -111,7 +110,4 @@ def run_sanitization_check() -> CheckResult:
         return CheckResult.PAYLOAD_MISSING
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="CI Check Tool")
-    parser.add_argument("--dry-run", action="store_true", help="Run with test/mock data")
-    parser.parse_args()
     sys.exit(run_sanitization_check())
