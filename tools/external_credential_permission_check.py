@@ -13,7 +13,6 @@ import os
 import sys
 import argparse
 import json
-from typing import Any
 
 try:
     import requests
