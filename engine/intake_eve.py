@@ -1,18 +1,11 @@
-"""
-Module for ingesting and queuing Suricata EVE events into a SQLite database.
-
-This module provides functionality to initialize a triage database, sanitize incoming
-event data, and enqueue events for further processing.
-"""
-
 import json
 import sqlite3
 import os
 import logging
 from typing import Any, Dict, List, Optional
 
-DB_PATH = "/var/lib/soc/triage_queue.db"
-LOG_PATH = "/var/log/soc/intake.log"
+DB_PATH = os.getenv('SOC_DB_PATH', '/var/lib/soc/triage_queue.db')
+LOG_PATH = os.getenv('SOC_LOG_PATH', '/var/log/soc/intake.log')
 
 logger = logging.getLogger(__name__)
 
