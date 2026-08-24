@@ -3,6 +3,7 @@
 import os
 import sys
 import argparse
+import json
 import requests
 
 try:
@@ -11,22 +12,21 @@ except ImportError:
     print("FAIL: requests library is not installed")
     raise RuntimeError(f"Library code called exit(2)")
 
-CONFIG = {
-    "wazuh": {
-        "read": "/api/v1/agents",
-        "forbidden": "/api/v1/manager/restart",
-        "forbidden_method": "POST",
-        "user_env": "WAZUH_USER",
-        "token_env": "WAZUH_TOKEN",
-    },
-    "pfsense": {
-        "read": "/api/v2/firewall/alias",
-        "forbidden": "/api/v2/interfaces",
-        "forbidden_method": "GET",
-        "user_env": "PFSENSE_USER",
-        "token_env": "PFSENSE_TOKEN",
-    },
-}
+DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
+
+def load_config(config_path=None):
+    path = config_path or os.getenv("CONFIG_FILE", DEFAULT_CONFIG_PATH)
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"CONFIG ERROR: config file not found at {path}")
+        sys.exit(2)
+    except json.JSONDecodeError as exc:
+        print(f"CONFIG ERROR: invalid JSON in {path}: {exc}")
+        sys.exit(2)
+
+CONFIG = load_config()
 
 class MockResponse:
     def __init__(self, status_code):
@@ -78,7 +78,11 @@ def check_service(service, cfg, lab_url, dry_run=False):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--config", help="Path to config JSON file")
     args = parser.parse_args()
+
+    global CONFIG
+    CONFIG = load_config(args.config)
 
     lab_url = os.getenv("LAB_URL", "http://localhost:8080" if args.dry_run else "")
     if not lab_url:
