@@ -5,7 +5,6 @@ import argparse
 import sys
 import subprocess
 import xml.etree.ElementTree as ET
-from typing import Optional
 from dataclasses import dataclass
 
 """Default fraction of total GPU memory to use as VRAM budget (90%).
@@ -23,15 +22,15 @@ class VramCheckResult:
     exit_code: int
 
 
-def get_gpu_info() -> Optional[ET.Element]:
+def get_gpu_info() -> ET.Element | None:
     """
     Execute nvidia-smi -q -x and return the parsed XML root element.
 
     Returns:
-        ET.Element: Root element of the parsed XML from nvidia-smi query,
-                    containing GPU information including memory usage.
-        None: If nvidia-smi is not found, fails to execute, or returns
-              invalid XML that cannot be parsed.
+        ET.Element | None: Root element of the parsed XML from nvidia-smi query,
+                           containing GPU information including memory usage.
+                           Returns None if nvidia-smi is not found, fails to execute,
+                           or returns invalid XML that cannot be parsed.
 
     This function queries the NVIDIA System Management Interface for
     detailed GPU information in XML format, which is then parsed for
