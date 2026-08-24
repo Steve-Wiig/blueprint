@@ -24,6 +24,8 @@ REGEX_RULES = {
     "session_cookie": r"(?i)Cookie: (session_id|sid|session)=[a-zA-Z0-9\._\-]+"
 }
 
+COMPILED_REGEX_RULES = {label: re.compile(pattern) for label, pattern in REGEX_RULES.items()}
+
 ALLOWLIST_PATTERNS = {
     "sha256": r"^[a-fA-F0-9]{64}$",
     "sha1": r"^[a-fA-F0-9]{40}$",
@@ -70,10 +72,10 @@ def sanitize_payload(payload: str, field_path: Optional[str] = None) -> Dict[str
     metadata = {"sanitizer_version": "11.6.0", "regex_redaction_count": 0, "entropy_redaction_count": 0}
     
     # Pass 1: Regex Redaction
-    for label, pattern in REGEX_RULES.items():
-        matches = re.findall(pattern, payload)
+    for label, compiled_pattern in COMPILED_REGEX_RULES.items():
+        matches = compiled_pattern.findall(payload)
         if matches:
-            payload = re.sub(pattern, f"[REDACTED_{label.upper()}]", payload)
+            payload = compiled_pattern.sub(f"[REDACTED_{label.upper()}]", payload)
             metadata["regex_redaction_count"] += len(matches)
 
     # Pass 2: Shannon Entropy
