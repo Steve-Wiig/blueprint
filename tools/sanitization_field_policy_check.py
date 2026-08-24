@@ -148,20 +148,33 @@ def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = Non
             List[str]: List of dot/bracket-notation paths to forbidden fields found.
                 Empty list if no forbidden fields detected.
         """
-        stack = [(obj, '')]
+        stack = [(obj, [])]
         found = []
         while stack:
-            current_obj, path = stack.pop()
+            current_obj, path_components = stack.pop()
             if isinstance(current_obj, dict):
                 for k, v in current_obj.items():
-                    current_path = f"{path}.{k}" if path else k
+                    new_path = path_components + [k]
                     if k in forbidden_fields:
-                        found.append(current_path)
-                    stack.append((v, current_path))
+                        found.append(format_path(new_path))
+                    stack.append((v, new_path))
             elif isinstance(current_obj, list):
                 for i, item in enumerate(current_obj):
-                    stack.append((item, f"{path}[{i}]"))
+                    new_path = path_components + [f"[{i}]"]
+                    stack.append((item, new_path))
         return found
+
+    def format_path(components: List[str]) -> str:
+        """Format path components into dot/bracket notation string."""
+        if not components:
+            return ""
+        result = components[0]
+        for comp in components[1:]:
+            if comp.startswith('['):
+                result += comp
+            else:
+                result += '.' + comp
+        return result
 
     found = find_forbidden(data)
     if found:
