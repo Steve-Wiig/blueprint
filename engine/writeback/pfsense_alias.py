@@ -12,9 +12,6 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 
-# LOCAL-SOC-SLM Blueprint v11.6.0 - Appendix Q.5
-# Alias-Table Writeback Adapter (Proposal-Only Mode)
-
 DB_PATH = "soc_proposals.db"
 
 def init_db() -> None:
