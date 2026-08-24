@@ -78,4 +78,4 @@ def main() -> int:
     return check_backpressure(lab_url, args.dry_run)
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())
