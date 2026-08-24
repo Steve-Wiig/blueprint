@@ -26,9 +26,10 @@ def seal_audit_chain(
 ) -> None:
     """Processes pending handoff records and seals them into an audit chain.
 
-    This function acquires an advisory lock on the database to ensure atomicity,
+    This function acquires a session-level advisory lock on the database to ensure atomicity,
     identifies unlinked records, computes a SHA-256 hash based on the previous
     chain link and current payload, and inserts the result into the audit_chain table.
+    Commits after each batch to reduce transaction size and lock contention.
 
     Args:
         db_config: A dictionary containing database connection parameters
@@ -39,12 +40,17 @@ def seal_audit_chain(
     Returns:
         None. Raises RuntimeError on failure.
     """
+    conn = None
+    cur = None
+    pending_cur = None
+    lock_acquired = False
     try:
         conn = psycopg2.connect(**db_config)
         cur = conn.cursor()
 
-        # Acquire an advisory lock to guarantee exclusive processing
-        cur.execute("SELECT pg_advisory_xact_lock(%s)", (lock_id,))
+        # Acquire a session-level advisory lock to guarantee exclusive processing
+        cur.execute("SELECT pg_advisory_lock(%s)", (lock_id,))
+        lock_acquired = True
 
         # Determine the last sequence number in the chain
         cur.execute("SELECT COALESCE(MAX(chain_seq), 0) FROM audit_chain")
@@ -60,8 +66,9 @@ def seal_audit_chain(
             )
             prev_hash = cur.fetchone()[0]
 
-        # Use a server‑side cursor to avoid loading all pending rows into memory
-        pending_cur = conn.cursor(name="pending_cursor")
+        # Use a server‑side cursor WITH HOLD to avoid loading all pending rows into memory
+        # and allow commits between batches.
+        pending_cur = conn.cursor(name="pending_cursor", withhold=True)
         pending_cur.execute(
             """
             SELECT h.id, h.ts, h.payload_sha256
@@ -105,16 +112,41 @@ def seal_audit_chain(
                 VALUES %s
             """
             execute_values(cur, insert_query, rows_to_insert)
+            conn.commit()
 
-        # Clean up cursors and commit transaction
-        pending_cur.close()
-        conn.commit()
+        # Clean up cursors
+        if pending_cur:
+            pending_cur.close()
         cur.close()
         conn.close()
 
     except Exception as e:
         print(f"Sealer Error: {e}", file=sys.stderr)
+        if conn:
+            conn.rollback()
         raise RuntimeError(f"Sealer failed: {e}")
+    finally:
+        # Ensure advisory lock is released even on error
+        if lock_acquired and cur:
+            try:
+                cur.execute("SELECT pg_advisory_unlock(%s)", (lock_id,))
+            except Exception:
+                pass
+        if pending_cur:
+            try:
+                pending_cur.close()
+            except Exception:
+                pass
+        if cur:
+            try:
+                cur.close()
+            except Exception:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def main() -> None:
