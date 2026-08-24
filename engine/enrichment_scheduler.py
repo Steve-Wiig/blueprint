@@ -82,6 +82,34 @@ def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensio
         raise RuntimeError("Failed to establish database connections") from e
 
 
+def _fetch_provider_values(
+    sq_conn: sqlite3.Connection,
+    providers: List[str],
+    table: str,
+    column: str
+) -> Dict[str, int]:
+    """Fetch provider-value pairs from a table for the given providers.
+
+    Args:
+        sq_conn: The SQLite database connection.
+        providers: List of provider names.
+        table: The table to query.
+        column: The column to retrieve.
+
+    Returns:
+        A dictionary mapping provider to the column value.
+    """
+    if not providers:
+        return {}
+    placeholders = ','.join(['?'] * len(providers))
+    cursor = sq_conn.cursor()
+    cursor.execute(
+        f"SELECT provider, {column} FROM {table} WHERE provider IN ({placeholders})",
+        providers
+    )
+    return {row[0]: row[1] for row in cursor.fetchall()}
+
+
 def check_quota(
     sq_conn: sqlite3.Connection,
     provider: str,
@@ -112,13 +140,8 @@ def check_quota(
     if cache is not None and provider in cache:
         return cache[provider]
 
-    cursor = sq_conn.cursor()
-    cursor.execute(
-        "SELECT remaining FROM quota_ledger WHERE provider = ?",
-        (provider,)
-    )
-    row = cursor.fetchone()
-    return row[0] if row else 0
+    quota_dict = _fetch_provider_values(sq_conn, [provider], 'quota_ledger', 'remaining')
+    return quota_dict.get(provider, 0)
 
 
 def get_provider_cost(
@@ -151,13 +174,8 @@ def get_provider_cost(
     if cache is not None and provider in cache:
         return cache[provider]
 
-    cursor = sq_conn.cursor()
-    cursor.execute(
-        "SELECT cost FROM provider_costs WHERE provider = ?",
-        (provider,)
-    )
-    row = cursor.fetchone()
-    return row[0] if row else 1
+    cost_dict = _fetch_provider_values(sq_conn, [provider], 'provider_costs', 'cost')
+    return cost_dict.get(provider, 1)
 
 
 def update_quota(sq_conn: sqlite3.Connection, provider: str, cost: int) -> None:
@@ -179,7 +197,7 @@ def _fetch_provider_data(
     sq_conn: sqlite3.Connection,
     providers: List[str]
 ) -> Tuple[Dict[str, int], Dict[str, int]]:
-    """Fetches quota and cost for multiple providers in bulk using a single JOIN query.
+    """Fetches quota and cost for multiple providers in bulk.
 
     Args:
         sq_conn: The SQLite database connection.
@@ -191,26 +209,17 @@ def _fetch_provider_data(
     if not providers:
         return {}, {}
 
-    placeholders = ','.join(['?'] * len(providers))
-    cursor = sq_conn.cursor()
+    quota_dict = _fetch_provider_values(sq_conn, providers, 'quota_ledger', 'remaining')
+    cost_dict = _fetch_provider_values(sq_conn, providers, 'provider_costs', 'cost')
 
-    cursor.execute(
-        f"""
-        SELECT q.provider, q.remaining, c.cost
-        FROM quota_ledger q
-        LEFT JOIN provider_costs c ON q.provider = c.provider
-        WHERE q.provider IN ({placeholders})
-        """,
-        providers
-    )
-    quota_dict: Dict[str, int] = {}
-    cost_dict: Dict[str, int] = {}
-    for row in cursor.fetchall():
-        provider, remaining, cost = row
-        quota_dict[provider] = remaining
-        cost_dict[provider] = cost if cost is not None else 1
+    # Ensure cost_dict has entries for all providers in quota_dict, defaulting to 1
+    for provider in quota_dict:
+        if provider not in cost_dict:
+            cost_dict[provider] = 1
 
-    return quota_dict, cost_dict
+    # Return only providers that have quota (i.e., are in quota_dict)
+    filtered_cost_dict = {p: cost_dict[p] for p in quota_dict}
+    return quota_dict, filtered_cost_dict
 
 
 def process_jobs(
