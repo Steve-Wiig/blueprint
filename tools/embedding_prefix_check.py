@@ -173,4 +173,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    result = main()
+    if result != 0:
+        raise RuntimeError("Embedding contract verification failed")
