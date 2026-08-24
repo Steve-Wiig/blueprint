@@ -29,10 +29,10 @@ from typing import List, Iterator, TextIO
 # make configurable via env var or CLI arg
 ENTROPY_THRESHOLD: float = 4.5
 ALLOWLIST_PATTERNS: List[str] = [
-    r'[a-fA-F0-9]{64}',  # SHA256
-    r'[a-fA-F0-9]{40}',  # SHA1
-    r'[a-fA-F0-9]{32}',  # MD5
-    r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'  # UUID
+    r'[a-fA-F0-9]{64}',  # SHA256 hash (256-bit digest); allowlisted as deterministic checksums are non-secret, low-entropy patterns
+    r'[a-fA-F0-9]{40}',  # SHA1 hash (160-bit digest); allowlisted for compatibility with legacy checksums and hash-based verification
+    r'[a-fA-F0-9]{32}',  # MD5 hash (128-bit digest); allowlisted as widely used in file integrity checks, not suitable for secrets due to collision risk
+    r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'  # UUID v4/v1/v2/v3/v5 format; allowlisted as structurally random but non-secret identifiers
 ]
 
 ALLOWLIST_REGEX = [re.compile(p) for p in ALLOWLIST_PATTERNS]
@@ -104,7 +104,7 @@ def sanitize_pass(text: str) -> str:
     Perform a single sanitization pass on input text.
 
     Processes text token by token using a generator to avoid loading
-    all tokens into memory at once. Preserves allowlisted tokens,
+    all tokens into memory at once. Preserve allowlisted tokens,
     and redacts high-entropy tokens (>4.5 bits/char) as "[REDACTED]".
 
     Args:
