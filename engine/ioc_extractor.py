@@ -84,11 +84,11 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
 
         for text in _iter_strings(sanitized_alert_json):
             for match in _COMBINED_RE.finditer(text):
-                for group_name, ioc_type in _GROUP_TO_IOC.items():
+                group_name = match.lastgroup
+                if group_name:
+                    ioc_type = _GROUP_TO_IOC[group_name]
                     value = match.group(group_name)
-                    if value:
-                        matches_by_type[ioc_type].add(value)
-                        break
+                    matches_by_type[ioc_type].add(value)
 
         extracted: List[Tuple[str, str, str, datetime]] = []
         now = datetime.now(timezone.utc)
