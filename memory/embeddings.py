@@ -1,4 +1,3 @@
-import sys
 import numpy as np
 from typing import List, Union, Optional
 from sentence_transformers import SentenceTransformer
@@ -54,4 +53,3 @@ if __name__ == "__main__":
     assert len(test_vec) == 768, 'Dimension mismatch'
     assert isinstance(test_vec, np.ndarray), 'Expected numpy array'
     assert test_vec.dtype == np.float32, 'Expected float32'
-    sys.exit(0)
