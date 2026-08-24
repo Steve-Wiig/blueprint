@@ -53,6 +53,14 @@ def _iter_strings(obj: Any) -> Iterable[str]:
         yield obj
 
 
+def _extract_alert_id(alert_json: Dict[str, Any]) -> str:
+    """Extract alert ID from sanitized alert JSON using common field names."""
+    for key in ("alert_id", "alertId", "id", "alert_id_str"):
+        if key in alert_json and alert_json[key]:
+            return str(alert_json[key])
+    return "unknown"
+
+
 def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
     """
     Extracts IOCs from sanitized alert payloads and persists to PostgreSQL.
@@ -84,6 +92,9 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
         if not extracted:
             return 0
 
+        alert_id = _extract_alert_id(sanitized_alert_json)
+        ioc_count = len(extracted)
+
         conn = psycopg2.connect("dbname=soc_memory user=orchestrator")
         cur = conn.cursor()
 
@@ -104,6 +115,13 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
         conn.commit()
         cur.close()
         conn.close()
+
+        logger.info(
+            "IOC extraction audit: alert_id=%s ioc_count=%s timestamp=%s",
+            alert_id,
+            ioc_count,
+            now.isoformat(),
+        )
         return 0
 
     except psycopg2.Error as e:
