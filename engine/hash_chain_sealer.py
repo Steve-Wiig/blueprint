@@ -14,7 +14,7 @@ from psycopg2.extras import execute_values
 
 # Default constants
 DEFAULT_LOCK_ID = 37001
-DEFAULT_BATCH_SIZE = 1000
+DEFAULT_BATCH_SIZE = 10000
 GENESIS_HASH = (
     "0000000000000000000000000000000000000000000000000000000000000000"
 )
@@ -155,7 +155,13 @@ def main() -> None:
         db_config["dbname"] = dbname
     if user := os.getenv("SOC_USER"):
         db_config["user"] = user
-    seal_audit_chain(db_config)
+    batch_size = DEFAULT_BATCH_SIZE
+    if batch_size_env := os.getenv("SOC_BATCH_SIZE"):
+        try:
+            batch_size = int(batch_size_env)
+        except ValueError:
+            pass
+    seal_audit_chain(db_config, batch_size=batch_size)
 
 
 if __name__ == "__main__":
