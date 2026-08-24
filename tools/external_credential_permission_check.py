@@ -4,7 +4,7 @@ import os
 import sys
 import argparse
 import json
-import requests
+from typing import Any
 
 try:
     import requests
@@ -12,9 +12,9 @@ except ImportError:
     print("FAIL: requests library is not installed")
     raise RuntimeError(f"Library code called exit(2)")
 
-DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
+DEFAULT_CONFIG_PATH: str = os.path.join(os.path.dirname(__file__), "config.json")
 
-def load_config(config_path=None):
+def load_config(config_path: str | None = None) -> dict:
     path = config_path or os.getenv("CONFIG_FILE", DEFAULT_CONFIG_PATH)
     try:
         with open(path, "r") as f:
@@ -26,13 +26,13 @@ def load_config(config_path=None):
         print(f"CONFIG ERROR: invalid JSON in {path}: {exc}")
         sys.exit(2)
 
-CONFIG = load_config()
+CONFIG: dict = load_config()
 
 class MockResponse:
-    def __init__(self, status_code):
-        self.status_code = status_code
+    def __init__(self, status_code: int) -> None:
+        self.status_code: int = status_code
 
-def get_mock_response(method, url, **kwargs):
+def get_mock_response(method: str, url: str, **kwargs: Any) -> MockResponse:
     if "agents" in url:
         return MockResponse(200)
     elif "restart" in url or "interfaces" in url:
@@ -40,7 +40,7 @@ def get_mock_response(method, url, **kwargs):
     else:
         return MockResponse(404)
 
-def check_service(service, cfg, lab_url, dry_run=False):
+def check_service(service: str, cfg: dict, lab_url: str, dry_run: bool = False) -> bool:
     user = os.getenv(cfg["user_env"], "mock_user") if dry_run else os.getenv(cfg["user_env"])
     token = os.getenv(cfg["token_env"], "mock_token") if dry_run else os.getenv(cfg["token_env"])
     
@@ -75,7 +75,7 @@ def check_service(service, cfg, lab_url, dry_run=False):
     print(f"PASS: {service} credential permissions verified")
     return True
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--config", help="Path to config JSON file")
