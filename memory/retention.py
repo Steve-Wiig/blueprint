@@ -93,11 +93,13 @@ def run_retention(db_url: str) -> None:
         cutoff = datetime.datetime.now(timezone.utc) - datetime.timedelta(days=90)
         
         with conn.cursor() as cur:
+            cutoff_str = cutoff.strftime('%Y_%m_%d')
             cur.execute("""
                 SELECT relname FROM pg_class 
                 WHERE relname LIKE 'iocs_%' 
-                AND relkind = 'r';
-            """)
+                AND relkind = 'r'
+                AND SUBSTRING(relname FROM 6 FOR 10) < %s;
+            """, (cutoff_str,))
             partitions = [row[0] for row in cur.fetchall()]
             
             for part in partitions:
