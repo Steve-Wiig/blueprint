@@ -26,10 +26,10 @@ Environment Variables:
 
 Exit Codes:
     0 (EXIT_SUCCESS)           Validation passed successfully
-    1 (EXIT_VALIDATION_FAILED) Validation failed (missing partition, version mismatch,
+    1 (EXIT_VALIDATION_ERROR)  Validation failed (missing partition, version mismatch,
                                shard size exceeded, or indexing disabled)
-    2 (EXIT_CONFIG_NOT_FOUND)  Config file not found at specified path
-    3 (EXIT_ENV_NOT_SET)       SLM_ENV environment variable not set
+    2 (EXIT_CONFIG_ERROR)      Config file not found at specified path
+    3 (EXIT_ENV_ERROR)         SLM_ENV environment variable not set
 
 Configuration File Format (JSON):
     {
@@ -68,9 +68,14 @@ from typing import Dict, Any, List, Optional
 _DEFAULTS_CACHE: Optional[Dict[str, Any]] = None
 
 EXIT_SUCCESS: int = 0
-EXIT_VALIDATION_FAILED: int = 1
-EXIT_CONFIG_NOT_FOUND: int = 2
-EXIT_ENV_NOT_SET: int = 3
+EXIT_VALIDATION_ERROR: int = 1
+EXIT_CONFIG_ERROR: int = 2
+EXIT_ENV_ERROR: int = 3
+
+# Backward compatibility aliases
+EXIT_VALIDATION_FAILED: int = EXIT_VALIDATION_ERROR
+EXIT_CONFIG_NOT_FOUND: int = EXIT_CONFIG_ERROR
+EXIT_ENV_NOT_SET: int = EXIT_ENV_ERROR
 
 
 def _load_defaults_config() -> Dict[str, Any]:
@@ -211,10 +216,10 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
     Returns:
         int: Exit code indicating validation result:
             0 (EXIT_SUCCESS) - Validation passed successfully.
-            1 (EXIT_VALIDATION_FAILED) - Validation failed (missing partition, version mismatch,
+            1 (EXIT_VALIDATION_ERROR) - Validation failed (missing partition, version mismatch,
                 shard size exceeded, or indexing disabled).
-            2 (EXIT_CONFIG_NOT_FOUND) - Config file not found at specified path.
-            3 (EXIT_ENV_NOT_SET) - Environment variable SLM_ENV not set (handled by main()).
+            2 (EXIT_CONFIG_ERROR) - Config file not found at specified path.
+            3 (EXIT_ENV_ERROR) - Environment variable SLM_ENV not set (handled by main()).
 
     Raises:
         json.JSONDecodeError: If the config file contains invalid JSON (caught internally, returns 1).
@@ -235,7 +240,7 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
             print(f"  [1/6] FAIL: Config file not found at {config_path_str}")
         else:
             print(f"CONFIG ERROR: Partition config not found at {config_path_str}")
-        return EXIT_CONFIG_NOT_FOUND
+        return EXIT_CONFIG_ERROR
 
     if dry_run:
         print(f"  [1/6] PASS: Config file exists at {config_path_str}")
@@ -248,7 +253,7 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
             print("  [2/6] FAIL: Invalid JSON format in partition config")
         else:
             print("FAIL: Invalid JSON format in partition config")
-        return EXIT_VALIDATION_FAILED
+        return EXIT_VALIDATION_ERROR
 
     if dry_run:
         print("  [2/6] PASS: Valid JSON format")
@@ -262,7 +267,7 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
         else:
             for p in missing_partitions:
                 print(f"FAIL: Missing required partition: {p}")
-        return EXIT_VALIDATION_FAILED
+        return EXIT_VALIDATION_ERROR
 
     if dry_run:
         print(f"  [3/6] PASS: All required partitions present: {', '.join(REQUIRED_PARTITIONS)}")
@@ -273,7 +278,7 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
             print(f"  [4/6] FAIL: Schema version mismatch. Expected {INDEX_SCHEMA_VERSION}, got {config.get('version')}")
         else:
             print(f"FAIL: Schema version mismatch. Expected {INDEX_SCHEMA_VERSION}")
-        return EXIT_VALIDATION_FAILED
+        return EXIT_VALIDATION_ERROR
 
     if dry_run:
         print(f"  [4/6] PASS: Schema version matches {INDEX_SCHEMA_VERSION}")
@@ -296,7 +301,7 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
         else:
             for name, size in shard_violations:
                 print(f"FAIL: Partition {name} exceeds max shard size of {MAX_SHARD_SIZE_GB}GB")
-        return EXIT_VALIDATION_FAILED
+        return EXIT_VALIDATION_ERROR
 
     if dry_run:
         print(f"  [5/6] PASS: All partitions within shard size limit ({MAX_SHARD_SIZE_GB}GB)")
@@ -308,7 +313,7 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
         else:
             for name in indexing_violations:
                 print(f"FAIL: Indexing disabled for partition {name}")
-        return EXIT_VALIDATION_FAILED
+        return EXIT_VALIDATION_ERROR
 
     if dry_run:
         print(f"  [6/6] PASS: Indexing enabled for all partitions")
@@ -326,28 +331,15 @@ def main() -> int:
 
     Command-line Arguments:
         --config: Path to partition config file (default: config/vector_partitions.json)
-        --dry-run: Validate without committing changes, with verbose output
+        --dry-run: Perform validation without committing changes with verbose output.
 
     Returns:
-        int: Exit code (0=success, 1=validation failed, 2=config not found, 3=env not set)
+        int: Exit code (0=success, 1=validation error, 2=config error, 3=env error).
     """
     parser = argparse.ArgumentParser(
-        description="Validate vector database partition configuration against schema constraints and sharding rules.",
+        description="Vector Partition Index Integrity Check",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Environment Variables:
-  SLM_ENV                    Required. Must be set for the tool to run.
-  SLM_DEFAULTS_CONFIG        Path to defaults JSON file (default: config/vector_index_defaults.json)
-  SLM_REQUIRED_PARTITIONS    Comma-separated list of required partition names (default: alerts,threat_intel,audit_logs)
-  SLM_MAX_SHARD_SIZE_GB      Maximum allowed shard size in GB (default: 16)
-  SLM_INDEX_SCHEMA_VERSION   Expected schema version string (default: 11.6.0)
-
-Exit Codes:
-  0  Validation passed successfully
-  1  Validation failed (missing partition, version mismatch, shard size exceeded, or indexing disabled)
-  2  Config file not found at specified path
-  3  SLM_ENV environment variable not set
-"""
+        epilog=__doc__
     )
     parser.add_argument(
         "--config",
@@ -358,13 +350,13 @@ Exit Codes:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Perform validation without committing changes, with verbose step-by-step output"
+        help="Perform validation without committing changes with verbose output"
     )
     args = parser.parse_args()
 
     if not os.environ.get("SLM_ENV"):
-        print("ERROR: SLM_ENV environment variable is not set")
-        return EXIT_ENV_NOT_SET
+        print("ENV ERROR: SLM_ENV environment variable not set")
+        return EXIT_ENV_ERROR
 
     return validate_partition_config(args.config, args.dry_run)
 
