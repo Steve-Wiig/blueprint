@@ -4,6 +4,21 @@ import yaml
 from typing import Dict, Optional
 
 
+class AdapterNotFoundError(Exception):
+    """Raised when an adapter is not found in the registry."""
+    pass
+
+
+class InvalidStatusError(Exception):
+    """Raised when an adapter has an invalid status."""
+    pass
+
+
+class DatabaseError(Exception):
+    """Raised when a database operation fails."""
+    pass
+
+
 class ModelRegistryClient:
     """Client for interacting with the model registry database.
 
@@ -45,7 +60,7 @@ class ModelRegistryClient:
             self._conn.row_factory = sqlite3.Row
         return self._conn
 
-    def get_adapter(self, task_type: str) -> Optional[Dict]:
+    def get_adapter(self, task_type: str) -> Dict:
         """Retrieve adapter information for a given task type.
 
         Args:
@@ -54,12 +69,17 @@ class ModelRegistryClient:
         Returns:
             A dictionary containing adapter_id, sha256, and status if found
             and the status is one of 'canary', 'active', or 'retired'.
-            Returns None if no adapter is configured for the task type,
-            the adapter is not found in the registry, or the status is invalid.
+
+        Raises:
+            AdapterNotFoundError: If no adapter is configured for the task type
+                or the adapter is not found in the registry.
+            InvalidStatusError: If the adapter status is not one of
+                'canary', 'active', or 'retired'.
+            DatabaseError: If a database operation fails.
         """
         adapter_id = self.routing_config.get(task_type)
         if not adapter_id:
-            return None
+            raise AdapterNotFoundError(f"No adapter configured for task type: {task_type}")
 
         try:
             conn = self._get_connection()
@@ -71,14 +91,16 @@ class ModelRegistryClient:
             row = cursor.fetchone()
 
             if not row:
-                return None
+                raise AdapterNotFoundError(f"Adapter not found in registry: {adapter_id}")
 
             if row['status'] not in ['canary', 'active', 'retired']:
-                return None
+                raise InvalidStatusError(f"Invalid adapter status: {row['status']} for adapter: {adapter_id}")
 
             return {"adapter_id": row['adapter_id'], "sha256": row['adapter_sha256'], "status": row['status']}
-        except Exception:
-            return None
+        except (AdapterNotFoundError, InvalidStatusError):
+            raise
+        except Exception as e:
+            raise DatabaseError(f"Database error retrieving adapter {adapter_id}: {e}")
 
     def verify_integrity(self, adapter_data: Dict, file_path: str) -> bool:
         """Verify the SHA256 integrity of an adapter file.
