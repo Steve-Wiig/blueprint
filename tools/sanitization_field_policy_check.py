@@ -19,6 +19,18 @@ FORBIDDEN_FIELDS = {
 }
 
 def validate_schema(schema_path: str) -> int:
+    """Validate schema file for forbidden fields.
+
+    Args:
+        schema_path: Path to JSON schema file.
+
+    Returns:
+        0 if validation passes, 1 if forbidden fields found or invalid JSON,
+        2 if schema file not found.
+
+    Side Effects:
+        Prints error messages to stdout for failures.
+    """
     if not os.path.exists(schema_path):
         print(f"CONFIG ERROR: Schema file not found at {schema_path}")
         return 2
@@ -49,7 +61,17 @@ def validate_schema(schema_path: str) -> int:
     
     return 0
 
-def main():
+def main() -> int:
+    """Run the sanitization field policy check.
+
+    Parses command-line arguments, validates CI context, and executes schema validation.
+
+    Returns:
+        0 on success, 1 on validation failure, 2 on config error, 3 if CI context missing.
+
+    Side Effects:
+        Prints status messages to stdout. Exits process via sys.exit when run as script.
+    """
     parser = argparse.ArgumentParser(description="Sanitization Field Policy Check")
     parser.add_argument("--schema", required=True, help="Path to JSON schema file")
     parser.add_argument("--dry-run", action="store_true", help="Validate without enforcing")
