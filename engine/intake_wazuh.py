@@ -61,6 +61,18 @@ def sanitize_payload(data: dict[str, Any]) -> tuple[dict[str, Any] | None, str |
         return None, str(e)
 
 def intake_adapter(raw_payload: str) -> int:
+    """
+    Process and intake a raw payload into the triage queue.
+
+    Args:
+        raw_payload: str - JSON string containing alert data to be sanitized and stored.
+
+    Returns:
+        int: HTTP status code 202 indicating the payload was accepted for processing.
+
+    Raises:
+        RuntimeError: If the raw payload cannot be decoded from JSON, or if sanitization fails.
+    """
     try:
         data = json.loads(raw_payload)
     except json.JSONDecodeError:
