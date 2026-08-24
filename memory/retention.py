@@ -133,7 +133,7 @@ def main() -> None:
     """
     parser = argparse.ArgumentParser(description="IOC Retention Manager")
     parser.add_argument("--db-url", required=True, help="Postgres connection string")
-    parser.add_argument("--retention-days", type=int, default=None, help="Retention period in days. Overrides RETENTION_DAYS env var.")
+    parser.add_argument("--retention-days", type=int, default=90, help="Retention period in days (default: 90). Overrides RETENTION_DAYS env var.")
     args = parser.parse_args()
     
     run_retention(args.db_url, retention_days=args.retention_days)
