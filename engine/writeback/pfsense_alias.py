@@ -30,6 +30,50 @@ def init_db() -> None:
                           ON alias_proposals(ip_address)''')
         cursor.execute('''CREATE INDEX IF NOT EXISTS idx_alias_proposals_status 
                           ON alias_proposals(status)''')
+        
+        cursor.execute('''CREATE TABLE IF NOT EXISTS audit_log
+                          (id INTEGER PRIMARY KEY, operation_type TEXT, old_values TEXT, 
+                           new_values TEXT, actor TEXT, timestamp TIMESTAMP)''')
+        cursor.execute('''CREATE INDEX IF NOT EXISTS idx_audit_log_alias_proposals 
+                          ON audit_log(operation_type)''')
+        cursor.execute('''CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp 
+                          ON audit_log(timestamp)''')
+        
+        cursor.execute('''
+            CREATE TRIGGER IF NOT EXISTS audit_alias_proposals_insert
+            AFTER INSERT ON alias_proposals
+            BEGIN
+                INSERT INTO audit_log (operation_type, old_values, new_values, actor, timestamp)
+                VALUES ('INSERT', NULL, 
+                        json_object('id', NEW.id, 'alias_name', NEW.alias_name, 'ip_address', NEW.ip_address, 'status', NEW.status, 'created_at', NEW.created_at),
+                        'pfsense_alias_adapter', datetime('now'));
+            END;
+        ''')
+        
+        cursor.execute('''
+            CREATE TRIGGER IF NOT EXISTS audit_alias_proposals_update
+            AFTER UPDATE ON alias_proposals
+            BEGIN
+                INSERT INTO audit_log (operation_type, old_values, new_values, actor, timestamp)
+                VALUES ('UPDATE',
+                        json_object('id', OLD.id, 'alias_name', OLD.alias_name, 'ip_address', OLD.ip_address, 'status', OLD.status, 'created_at', OLD.created_at),
+                        json_object('id', NEW.id, 'alias_name', NEW.alias_name, 'ip_address', NEW.ip_address, 'status', NEW.status, 'created_at', NEW.created_at),
+                        'pfsense_alias_adapter', datetime('now'));
+            END;
+        ''')
+        
+        cursor.execute('''
+            CREATE TRIGGER IF NOT EXISTS audit_alias_proposals_delete
+            AFTER DELETE ON alias_proposals
+            BEGIN
+                INSERT INTO audit_log (operation_type, old_values, new_values, actor, timestamp)
+                VALUES ('DELETE',
+                        json_object('id', OLD.id, 'alias_name', OLD.alias_name, 'ip_address', OLD.ip_address, 'status', OLD.status, 'created_at', OLD.created_at),
+                        NULL,
+                        'pfsense_alias_adapter', datetime('now'));
+            END;
+        ''')
+        
         conn.commit()
         conn.close()
     except Exception:
