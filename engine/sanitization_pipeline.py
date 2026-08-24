@@ -39,9 +39,22 @@ REGEX_RULES: Dict[str, str] = {
     "session_cookie": r"(?i)Cookie: (session_id|sid|session)=[a-zA-Z0-9\._\-]+"
 }
 
-COMPILED_REGEX_RULES: CompiledRegexDict = {
-    label: re.compile(pattern) for label, pattern in REGEX_RULES.items()
-}
+# Build combined regex with named groups for single-pass scanning
+# Case-sensitive patterns use (?-i:...), case-insensitive use (?i:...)
+# Internal capturing groups converted to non-capturing (?:...)
+_COMBINED_REGEX_PARTS = [
+    r"(?-i:(?P<aws_key>AKIA[0-9A-Z]{16}))",
+    r"(?-i:(?P<github_token>ghp_[a-zA-Z0-9]{36}))",
+    r"(?-i:(?P<jwt>eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}))",
+    r"(?-i:(?P<ssh_key>-----BEGIN [A-Z ]+ PRIVATE KEY-----))",
+    r"(?-i:(?P<slack_token>xox[baprs]-[0-9a-zA-Z]{10,48}))",
+    r"(?i:(?P<auth_header>Authorization: (?:Bearer|Basic|Token) [a-zA-Z0-9\._\-]+))",
+    r"(?i:(?P<api_key_param>(?:api_key|apikey|password|passwd|secret|token)=[a-zA-Z0-9]{16,}))",
+    r"(?i:(?P<session_cookie>Cookie: (?:session_id|sid|session)=[a-zA-Z0-9\._\-]+))",
+]
+
+_COMBINED_REGEX_PATTERN = "|".join(_COMBINED_REGEX_PARTS)
+_COMBINED_REGEX: Pattern[str] = re.compile(_COMBINED_REGEX_PATTERN)
 
 # Allowlist patterns for known safe high-entropy strings
 # These prevent false positives on hashes, UUIDs, and other legitimate identifiers
@@ -113,7 +126,7 @@ def _should_quarantine(token: str) -> bool:
     return calculate_entropy(token) > ENTROPY_THRESHOLD and not _check_allowlist(token)
 
 def redact_regex_patterns(payload: str, metadata: Dict[str, Any]) -> str:
-    """Redacts sensitive patterns using compiled regex rules.
+    """Redacts sensitive patterns using combined regex in single pass.
 
     Args:
         payload: The input string to redact.
@@ -122,12 +135,14 @@ def redact_regex_patterns(payload: str, metadata: Dict[str, Any]) -> str:
     Returns:
         The payload with regex patterns redacted.
     """
-    for label, compiled_pattern in COMPILED_REGEX_RULES.items():
-        matches = compiled_pattern.findall(payload)
-        if matches:
-            payload = compiled_pattern.sub(f"[REDACTED_{label.upper()}]", payload)
-            metadata["regex_redaction_count"] += len(matches)
-    return payload
+    def replace_match(match: re.Match[str]) -> str:
+        label = match.lastgroup
+        if label:
+            metadata["regex_redaction_count"] += 1
+            return f"[REDACTED_{label.upper()}]"
+        return match.group(0)
+
+    return _COMBINED_REGEX.sub(replace_match, payload)
 
 def apply_quarantine_policy(payload: str, field_path: Optional[str], metadata: Dict[str, Any]) -> str:
     """Applies quarantine policy for analytical fields with high-entropy content.
@@ -204,7 +219,7 @@ def sanitize_payload(payload: str, field_path: Optional[str] = None) -> Dict[str
     """
     metadata = {"sanitizer_version": "11.6.0", "regex_redaction_count": 0, "entropy_redaction_count": 0}
     
-    # Pass 1: Regex Redaction
+    # Pass 1: Regex Redaction (single pass with combined regex)
     payload = redact_regex_patterns(payload, metadata)
     
     # Pass 2: Quarantine Policy Check
