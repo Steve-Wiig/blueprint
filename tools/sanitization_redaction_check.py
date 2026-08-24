@@ -110,11 +110,8 @@ def run_sanitization_check() -> CheckResult:
     except Exception:
         return CheckResult.PAYLOAD_MISSING
 
-def main() -> int:
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CI Check Tool")
     parser.add_argument("--dry-run", action="store_true", help="Run with test/mock data")
     parser.parse_args()
-    return run_sanitization_check()
-
-if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_sanitization_check())
