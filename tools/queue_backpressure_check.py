@@ -6,6 +6,7 @@
 import os
 import sys
 import argparse
+import logging
 import requests
 
 # Blueprint v11.6.0 Constants (configurable via environment variables)
@@ -20,24 +21,31 @@ ERROR_CODES = {
     'TOKEN_MISSING': 3
 }
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%dT%H:%M:%S%z'
+)
+logger = logging.getLogger(__name__)
+
 def check_backpressure(lab_url: str | None, dry_run: bool = False) -> int:
     """
     Queries the queue status and validates that backpressure signals
     are active if the queue depth exceeds the threshold.
     """
     if not lab_url:
-        print("CONFIG ERROR: LAB_URL not defined")
+        logger.error("CONFIG ERROR: LAB_URL not defined")
         return ERROR_CODES['CONFIG_ERROR']
 
     if dry_run:
-        print("DRY-RUN: Skipping network request. Simulating healthy queue.")
+        logger.info("DRY-RUN: Skipping network request. Simulating healthy queue.")
         return ERROR_CODES['SUCCESS']
 
     try:
         # [LAB-VERIFY] Queue status requires internal service token
         token = os.getenv("QUEUE_SERVICE_TOKEN")
         if not token:
-            print("ENV_NOT_AVAILABLE: QUEUE_SERVICE_TOKEN missing")
+            logger.error("ENV_NOT_AVAILABLE: QUEUE_SERVICE_TOKEN missing")
             return ERROR_CODES['TOKEN_MISSING']
 
         headers = {"Authorization": f"Bearer {token}"}
@@ -45,7 +53,7 @@ def check_backpressure(lab_url: str | None, dry_run: bool = False) -> int:
                                 headers=headers, timeout=5, verify=True)
         
         if response.status_code != 200:
-            print(f"FAIL: Queue API returned {response.status_code}")
+            logger.error("FAIL: Queue API returned %s", response.status_code)
             return ERROR_CODES['API_ERROR']
 
         data = response.json()
@@ -55,26 +63,26 @@ def check_backpressure(lab_url: str | None, dry_run: bool = False) -> int:
         # Logic: If depth > threshold, backpressure MUST be active
         if current_depth > (MAX_QUEUE_DEPTH * BACKPRESSURE_THRESHOLD):
             if not backpressure_active:
-                print(f"FAIL: Backpressure not triggered at depth {current_depth}")
+                logger.error("FAIL: Backpressure not triggered at depth %s", current_depth)
                 return ERROR_CODES['API_ERROR']
         
-        print(f"PASS: Queue depth {current_depth} within operational limits.")
+        logger.info("PASS: Queue depth %s within operational limits.", current_depth)
         return ERROR_CODES['SUCCESS']
 
     except requests.RequestException as e:
-        print(f"FAIL: Connection error: {e}")
+        logger.error("FAIL: Connection error: %s", e)
         return ERROR_CODES['API_ERROR']
     except ValueError as e:
-        print(f"FAIL: Data parsing error: {e}")
+        logger.error("FAIL: Data parsing error: %s", e)
         return ERROR_CODES['CONFIG_ERROR']
     except KeyError as e:
-        print(f"FAIL: Missing key in response: {e}")
+        logger.error("FAIL: Missing key in response: %s", e)
         return ERROR_CODES['CONFIG_ERROR']
     except TypeError as e:
-        print(f"FAIL: Type mismatch: {e}")
+        logger.error("FAIL: Type mismatch: %s", e)
         return ERROR_CODES['CONFIG_ERROR']
     except Exception as e:
-        print(f"FAIL: Unexpected error: {e}")
+        logger.error("FAIL: Unexpected error: %s", e)
         return ERROR_CODES['API_ERROR']
 
 def main() -> int:
