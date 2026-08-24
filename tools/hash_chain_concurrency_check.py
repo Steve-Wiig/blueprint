@@ -1,6 +1,28 @@
 #!/usr/bin/env python3
-# CI Gate: Hash Chain Concurrency Check
-# Ensures atomic updates to the hash chain ledger under high-concurrency simulation.
+"""
+Hash Chain Concurrency Validator
+
+This module provides a CI gate for validating hash chain integrity under
+high-concurrency conditions. It simulates concurrent append operations to a
+thread-safe hash chain ledger and verifies that no race conditions occur
+during index assignment.
+
+The validator uses an in-memory HashChainLedger with atomic append operations
+protected by a threading lock. Stress tests are executed via ThreadPoolExecutor
+with configurable thread counts to expose potential concurrency bugs.
+
+Usage:
+    python hash_chain_concurrency.py [--threads N] [--dry-run]
+
+Environment Variables:
+    HASH_CHAIN_LEDGER: Path to ledger file (default: /tmp/hash_chain.ledger)
+
+Exit Codes:
+    0: All stress tests passed
+    1: Race condition detected
+    2: Configuration error (e.g., unwritable ledger path)
+"""
+
 import sys
 import threading
 import time
@@ -10,6 +32,7 @@ import random
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import List, Optional
+
 
 # Blueprint v11.6.0: Hash Chain Integrity Constraints
 # MAX_CONCURRENT_THREADS increased default to 100, configurable via --threads
@@ -27,6 +50,10 @@ class HashChainLedger:
     internal lock to prevent race conditions during high-concurrency stress tests.
     The chain is stored in memory and is suitable for validation of concurrent
     write semantics without external dependencies.
+
+    Attributes:
+        lock: A threading.Lock instance protecting the chain during mutations.
+        chain: A list of hash strings representing the append-only ledger.
     """
 
     def __init__(self) -> None:
@@ -92,6 +119,10 @@ def worker(ledger: HashChainLedger, results: List[Optional[int]]) -> None:
 def run_stress_test(num_threads: int) -> bool:
     """Run a single stress test iteration with the given number of threads.
 
+    Creates a fresh HashChainLedger and spawns `num_threads` workers to
+    concurrently append hashes. Validates that all appends succeed, return
+    unique indices, and no operations fail.
+
     Args:
         num_threads: Number of concurrent threads to use for the test.
 
@@ -115,7 +146,12 @@ def run_stress_test(num_threads: int) -> bool:
 
 
 def get_ledger_path() -> str:
-    """Resolve the ledger file path from the environment without side effects at import time."""
+    """Resolve the ledger file path from the environment without side effects at import time.
+
+    Returns:
+        The ledger file path from HASH_CHAIN_LEDGER environment variable,
+        or the default '/tmp/hash_chain.ledger' if not set.
+    """
     return os.getenv("HASH_CHAIN_LEDGER", "/tmp/hash_chain.ledger")
 
 
