@@ -22,6 +22,7 @@ _PATTERNS = {
 
 
 def _iter_strings(obj: Any) -> Iterable[str]:
+    """Recursively yield all string values from nested dict/list structures."""
     if isinstance(obj, dict):
         for value in obj.values():
             yield from _iter_strings(value)
