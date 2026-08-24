@@ -27,12 +27,18 @@ def check_idempotency(input_text, prefix):
         
     return True
 
-def main():
+def main(dry_run=False):
     test_cases = [
         ("unprefixed_data", REQUIRED_DOC_PREFIX, True),
         (f"{REQUIRED_DOC_PREFIX}already_prefixed", REQUIRED_DOC_PREFIX, True),
         (f"{REQUIRED_DOC_PREFIX}{REQUIRED_DOC_PREFIX}double_prefixed", REQUIRED_DOC_PREFIX, False)
     ]
+    
+    if dry_run:
+        print("DRY RUN: Would test the following cases:")
+        for text, prefix, expected_valid in test_cases:
+            print(f"  Input: {text!r}, Prefix: {prefix!r}, Expected valid: {expected_valid}")
+        return 0
     
     for text, prefix, expected_valid in test_cases:
         is_valid = check_idempotency(text, prefix)
@@ -49,6 +55,6 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", help="Run with test/mock data")
     args = parser.parse_args()
     
-    exit_code = main()
+    exit_code = main(dry_run=args.dry_run)
     if exit_code != 0:
         raise RuntimeError(f"CI check failed with exit code {exit_code}")
