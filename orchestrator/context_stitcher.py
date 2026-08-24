@@ -12,7 +12,7 @@ def stitch_memory_context(query_embedding, top_k=5, max_age_days=30):
         conn = psycopg2.connect(dbname="soc_db", user="orchestrator")
         cur = conn.cursor()
         
-        cutoff_date = datetime.now() - timedelta(days=max_age_days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=max_age_days)
         
         query = """
             SELECT case_id, summary, cosine_distance(embedding, %s::vector) as dist
