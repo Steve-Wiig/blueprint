@@ -31,7 +31,8 @@ TEST_PAYLOADS = {
     "password_query": "login?user=admin&password=supersecretpassword"
 }
 
-def redact(pattern_key, text):
+def redact(pattern_key: str, text: str) -> str:
+    """Redact sensitive pattern in text, preserving prefix for query/header patterns."""
     pattern = COMPILED_PATTERNS[pattern_key]
     preserve_prefix = PATTERNS[pattern_key][1]
     if preserve_prefix:
