@@ -42,7 +42,7 @@ def check_idempotency(input_text: str, prefix: str) -> bool:
         
     return True
 
-def main(dry_run=False):
+def main(dry_run: bool = False) -> int:
     """Run idempotency verification tests. Returns 0 on success, 1 on failure."""
     test_cases = MOCK_TEST_CASES if dry_run else PRODUCTION_TEST_CASES
     
