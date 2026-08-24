@@ -130,9 +130,9 @@ if __name__ == "__main__":
     adapter = client.get_adapter("triage_analysis")
     
     if adapter['status'] == 'retired':
-        sys.exit(1)
+        raise RuntimeError("Adapter retired")
         
     if not client.verify_integrity(adapter, f"models/{adapter['adapter_id']}.bin"):
-        sys.exit(1)
+        raise RuntimeError("Integrity check failed")
         
     sys.exit(0)
