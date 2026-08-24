@@ -4,12 +4,13 @@ import sqlite3
 import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from typing import Generator
 
 DB_PATH = "quota_ledger.db"
 
 
 @contextmanager
-def get_db_connection():
+def get_db_connection() -> Generator[sqlite3.Connection, None, None]:
     """Context manager for database connections with automatic commit/rollback."""
     conn = sqlite3.connect(DB_PATH)
     try:
