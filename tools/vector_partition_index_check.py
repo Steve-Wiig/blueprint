@@ -1,4 +1,60 @@
 #!/usr/bin/env python3
+"""
+Vector Partition Index Integrity Check
+
+A CI gate tool that validates vector database partition configurations against
+schema constraints and sharding rules. Ensures all required partitions exist,
+schema versions match, shard sizes are within limits, and indexing is enabled.
+
+Usage:
+    python check_vector_partitions.py [--config PATH] [--dry-run]
+
+Arguments:
+    --config PATH     Path to partition configuration JSON file
+                      (default: config/vector_partitions.json)
+    --dry-run         Perform validation without committing changes,
+                      with verbose step-by-step output
+
+Environment Variables:
+    SLM_ENV                    Required. Must be set for the tool to run.
+    SLM_DEFAULTS_CONFIG        Path to defaults JSON file
+                               (default: config/vector_index_defaults.json)
+    SLM_REQUIRED_PARTITIONS    Comma-separated list of required partition names
+                               (default: alerts,threat_intel,audit_logs)
+    SLM_MAX_SHARD_SIZE_GB      Maximum allowed shard size in GB (default: 16)
+    SLM_INDEX_SCHEMA_VERSION   Expected schema version string (default: 11.6.0)
+
+Exit Codes:
+    0 (EXIT_SUCCESS)           Validation passed successfully
+    1 (EXIT_VALIDATION_FAILED) Validation failed (missing partition, version mismatch,
+                               shard size exceeded, or indexing disabled)
+    2 (EXIT_CONFIG_NOT_FOUND)  Config file not found at specified path
+    3 (EXIT_ENV_NOT_SET)       SLM_ENV environment variable not set
+
+Configuration File Format (JSON):
+    {
+        "version": "11.6.0",
+        "partitions": {
+            "alerts": {
+                "max_shard_gb": 8,
+                "indexing_enabled": true
+            },
+            "threat_intel": {
+                "max_shard_gb": 16,
+                "indexing_enabled": true
+            },
+            "audit_logs": {
+                "max_shard_gb": 4,
+                "indexing_enabled": true
+            }
+        }
+    }
+
+Example:
+    SLM_ENV=production python check_vector_partitions.py --config config/vector_partitions.json
+    SLM_ENV=staging python check_vector_partitions.py --dry-run
+"""
+
 # CI Gate: Vector Partition Index Integrity Check
 # Ensures vector database partitions adhere to schema constraints and sharding rules.
 
