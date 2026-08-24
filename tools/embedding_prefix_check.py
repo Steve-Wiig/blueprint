@@ -23,13 +23,18 @@ Example:
 """
 
 import sys
+import os
 import argparse
 import logging
 from typing import Callable
 
-REQUIRED_DOC_PREFIX = "search_document: "
-REQUIRED_QUERY_PREFIX = "search_query: "
-REQUIRED_DIM = 768
+DEFAULT_DOC_PREFIX = "search_document: "
+DEFAULT_QUERY_PREFIX = "search_query: "
+DEFAULT_DIM = 768
+
+REQUIRED_DOC_PREFIX = os.getenv("EMBEDDING_DOC_PREFIX", DEFAULT_DOC_PREFIX)
+REQUIRED_QUERY_PREFIX = os.getenv("EMBEDDING_QUERY_PREFIX", DEFAULT_QUERY_PREFIX)
+REQUIRED_DIM = int(os.getenv("EMBEDDING_DIM", str(DEFAULT_DIM)))
 
 calls: list[str] = []
 
@@ -61,6 +66,8 @@ class EmbeddingService:
     Attributes:
         encoder: Callable that takes a string and returns a list of floats
                  representing the embedding vector.
+        doc_prefix: Prefix to prepend for document embeddings.
+        query_prefix: Prefix to prepend for query embeddings.
 
     Example:
         >>> def encoder(text: str) -> list[float]:
@@ -72,8 +79,15 @@ class EmbeddingService:
     """
 
     encoder: Callable[[str], list[float]]
+    doc_prefix: str
+    query_prefix: str
 
-    def __init__(self, encoder: Callable[[str], list[float]]) -> None:
+    def __init__(
+        self,
+        encoder: Callable[[str], list[float]],
+        doc_prefix: str | None = None,
+        query_prefix: str | None = None,
+    ) -> None:
         """
         Initialize the EmbeddingService with an encoder function.
 
@@ -82,17 +96,23 @@ class EmbeddingService:
                      representing the embedding vector. The encoder is expected
                      to handle the prefixed text and return a vector of dimension
                      REQUIRED_DIM (768).
+            doc_prefix: Optional prefix for document embeddings. Defaults to
+                        REQUIRED_DOC_PREFIX from environment or default.
+            query_prefix: Optional prefix for query embeddings. Defaults to
+                          REQUIRED_QUERY_PREFIX from environment or default.
 
         Raises:
             TypeError: If encoder is not callable.
         """
         self.encoder = encoder
+        self.doc_prefix = doc_prefix if doc_prefix is not None else REQUIRED_DOC_PREFIX
+        self.query_prefix = query_prefix if query_prefix is not None else REQUIRED_QUERY_PREFIX
 
     def embed_document(self, text: str) -> list[float]:
         """
         Generate an embedding for a document with the required prefix.
 
-        Prepends "search_document: " to the input text before passing to
+        Prepends the document prefix to the input text before passing to
         the encoder. This prefix is required by the vector database for
         document-type embeddings.
 
@@ -109,13 +129,13 @@ class EmbeddingService:
             >>> len(vec)
             768
         """
-        return self.encoder(REQUIRED_DOC_PREFIX + text)
+        return self.encoder(self.doc_prefix + text)
 
     def embed_query(self, text: str) -> list[float]:
         """
         Generate an embedding for a query with the required prefix.
 
-        Prepends "search_query: " to the input text before passing to
+        Prepends the query prefix to the input text before passing to
         the encoder. This prefix is required by the vector database for
         query-type embeddings to enable asymmetric retrieval.
 
@@ -132,27 +152,43 @@ class EmbeddingService:
             >>> len(vec)
             768
         """
-        return self.encoder(REQUIRED_QUERY_PREFIX + text)
+        return self.encoder(self.query_prefix + text)
 
 
-def run_verification(dry_run: bool = False) -> int:
+def run_verification(
+    dry_run: bool = False,
+    doc_prefix: str | None = None,
+    query_prefix: str | None = None,
+    dim: int | None = None,
+) -> int:
     """
     Run the CI gate verification for embedding prefix and dimension contract.
 
     Args:
         dry_run: If True, skip actual encoding calls and only verify service
                  instantiation and constants.
+        doc_prefix: Override document prefix for verification.
+        query_prefix: Override query prefix for verification.
+        dim: Override dimension for verification.
 
     Returns:
         0 if all checks pass, 1 if any check fails.
     """
-    svc = EmbeddingService(fake_encode)
+    effective_doc_prefix = doc_prefix or REQUIRED_DOC_PREFIX
+    effective_query_prefix = query_prefix or REQUIRED_QUERY_PREFIX
+    effective_dim = dim or REQUIRED_DIM
+
+    svc = EmbeddingService(
+        fake_encode,
+        doc_prefix=effective_doc_prefix,
+        query_prefix=effective_query_prefix,
+    )
 
     if dry_run:
         logger.info("DRY-RUN: EmbeddingService instantiated successfully.")
-        logger.info("DRY-RUN: Required document prefix: '%s'", REQUIRED_DOC_PREFIX)
-        logger.info("DRY-RUN: Required query prefix: '%s'", REQUIRED_QUERY_PREFIX)
-        logger.info("DRY-RUN: Required dimension: %d", REQUIRED_DIM)
+        logger.info("DRY-RUN: Required document prefix: '%s'", effective_doc_prefix)
+        logger.info("DRY-RUN: Required query prefix: '%s'", effective_query_prefix)
+        logger.info("DRY-RUN: Required dimension: %d", effective_dim)
         logger.info("PASS: Dry-run verification completed.")
         return 0
 
@@ -163,18 +199,18 @@ def run_verification(dry_run: bool = False) -> int:
     query_vector = svc.embed_query(query_text)
 
     # Verify Dimensions
-    if len(doc_vector) != REQUIRED_DIM:
-        logger.error("FAIL: document embedding dim is %d, expected %d", len(doc_vector), REQUIRED_DIM)
+    if len(doc_vector) != effective_dim:
+        logger.error("FAIL: document embedding dim is %d, expected %d", len(doc_vector), effective_dim)
         return 1
-    if len(query_vector) != REQUIRED_DIM:
-        logger.error("FAIL: query embedding dim is %d, expected %d", len(query_vector), REQUIRED_DIM)
+    if len(query_vector) != effective_dim:
+        logger.error("FAIL: query embedding dim is %d, expected %d", len(query_vector), effective_dim)
         return 1
 
     # Verify Prefixes
-    if not calls[0].startswith(REQUIRED_DOC_PREFIX):
+    if not calls[0].startswith(effective_doc_prefix):
         logger.error("FAIL: document prefix mismatch. Got: %s...", calls[0][:20])
         return 1
-    if not calls[1].startswith(REQUIRED_QUERY_PREFIX):
+    if not calls[1].startswith(effective_query_prefix):
         logger.error("FAIL: query prefix mismatch. Got: %s...", calls[1][:20])
         return 1
 
@@ -197,9 +233,32 @@ def main() -> int:
         action="store_true",
         help="Skip actual encoding calls, only verify service instantiation and constants"
     )
+    parser.add_argument(
+        "--doc-prefix",
+        type=str,
+        default=None,
+        help=f"Document prefix (default: {DEFAULT_DOC_PREFIX!r}, env: EMBEDDING_DOC_PREFIX)"
+    )
+    parser.add_argument(
+        "--query-prefix",
+        type=str,
+        default=None,
+        help=f"Query prefix (default: {DEFAULT_QUERY_PREFIX!r}, env: EMBEDDING_QUERY_PREFIX)"
+    )
+    parser.add_argument(
+        "--dim",
+        type=int,
+        default=None,
+        help=f"Embedding dimension (default: {DEFAULT_DIM}, env: EMBEDDING_DIM)"
+    )
     args = parser.parse_args()
 
-    return run_verification(dry_run=args.dry_run)
+    return run_verification(
+        dry_run=args.dry_run,
+        doc_prefix=args.doc_prefix,
+        query_prefix=args.query_prefix,
+        dim=args.dim,
+    )
 
 
 if __name__ == "__main__":
