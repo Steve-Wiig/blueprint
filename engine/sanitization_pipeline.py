@@ -31,6 +31,8 @@ ALLOWLIST_PATTERNS = {
     "uuid": r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 }
 
+ALLOWLIST_PATTERNS_COMPILED = {k: re.compile(v) for k, v in ALLOWLIST_PATTERNS.items()}
+
 ANALYTICAL_FIELDS = {
     "process.args", "process.command_line", "powershell.encoded_command",
     "script.block", "bash.command", "shell.args", "file.contents"
@@ -79,7 +81,7 @@ def sanitize_payload(payload: str, field_path: Optional[str] = None) -> Dict[str
     for token in tokens:
         if calculate_entropy(token) > 4.5:
             # Check Allowlist
-            is_allowed = any(re.match(p, token) for p in ALLOWLIST_PATTERNS.values())
+            is_allowed = any(p.match(token) for p in ALLOWLIST_PATTERNS_COMPILED.values())
             
             if not is_allowed:
                 if field_path in ANALYTICAL_FIELDS:
