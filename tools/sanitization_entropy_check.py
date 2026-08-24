@@ -54,7 +54,11 @@ def calculate_entropy(data: str) -> float:
         return 0.0
     counts = collections.Counter(data)
     length = len(data)
-    return -sum((count / length) * math.log2(count / length) for count in counts.values())
+    # Pre-compute log2(i/length) for i in 1..length to avoid repeated log2 calls
+    log2_table = [0.0] * (length + 1)
+    for i in range(1, length + 1):
+        log2_table[i] = math.log2(i / length)
+    return -sum((count / length) * log2_table[count] for count in counts.values())
 
 
 def is_allowlisted(token: str) -> bool:
