@@ -14,7 +14,7 @@ PROJECT_ROOT = BASE_DIR.parent
 SCHEMA_PATH = PROJECT_ROOT / "config" / "memory_schema.json"
 LEDGER_PATH = (BASE_DIR / ".." / "logs" / "migration_ledger.log").resolve()
 
-def validate_schema(schema_data):
+def validate_schema(schema_data: dict) -> tuple[bool, str]:
     """Validates schema structure against blueprint requirements."""
     required_keys = {"version", "vector_dim", "partition_strategy", "retention_days"}
     if not all(k in schema_data for k in required_keys):
