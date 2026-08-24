@@ -3,7 +3,7 @@
 import sqlite3
 import argparse
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 DB_PATH = "quota_ledger.db"
 
@@ -15,8 +15,8 @@ def init_db() -> None:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS quota_ledger (
                 adapter_id TEXT PRIMARY KEY,
-                daily_limit INTEGER,
-                job_limit INTEGER,
+                daily_limit INTEGER NOT NULL CHECK (daily_limit > 0),
+                job_limit INTEGER NOT NULL CHECK (job_limit > 0),
                 tokens_used_today INTEGER DEFAULT 0,
                 last_reset_date TEXT
             )
@@ -39,7 +39,7 @@ def check_quota(adapter_id: str, estimated_tokens: int) -> bool:
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        today = datetime.now().strftime('%Y-%m-%d')
+        today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         
         cursor.execute("SELECT daily_limit, job_limit, tokens_used_today, last_reset_date FROM quota_ledger WHERE adapter_id = ?", (adapter_id,))
         row = cursor.fetchone()
@@ -68,7 +68,7 @@ def record_usage(adapter_id: str, tokens_used: int) -> None:
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        today = datetime.now().strftime('%Y-%m-%d')
+        today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         
         cursor.execute("SELECT tokens_used_today, last_reset_date FROM quota_ledger WHERE adapter_id = ?", (adapter_id,))
         row = cursor.fetchone()
