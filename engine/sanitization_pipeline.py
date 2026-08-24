@@ -8,6 +8,7 @@ import math
 import hashlib
 import json
 from typing import Optional, Dict, Any, Union
+from collections import Counter
 
 # LOCAL-SOC-SLM v11.6.0 Sanitization Pipeline
 # Section 34.1 Implementation
@@ -55,11 +56,12 @@ def calculate_entropy(data: str) -> float:
         raise TypeError(f"Expected str, got {type(data).__name__}")
     if not data:
         return 0.0
+    counts = Counter(data)
+    length = len(data)
     entropy = 0.0
-    for x in range(256):
-        p_x = float(data.count(chr(x))) / len(data)
-        if p_x > 0:
-            entropy += -p_x * math.log(p_x, 2)
+    for count in counts.values():
+        p_x = count / length
+        entropy += -p_x * math.log(p_x, 2)
     return entropy
 
 def _redact_regex_patterns(payload: str, metadata: Dict[str, Any]) -> str:
