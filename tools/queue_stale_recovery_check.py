@@ -38,10 +38,9 @@ def check_queue_recovery(dry_run: bool = False) -> int:
         # Check if the recovery handler is registered in the local state
         manifest_path = os.path.join(queue_path, RECOVERY_MANIFEST_FILENAME)
         with open(manifest_path, "r") as f:
-            for line in f:
-                if REQUIRED_RECOVERY_LOG_PATTERN in line:
-                    print("PASS: Stale recovery logic verified.")
-                    return 0
+            if any(REQUIRED_RECOVERY_LOG_PATTERN in line for line in f):
+                print("PASS: Stale recovery logic verified.")
+                return 0
             print("FAIL: Recovery pattern not found in manifest.")
             return 1
     except FileNotFoundError:
