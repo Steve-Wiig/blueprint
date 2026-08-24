@@ -5,6 +5,7 @@ import os
 import sys
 import subprocess
 import argparse
+import re
 
 def main():
     parser = argparse.ArgumentParser(description="Verify CHANGELOG completeness")
@@ -37,10 +38,15 @@ def main():
     with open("CHANGELOG.md", "r") as f:
         changelog_content = f.read()
 
+    # Parse changelog once: extract all commit hashes (7+ char hex) into a set for O(1) lookup
+    # Matches abbreviated commit hashes (7-12 chars) typically used in changelogs
+    commit_hash_pattern = re.compile(r'\b([0-9a-f]{7,12})\b')
+    changelog_hashes = set(commit_hash_pattern.findall(changelog_content.lower()))
+
     missing_entries = []
     for commit in commits:
-        commit_hash = commit.split(" ")[0]
-        if commit_hash not in changelog_content:
+        commit_hash = commit.split(" ")[0].lower()
+        if commit_hash not in changelog_hashes:
             missing_entries.append(commit)
 
     if missing_entries:
