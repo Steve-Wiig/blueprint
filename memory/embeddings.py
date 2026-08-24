@@ -26,6 +26,7 @@ class EmbeddingService:
         return vector.tolist()
 
     def _apply_prefix(self, text: str, prefix: str) -> str:
+        """Apply prefix idempotently. Returns text with prefix if not already present (case-sensitive check)."""
         if text.startswith(prefix):
             return text
         return f"{prefix}{text}"
