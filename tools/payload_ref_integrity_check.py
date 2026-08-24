@@ -23,6 +23,12 @@ REQUIRED_KEYS = {
 
 ALLOWED_SCHEMES = {"soc-internal", "https", "file"}
 
+# Exit codes for verify_payload
+EXIT_PASS = 0
+EXIT_FAIL_INTEGRITY = 1
+EXIT_FAIL_JSON = 2
+
+
 def verify_payload(ledger_path: str) -> int:
     """Verify the integrity of a payload ledger file.
 
@@ -35,36 +41,36 @@ def verify_payload(ledger_path: str) -> int:
 
     Returns:
         int: Exit code indicating verification result:
-            0 - PASS: All integrity checks passed
-            1 - FAIL: Missing file, missing keys, invalid URI scheme, or checksum length mismatch
-            2 - FAIL: Invalid JSON format
+            EXIT_PASS (0) - PASS: All integrity checks passed
+            EXIT_FAIL_INTEGRITY (1) - FAIL: Missing file, missing keys, invalid URI scheme, or checksum length mismatch
+            EXIT_FAIL_JSON (2) - FAIL: Invalid JSON format
 
     Raises:
         OSError: If file cannot be read due to permissions or I/O error.
-        json.JSONDecodeError: If file contains invalid JSON (caught and returns 2).
+        json.JSONDecodeError: If file contains invalid JSON (caught and returns EXIT_FAIL_JSON).
     """
     if not os.path.exists(ledger_path):
         print(f"FAIL: Ledger file not found at {ledger_path}")
-        return 1
+        return EXIT_FAIL_INTEGRITY
 
     try:
         with open(ledger_path, 'r') as f:
             data = json.load(f)
     except json.JSONDecodeError:
         print("FAIL: Invalid JSON format")
-        return 2
+        return EXIT_FAIL_JSON
 
     # 1. Verify 8 required ledger keys
     missing = REQUIRED_KEYS - set(data.keys())
     if missing:
         print(f"FAIL: Missing ledger keys: {missing}")
-        return 1
+        return EXIT_FAIL_INTEGRITY
 
     # 2. Verify Canonical URI schemes (origin_node)
     parsed_uri = urlparse(data.get("origin_node", ""))
     if parsed_uri.scheme not in ALLOWED_SCHEMES:
         print(f"FAIL: Invalid URI scheme: {parsed_uri.scheme}")
-        return 1
+        return EXIT_FAIL_INTEGRITY
 
     # 3. Verify SHA256 Integrity
     # Reconstruct payload for hash verification
@@ -74,10 +80,11 @@ def verify_payload(ledger_path: str) -> int:
     # Note: In production, this compares against a signed manifest
     if len(data.get("integrity_checksum", "")) != 64:
         print("FAIL: Integrity checksum length mismatch")
-        return 1
+        return EXIT_FAIL_INTEGRITY
 
     print("PASS: Payload reference integrity verified")
-    return 0
+    return EXIT_PASS
+
 
 def main() -> int:
     """Main entry point for the CI payload integrity check.
@@ -87,9 +94,9 @@ def main() -> int:
 
     Returns:
         int: Exit code from verify_payload():
-            0 - PASS: All integrity checks passed
-            1 - FAIL: Integrity verification failed
-            2 - FAIL: Invalid JSON format
+            EXIT_PASS (0) - PASS: All integrity checks passed
+            EXIT_FAIL_INTEGRITY (1) - FAIL: Integrity verification failed
+            EXIT_FAIL_JSON (2) - FAIL: Invalid JSON format
 
     Raises:
         SystemExit: Exits with the return code from verify_payload().
