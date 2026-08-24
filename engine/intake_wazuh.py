@@ -5,14 +5,14 @@ import sys
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Dict, Any, Tuple, Optional
+from typing import Any
 
 DB_PATH = os.getenv('TRIAGE_DB_PATH', '/var/lib/local-soc/triage_queue.db')
 LOG_FILE = os.getenv('TRIAGE_LOG_FILE', '/var/log/local-soc/intake.log')
 
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO)
 
-_connection: Optional[sqlite3.Connection] = None
+_connection: sqlite3.Connection | None = None
 
 def _get_connection() -> sqlite3.Connection:
     global _connection
@@ -22,7 +22,7 @@ def _get_connection() -> sqlite3.Connection:
         _connection.execute("PRAGMA busy_timeout=5000")
     return _connection
 
-def sanitize_payload(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[str]]:
+def sanitize_payload(data: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
     try:
         allowed_keys = {'agent', 'rule_id', 'description', 'src_ip', 'dst_ip'}
         sanitized_payload = {k: data.get(k) for k in allowed_keys if k in data}
