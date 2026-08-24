@@ -11,6 +11,7 @@ import argparse
 import json
 import sqlite3
 import psycopg2
+from datetime import datetime, timezone
 from typing import Tuple, Dict, List, Optional
 
 def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensions.connection, sqlite3.Connection]:
@@ -176,10 +177,17 @@ def process_jobs(
             try:
                 # Mock enrichment logic
                 result = {"status": "enriched", "data": f"mock_data_for_{ioc}"}
+                result_json = json.dumps(result)
+                processed_at = datetime.now(timezone.utc)
 
+                # Append-only audit log before updating job status
+                pg_cur.execute(
+                    "INSERT INTO enrichment_audit_log (job_id, status, result, processed_at) VALUES (%s, %s, %s, %s)",
+                    (job_id, 'COMPLETED', result_json, processed_at)
+                )
                 pg_cur.execute(
                     "UPDATE enrichment_jobs SET status = 'COMPLETED', result = %s WHERE id = %s",
-                    (json.dumps(result), job_id)
+                    (result_json, job_id)
                 )
                 update_quota(sq_conn, provider, cost)
 
