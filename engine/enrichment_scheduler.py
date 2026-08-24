@@ -140,49 +140,52 @@ def process_jobs(
     pg_conn: psycopg2.extensions.connection,
     sq_conn: sqlite3.Connection
 ) -> None:
-    """Fetches pending enrichment jobs and processes them if quota is available.
+    """Fetches pending enrichment jobs in batches and processes them if quota is available.
 
     Args:
         pg_conn: The PostgreSQL database connection.
         sq_conn: The SQLite database connection.
     """
-    pg_cur = pg_conn.cursor()
-    pg_cur.execute(
-        "SELECT id, ioc_value, provider FROM enrichment_jobs WHERE status = 'PENDING'"
-    )
-    jobs = pg_cur.fetchall()
+    BATCH_SIZE = 1000
+    last_id = 0
+    quota_cache: Dict[str, int] = {}
+    cost_cache: Dict[str, int] = {}
 
-    if not jobs:
-        return
+    while True:
+        pg_cur = pg_conn.cursor()
+        pg_cur.execute(
+            "SELECT id, ioc_value, provider FROM enrichment_jobs WHERE status = 'PENDING' AND id > %s ORDER BY id LIMIT %s",
+            (last_id, BATCH_SIZE)
+        )
+        jobs = pg_cur.fetchall()
+        if not jobs:
+            break
 
-    # Pre‑fetch quota and cost for all involved providers to avoid N+1 queries.
-    providers = list({job[2] for job in jobs})
-    quota_cache, cost_cache = _fetch_provider_data(sq_conn, providers)
+        for job_id, ioc, provider in jobs:
+            last_id = job_id  # advance pagination marker
+            quota = check_quota(sq_conn, provider, quota_cache)
+            cost = get_provider_cost(sq_conn, provider, cost_cache)
 
-    for job_id, ioc, provider in jobs:
-        quota = quota_cache.get(provider, 0)
-        cost = cost_cache.get(provider, 1)
+            if quota < cost:
+                continue  # Not enough quota; skip this job.
 
-        if quota < cost:
-            continue  # Not enough quota; skip this job.
+            try:
+                # Mock enrichment logic
+                result = {"status": "enriched", "data": f"mock_data_for_{ioc}"}
 
-        try:
-            # Mock enrichment logic
-            result = {"status": "enriched", "data": f"mock_data_for_{ioc}"}
+                pg_cur.execute(
+                    "UPDATE enrichment_jobs SET status = 'COMPLETED', result = %s WHERE id = %s",
+                    (json.dumps(result), job_id)
+                )
+                update_quota(sq_conn, provider, cost)
 
-            pg_cur.execute(
-                "UPDATE enrichment_jobs SET status = 'COMPLETED', result = %s WHERE id = %s",
-                (json.dumps(result), job_id)
-            )
-            update_quota(sq_conn, provider, cost)
+                # Update in‑memory cache to reflect the consumed quota.
+                quota_cache[provider] = quota - cost
 
-            # Update in‑memory cache to reflect the consumed quota.
-            quota_cache[provider] = quota - cost
-
-            pg_conn.commit()
-        except Exception as e:
-            pg_conn.rollback()
-            raise RuntimeError("Failed to process enrichment job") from e
+                pg_conn.commit()
+            except Exception as e:
+                pg_conn.rollback()
+                raise RuntimeError("Failed to process enrichment job") from e
 
     sq_conn.commit()
 
