@@ -1,7 +1,7 @@
 import re
 import argparse
 import sys
-from typing import Dict, Pattern, TypedDict
+from typing import TypedDict
 from enum import IntEnum
 
 class CheckResult(IntEnum):
@@ -14,7 +14,7 @@ class PatternConfig(TypedDict):
     pattern: str
     redaction_type: str
 
-PATTERNS: Dict[str, PatternConfig] = {
+PATTERNS: dict[str, PatternConfig] = {
     "aws_key": {"pattern": r"\b(AKIA[0-9A-Z]{16})\b", "redaction_type": "full"},
     "github_token": {"pattern": r"\b(ghp_[a-zA-Z0-9]{36})\b", "redaction_type": "full"},
     "jwt_token": {"pattern": r"\b(eyJ[a-zA-Z0-9_-]{16,}\.[a-zA-Z0-9_-]{16,}\.[a-zA-Z0-9_-]{16,})\b", "redaction_type": "full"},
@@ -25,9 +25,9 @@ PATTERNS: Dict[str, PatternConfig] = {
     "password_query": {"pattern": r"(?i)(password=)([^&\s]{8,})", "redaction_type": "group"}
 }
 
-COMPILED_PATTERNS: Dict[str, Pattern[str]] = {k: re.compile(v["pattern"]) for k, v in PATTERNS.items()}
+COMPILED_PATTERNS: dict[str, re.Pattern[str]] = {k: re.compile(v["pattern"]) for k, v in PATTERNS.items()}
 
-TEST_PAYLOADS: Dict[str, str] = {
+TEST_PAYLOADS: dict[str, str] = {
     "aws_key": "Access key is AKIAIOSFODNN7EXAMPLE",
     "github_token": "Token: ghp_1234567890abcdef1234567890abcdef1234",
     "jwt_token": "Header: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
