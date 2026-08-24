@@ -6,7 +6,6 @@ import os
 import sys
 import json
 import argparse
-import glob
 
 SCHEMA_VERSION_REQUIRED = "11.6.0"
 SCHEMA_PATH = "config/memory_schema.json"
