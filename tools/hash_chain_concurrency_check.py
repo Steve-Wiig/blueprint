@@ -114,6 +114,11 @@ def run_stress_test(num_threads: int) -> bool:
     return True
 
 
+def get_ledger_path() -> str:
+    """Resolve the ledger file path from the environment without side effects at import time."""
+    return os.getenv("HASH_CHAIN_LEDGER", "/tmp/hash_chain.ledger")
+
+
 def main() -> int:
     """Entry point for the hash chain concurrency validator.
 
@@ -126,7 +131,7 @@ def main() -> int:
         configuration errors prevent testing.
     """
     now = datetime.now(timezone.utc)
-    ledger_path = os.getenv("HASH_CHAIN_LEDGER", "/tmp/hash_chain.ledger")
+    ledger_path = get_ledger_path()
     parser = argparse.ArgumentParser(description="Hash Chain Concurrency Validator")
     parser.add_argument(
         "--dry-run",
