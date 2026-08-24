@@ -197,14 +197,15 @@ INDEX_SCHEMA_VERSION: str = _get_index_schema_version()
 
 
 def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
-    """
-    Validate vector partition configuration against schema constraints and sharding rules.
+    """Validate vector partition configuration against schema constraints and sharding rules.
 
     Performs the following validation steps in order:
     1. File existence check - verifies the config file exists at the given path.
     2. JSON parsing - ensures the file contains valid JSON.
-    3. Required partitions - confirms all required partitions (alerts, threat_intel, audit_logs) are present.
-    4. Schema version - validates the configuration version matches INDEX_SCHEMA_VERSION (11.6.0).
+    3. Required partitions - confirms all required partitions (alerts, threat_intel,
+       audit_logs) are present.
+    4. Schema version - validates the configuration version matches
+       INDEX_SCHEMA_VERSION (11.6.0).
     5. Shard size constraints - verifies no partition exceeds MAX_SHARD_SIZE_GB (16GB).
     6. Indexing enabled - confirms indexing is enabled for all partitions.
 
@@ -222,7 +223,8 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
             3 (EXIT_ENV_ERROR) - Environment variable SLM_ENV not set (handled by main()).
 
     Raises:
-        json.JSONDecodeError: If the config file contains invalid JSON (caught internally, returns 1).
+        json.JSONDecodeError: If the config file contains invalid JSON (caught internally,
+            returns 1).
         OSError: If file cannot be read due to permissions (propagates to caller).
     """
     config_path_str = str(config_path)
@@ -323,14 +325,21 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
 
 
 def main() -> int:
-    """
-    Main entry point for the vector partition index integrity check.
+    """Main entry point for the vector partition index integrity check.
 
     Parses command-line arguments, validates SLM_ENV environment variable is set,
-    and delegates to validate_partition_config.
+    loads the partition configuration file, and runs validation checks.
 
     Returns:
-        int: Exit code from validation (0=success, 1=validation error, 2=config error, 3=env error).
+        int: Exit code indicating the result:
+            0 (EXIT_SUCCESS) - Validation passed successfully.
+            1 (EXIT_VALIDATION_ERROR) - Validation failed (missing partition, version mismatch,
+                shard size exceeded, or indexing disabled).
+            2 (EXIT_CONFIG_ERROR) - Config file not found at specified path.
+            3 (EXIT_ENV_ERROR) - SLM_ENV environment variable not set.
+
+    Raises:
+        SystemExit: If argument parsing fails (handled by argparse).
     """
     parser = argparse.ArgumentParser(
         description="Vector Partition Index Integrity Check",
@@ -348,13 +357,12 @@ def main() -> int:
         action="store_true",
         help="Perform validation without committing changes, with verbose output"
     )
-    
     args = parser.parse_args()
-    
+
     if not os.environ.get("SLM_ENV"):
         print("ENV ERROR: SLM_ENV environment variable not set")
         return EXIT_ENV_ERROR
-    
+
     return validate_partition_config(args.config, args.dry_run)
 
 
