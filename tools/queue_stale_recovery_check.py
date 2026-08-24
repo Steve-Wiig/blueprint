@@ -11,8 +11,7 @@ import time
 # Blueprint v11.6.0 Constants
 STALE_THRESHOLD_SECONDS = 300
 REQUIRED_RECOVERY_LOG_PATTERN = "RECOVERY_INITIATED_STALE_MSG"
-DEFAULT_RECOVERY_MANIFEST = "recovery_manifest.log"
-RECOVERY_MANIFEST_FILENAME = os.getenv("SOC_RECOVERY_MANIFEST", DEFAULT_RECOVERY_MANIFEST)
+MANIFEST_FILENAME = os.getenv('RECOVERY_MANIFEST_FILE', 'recovery_manifest.log')
 
 def check_queue_recovery(dry_run: bool = False) -> int:
     """
@@ -44,7 +43,7 @@ def check_queue_recovery(dry_run: bool = False) -> int:
     # Simulate recovery check logic
     try:
         # Check if the recovery handler is registered in the local state
-        manifest_path = os.path.join(queue_path, RECOVERY_MANIFEST_FILENAME)
+        manifest_path = os.path.join(queue_path, MANIFEST_FILENAME)
         with open(manifest_path, "r") as f:
             if any(REQUIRED_RECOVERY_LOG_PATTERN in line for line in f):
                 print("PASS: Stale recovery logic verified.")
