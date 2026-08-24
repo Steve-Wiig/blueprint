@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 # O.7 Payload Integrity Contract
 # Verifies canonical URI schemes, SHA256 integrity, and 8 required ledger keys.
 
-REQUIRED_KEYS = {
+REQUIRED_KEYS = frozenset({
     "ledger_id",
     "timestamp",
     "payload_hash",
@@ -19,9 +19,9 @@ REQUIRED_KEYS = {
     "security_level",
     "integrity_checksum",
     "signature_blob"
-}
+})
 
-ALLOWED_SCHEMES = {"soc-internal", "https", "file"}
+ALLOWED_SCHEMES = frozenset({"soc-internal", "https", "file"})
 
 # Exit codes for verify_payload
 EXIT_PASS = 0
