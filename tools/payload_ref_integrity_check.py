@@ -23,7 +23,7 @@ REQUIRED_KEYS = {
 
 ALLOWED_SCHEMES = {"soc-internal", "https", "file"}
 
-def verify_payload(ledger_path):
+def verify_payload(ledger_path: str) -> int:
     if not os.path.exists(ledger_path):
         print(f"FAIL: Ledger file not found at {ledger_path}")
         return 1
@@ -60,7 +60,7 @@ def verify_payload(ledger_path):
     print("PASS: Payload reference integrity verified")
     return 0
 
-def main():
+def main() -> int:
     ledger_file = os.getenv("LEDGER_PATH", "ledger.json")
     return verify_payload(ledger_file)
 
