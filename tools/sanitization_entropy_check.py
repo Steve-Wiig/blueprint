@@ -98,12 +98,15 @@ def sanitize_pass(text: str) -> str:
     return " ".join(sanitized)
 
 
-def main() -> int:
+def main(input_data: str) -> int:
     """
     Execute two-pass sanitization verification.
 
-    Reads from stdin, performs two sanitization passes, and verifies
+    Performs two sanitization passes on the provided input and verifies
     idempotency (pass1 == pass2). Returns exit code indicating result.
+
+    Args:
+        input_data: The input text to sanitize and verify.
 
     Returns:
         0: PASS - Sanitization consistent, no high-entropy secrets detected.
@@ -111,7 +114,6 @@ def main() -> int:
         2: CONFIG ERROR - Unexpected exception during processing.
     """
     try:
-        input_data = sys.stdin.read()
         if not input_data:
             return 0
 
@@ -138,4 +140,5 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", help="Run with test/mock data")
     args = parser.parse_args()
 
-    sys.exit(main())
+    input_data = sys.stdin.read()
+    sys.exit(main(input_data))
