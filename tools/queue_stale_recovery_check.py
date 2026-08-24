@@ -59,7 +59,7 @@ def check_queue_recovery(dry_run: bool = False) -> int:
         return 1
 
 def main() -> int:
-    """Entry point for queue stale recovery check. Parses CLI args and invokes verification."""
+    """Entry point for queue stale recovery check. Returns exit code."""
     parser = argparse.ArgumentParser(description="Queue Stale Recovery Check")
     parser.add_argument("--dry-run", action="store_true", help="Skip actual verification")
     args = parser.parse_args()
