@@ -49,13 +49,8 @@ def stitch_memory_context(query_embedding: list[float], top_k: int = 5, max_age_
         cur.execute(query, (query_embedding, cutoff_date, top_k))
         results = cur.fetchall()
 
-        context_blocks = []
-        case_refs = []
-
-        for row in results:
-            case_id, summary, dist = row
-            context_blocks.append(f"<case_id={case_id} dist={dist:.4f}>{summary}</case_id>")
-            case_refs.append(case_id)
+        context_blocks = [f"<case_id={r[0]} dist={r[2]:.4f}>{r[1]}</case_id>" for r in results]
+        case_refs = [r[0] for r in results]
             
         formatted_context = f"<memory_context>\n{''.join(context_blocks)}\n</memory_context>"
         metadata = {
