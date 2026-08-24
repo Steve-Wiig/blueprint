@@ -42,6 +42,8 @@ class EmbeddingService:
     encoding. This ensures consistent prefix usage across the platform.
     """
 
+    encoder: Callable[[str], list[float]]
+
     def __init__(self, encoder: Callable[[str], list[float]]) -> None:
         """
         Initialize the EmbeddingService with an encoder function.
