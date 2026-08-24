@@ -34,6 +34,8 @@ class ModelRegistryClient:
         routing_config: Dictionary mapping task types to adapter IDs.
     """
 
+    VALID_STATUSES = {'canary', 'active', 'retired'}
+
     def __init__(self, db_path: str, routing_config_path: str):
         """Initialize the ModelRegistryClient.
 
@@ -120,7 +122,7 @@ class ModelRegistryClient:
             if not row:
                 raise AdapterNotFoundError(f"Adapter not found in registry: {adapter_id}")
 
-            if row['status'] not in ['canary', 'active', 'retired']:
+            if row['status'] not in self.VALID_STATUSES:
                 raise InvalidStatusError(f"Invalid adapter status: {row['status']} for adapter: {adapter_id}")
 
             return {"adapter_id": row['adapter_id'], "sha256": row['adapter_sha256'], "status": row['status']}
