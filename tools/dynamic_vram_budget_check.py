@@ -26,6 +26,17 @@ def parse_mem_value(val_str: str) -> int:
     return int(match.group(1)) if match else 0
 
 def main() -> int:
+    """
+    Check GPU VRAM usage against a budget.
+
+    Reads VRAM_BUDGET_MB environment variable (optional, positive integer MiB).
+    If not set, defaults to 90% of total GPU memory.
+
+    Returns:
+        0: PASS - VRAM usage within budget
+        1: FAIL - VRAM usage exceeds budget or GPU unavailable
+        2: CONFIG ERROR - Invalid VRAM_BUDGET_MB or parsing failure
+    """
     gpu_data = get_gpu_info()
     if gpu_data is None:
         print("FAIL: GPU unavailable or nvidia-smi failed")
