@@ -49,6 +49,7 @@ def verify_chain(chain_data: list[dict]) -> bool:
     return True
 
 def main() -> int:
+    """Verify hash chain from file. Returns 0 on success, 1 on verification failure, 2 on config error, 3 on file not found."""
     # Expecting path to JSON chain file as argument
     if len(sys.argv) < 2:
         print("CONFIG ERROR: Missing chain file path")
