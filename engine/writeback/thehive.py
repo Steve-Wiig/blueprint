@@ -16,8 +16,8 @@ from engine.sanitization_pipeline import sanitize_payload
 def main() -> None:
     """Parses command line arguments and executes the case writeback process.
 
-    The function reads case data, sanitizes it, applies mode-specific modifications,
-    and attempts to post the data to TheHive API. Exits with status codes:
+    The function reads case data, applies mode-specific modifications,
+    sanitizes the result, and attempts to post the data to TheHive API. Exits with status codes:
     0: Success
     1: API Error
     2: JSON Decode Error
@@ -40,12 +40,13 @@ def main() -> None:
     except json.JSONDecodeError:
         raise RuntimeError(f"Library code called exit(2)")
 
+    # Apply mode-specific modifications before sanitization
+    if args.mode == 'draft':
+        raw_data['status'] = 'Open'
+        raw_data['tags'] = raw_data.get('tags', []) + ['draft-mode']
+
     sanitized_data = sanitize_payload(raw_data)
     
-    if args.mode == 'draft':
-        sanitized_data['status'] = 'Open'
-        sanitized_data['tags'] = sanitized_data.get('tags', []) + ['draft-mode']
-
     headers = {
         "Authorization": f"Bearer {args.api_key}",
         "Content-Type": "application/json"
