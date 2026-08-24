@@ -1,7 +1,6 @@
 import sqlite3
 import hashlib
 import yaml
-import sys
 from typing import Dict, Optional
 
 
@@ -126,6 +125,7 @@ class ModelRegistryClient:
         self.close()
 
 if __name__ == "__main__":
+    import sys
     client = ModelRegistryClient("orchestration.db", "routing.json")
     adapter = client.get_adapter("triage_analysis")
     
