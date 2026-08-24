@@ -9,7 +9,7 @@ class DatabaseRetrievalError(Exception):
     pass
 
 
-def stitch_memory_context(query_embedding, top_k=5, max_age_days=30):
+def stitch_memory_context(query_embedding: list[float], top_k: int = 5, max_age_days: int = 30) -> tuple[str, dict]:
     """
     Queries case_embeddings for semantic recall and formats for SLM injection.
     Returns tuple: (formatted_string, metadata_dict)
