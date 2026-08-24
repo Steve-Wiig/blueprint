@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""
+Credential Sanitization Tool for SOC Automation Platform.
+
+Scans text content for sensitive credential patterns including AWS keys, GitHub tokens,
+JWT bearer tokens, SSH private keys, Slack tokens, API keys, and passwords.
+Supports allowlisting of known safe values and dry-run testing mode.
+
+Compliance: LOCAL-SOC-SLM Blueprint v11.6.0 - Appendix O.16 & Section 34.1
+"""
+
 import re
 import sys
 import argparse
@@ -37,7 +47,21 @@ DRY_RUN_PAYLOADS: List[str] = [
     "password=supersecret123"
 ]
 
+
 def scan_text(text: str) -> List[Tuple[str, str]]:
+    """
+    Scan text for credential patterns.
+
+    Args:
+        text: The input text to scan for credentials.
+
+    Returns:
+        List of tuples containing (pattern_name, matched_value) for each
+        credential found that is not in the allowlists.
+
+    Raises:
+        re.error: If a regex pattern is invalid (should not occur with static patterns).
+    """
     found: List[Tuple[str, str]] = []
     for name, pattern in PATTERNS.items():
         matches = re.findall(pattern, text, re.IGNORECASE)
@@ -46,7 +70,23 @@ def scan_text(text: str) -> List[Tuple[str, str]]:
                 found.append((name, match))
     return found
 
+
 def main() -> None:
+    """
+    Main entry point for credential scanning.
+
+    Parses command-line arguments and scans specified files for credentials.
+    Supports dry-run mode for testing with built-in test payloads.
+
+    Command-line arguments:
+        --dry-run: Run self-test with built-in payloads and exit.
+        files: Zero or more file paths to scan.
+
+    Raises:
+        RuntimeError: Always raised with exit code encoded in message.
+            Exit codes: 0 = success/no violations, 1 = violations found,
+            2 = file read error.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("files", nargs="*")
@@ -77,6 +117,7 @@ def main() -> None:
             raise RuntimeError(f"Library code called exit(2)")
             
     raise RuntimeError(f"Library code called sys.exit({exit_code})")
+
 
 if __name__ == "__main__":
     main()
