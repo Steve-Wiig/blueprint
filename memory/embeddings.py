@@ -49,6 +49,5 @@ if __name__ == "__main__":
     # Self-test for deployment validation
     service = EmbeddingService()
     test_vec = service.embed_query("test")
-    if len(test_vec) != 768:
-        sys.exit(1)
+    assert len(test_vec) == 768, 'Dimension mismatch'
     sys.exit(0)
