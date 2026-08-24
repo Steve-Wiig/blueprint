@@ -7,11 +7,14 @@ import time
 import argparse
 import os
 import random
+from concurrent.futures import ThreadPoolExecutor
 
 # Blueprint v11.6.0: Hash Chain Integrity Constraints
-MAX_CONCURRENT_THREADS = 10
+# MAX_CONCURRENT_THREADS increased default to 100, configurable via --threads
+DEFAULT_MAX_CONCURRENT_THREADS = 100
 MIN_LOCK_ACQUISITION_MS = 5
 LEDGER_PATH = os.getenv("HASH_CHAIN_LEDGER", "/tmp/hash_chain.ledger")
+
 
 class HashChainLedger:
     def __init__(self):
@@ -25,6 +28,7 @@ class HashChainLedger:
             self.chain.append(hash_val)
             return len(self.chain)
 
+
 def worker(ledger, results):
     try:
         # Simulate hash generation
@@ -34,9 +38,16 @@ def worker(ledger, results):
     except Exception:
         results.append(None)
 
+
 def main():
     parser = argparse.ArgumentParser(description="Hash Chain Concurrency Validator")
     parser.add_argument("--dry-run", action="store_true", help="Validate environment without execution")
+    parser.add_argument(
+        "--threads",
+        type=int,
+        default=DEFAULT_MAX_CONCURRENT_THREADS,
+        help="Number of concurrent threads for stress test (default: {})".format(DEFAULT_MAX_CONCURRENT_THREADS),
+    )
     args = parser.parse_args()
 
     if args.dry_run:
@@ -49,19 +60,14 @@ def main():
 
     ledger = HashChainLedger()
     results = []
-    threads = []
-
-    # Stress test concurrency
-    for _ in range(MAX_CONCURRENT_THREADS):
-        t = threading.Thread(target=worker, args=(ledger, results))
-        threads.append(t)
-        t.start()
-
-    for t in threads:
-        t.join()
+    # Stress test concurrency using ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=args.threads) as executor:
+        futures = [executor.submit(worker, ledger, results) for _ in range(args.threads)]
+        for future in futures:
+            future.result()  # raise any exception
 
     # Verify integrity: No race conditions should lead to duplicate indices or lost writes
-    if len(results) != MAX_CONCURRENT_THREADS:
+    if len(results) != args.threads:
         print("FAIL: Thread result mismatch")
         return 1
 
@@ -69,12 +75,13 @@ def main():
         print("FAIL: Exception occurred during concurrent write")
         return 1
 
-    if len(set(results)) != MAX_CONCURRENT_THREADS:
+    if len(set(results)) != args.threads:
         print("FAIL: Race condition detected in hash chain indexing")
         return 1
 
-    print(f"PASS: Hash chain concurrency verified with {MAX_CONCURRENT_THREADS} threads")
+    print(f"PASS: Hash chain concurrency verified with {args.threads} threads")
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())
