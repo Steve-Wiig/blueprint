@@ -15,7 +15,18 @@ SCHEMA_PATH = Path(os.path.join(os.path.dirname(__file__), "config", "memory_sch
 LEDGER_PATH = Path(os.path.join(os.path.dirname(__file__), "logs", "migration_ledger.log"))
 
 def validate_schema(schema_data: dict) -> tuple[bool, str]:
-    """Validates schema structure against blueprint requirements."""
+    """Validates schema structure against blueprint v11.6.0 requirements.
+
+    Expected keys in schema_data:
+        - version (str): Must match SCHEMA_VERSION_REQUIRED ("11.6.0")
+        - vector_dim (int): Must be 768
+        - partition_strategy (str): Supported partition strategy identifier
+        - retention_days (int): Must be a positive integer
+
+    Returns:
+        tuple[bool, str]: (True, "Schema valid") if all checks pass.
+        (False, error_message) if validation fails, describing the specific issue.
+    """
     required_keys = {"version", "vector_dim", "partition_strategy", "retention_days"}
     if not all(k in schema_data for k in required_keys):
         return False, "Missing required schema keys"
