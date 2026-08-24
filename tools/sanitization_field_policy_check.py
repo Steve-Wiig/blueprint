@@ -93,19 +93,24 @@ def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = Non
         print("FAIL: Invalid JSON schema format")
         return EXIT_VIOLATION
 
-    # Recursive check for forbidden keys in nested schema definitions
-    def find_forbidden(obj: Any, path: str = '') -> List[str]:
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                current_path = f"{path}.{k}" if path else k
-                if k in forbidden_fields:
-                    yield current_path
-                yield from find_forbidden(v, current_path)
-        elif isinstance(obj, list):
-            for i, item in enumerate(obj):
-                yield from find_forbidden(item, f"{path}[{i}]")
+    # Iterative check for forbidden keys in nested schema definitions using a stack
+    def find_forbidden(obj: Any) -> List[str]:
+        stack = [(obj, '')]
+        found = []
+        while stack:
+            current_obj, path = stack.pop()
+            if isinstance(current_obj, dict):
+                for k, v in current_obj.items():
+                    current_path = f"{path}.{k}" if path else k
+                    if k in forbidden_fields:
+                        found.append(current_path)
+                    stack.append((v, current_path))
+            elif isinstance(current_obj, list):
+                for i, item in enumerate(current_obj):
+                    stack.append((item, f"{path}[{i}]"))
+        return found
 
-    found = list(find_forbidden(data))
+    found = find_forbidden(data)
     if found:
         print(f"FAIL: Forbidden fields detected in schema: {', '.join(found)}")
         return EXIT_VIOLATION
