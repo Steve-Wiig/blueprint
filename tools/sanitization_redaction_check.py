@@ -2,11 +2,13 @@ import re
 import argparse
 import sys
 from typing import Dict, Pattern, Tuple
+from enum import IntEnum
 
-SUCCESS = 0
-PATTERN_MISMATCH = 1
-MISSING_PAYLOAD = 2
-CONFIG_ERROR = 3
+class CheckResult(IntEnum):
+    PASS = 0
+    PATTERN_MISSING = 1
+    PAYLOAD_MISSING = 2
+    INTERNAL_ERROR = 3
 
 PATTERNS: Dict[str, Tuple[str, bool]] = {
     "aws_key": (r"\b(AKIA[0-9A-Z]{16})\b", False),
@@ -40,35 +42,32 @@ def redact(pattern_key: str, text: str) -> str:
         return pattern.sub(r"\1[REDACTED]", text)
     return pattern.sub("[REDACTED]", text)
 
-def run_sanitization_check() -> int:
-    """Run sanitization verification. Returns 0 on success, non-zero error code."""
+def run_sanitization_check() -> CheckResult:
+    """Run sanitization verification. Returns CheckResult enum."""
     try:
         if not PATTERNS or not TEST_PAYLOADS:
-            return CONFIG_ERROR
-        
+            return CheckResult.INTERNAL_ERROR
+
         for key in PATTERNS:
             payload = TEST_PAYLOADS.get(key)
             if not payload:
-                return MISSING_PAYLOAD
-            
+                return CheckResult.PAYLOAD_MISSING
+
             if not COMPILED_PATTERNS[key].search(payload):
-                return PATTERN_MISMATCH
-            
+                return CheckResult.PATTERN_MISSING
+
             redacted = redact(key, payload)
             if "[REDACTED]" not in redacted:
-                return PATTERN_MISMATCH
-                
-        return SUCCESS
+                return CheckResult.PATTERN_MISSING
+
+        return CheckResult.PASS
     except MemoryError:
-        return CONFIG_ERROR
+        return CheckResult.INTERNAL_ERROR
     except Exception:
-        return MISSING_PAYLOAD
+        return CheckResult.PAYLOAD_MISSING
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CI Check Tool")
     parser.add_argument("--dry-run", action="store_true", help="Run with test/mock data")
     args = parser.parse_args()
-    
-if __name__ == '__main__':
-    if __name__ == '__main__':
-        sys.exit(run_sanitization_check())
+    sys.exit(run_sanitization_check())
