@@ -2,6 +2,11 @@ import re
 import argparse
 import sys
 
+SUCCESS = 0
+PATTERN_MISMATCH = 1
+MISSING_PAYLOAD = 2
+CONFIG_ERROR = 3
+
 PATTERNS = {
     "aws_key": r"\b(AKIA[0-9A-Z]{16})\b",
     "github_token": r"\b(ghp_[a-zA-Z0-9]{36})\b",
@@ -33,25 +38,25 @@ def redact(pattern_key, text):
 def run_sanitization_check():
     try:
         if not PATTERNS or not TEST_PAYLOADS:
-            return 3
+            return CONFIG_ERROR
         
         for key, pattern in PATTERNS.items():
             payload = TEST_PAYLOADS.get(key)
             if not payload:
-                return 2
+                return MISSING_PAYLOAD
             
             if not re.search(pattern, payload):
-                return 1
+                return PATTERN_MISMATCH
             
             redacted = redact(key, payload)
             if "[REDACTED]" not in redacted:
-                return 1
+                return PATTERN_MISMATCH
                 
-        return 0
+        return SUCCESS
     except MemoryError:
-        return 3
+        return CONFIG_ERROR
     except Exception:
-        return 2
+        return MISSING_PAYLOAD
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CI Check Tool")
