@@ -1,3 +1,4 @@
+"""Context stitcher for SOC orchestrator. Retrieves semantic memory from case_embeddings for SLM injection."""
 import psycopg2
 import json
 import sys
