@@ -1,10 +1,20 @@
 import json
 import re
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any, Dict, Iterable, List, Tuple
 
 import psycopg2
 from psycopg2.extras import execute_values
+
+
+class IOCType(Enum):
+    IPV4 = "ipv4"
+    DOMAIN = "domain"
+    URL = "url"
+    SHA256 = "sha256"
+    EMAIL = "email"
+
 
 _IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", re.IGNORECASE)
 _DOMAIN_RE = re.compile(r"\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b", re.IGNORECASE)
@@ -13,11 +23,11 @@ _SHA256_RE = re.compile(r"\b[a-fA-F0-9]{64}\b", re.IGNORECASE)
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", re.IGNORECASE)
 
 _PATTERNS = {
-    "ipv4": _IPV4_RE,
-    "domain": _DOMAIN_RE,
-    "url": _URL_RE,
-    "sha256": _SHA256_RE,
-    "email": _EMAIL_RE,
+    IOCType.IPV4: _IPV4_RE,
+    IOCType.DOMAIN: _DOMAIN_RE,
+    IOCType.URL: _URL_RE,
+    IOCType.SHA256: _SHA256_RE,
+    IOCType.EMAIL: _EMAIL_RE,
 }
 
 
@@ -47,7 +57,7 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
             2 for database-related errors.
     """
     try:
-        matches_by_type: Dict[str, set] = {ioc_type: set() for ioc_type in _PATTERNS}
+        matches_by_type: Dict[IOCType, set] = {ioc_type: set() for ioc_type in _PATTERNS}
 
         for text in _iter_strings(sanitized_alert_json):
             for ioc_type, regex in _PATTERNS.items():
@@ -57,7 +67,7 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
         now = datetime.now(timezone.utc)
         for ioc_type, matches in matches_by_type.items():
             for match in matches:
-                extracted.append((match, ioc_type, "pending", now))
+                extracted.append((match, ioc_type.value, "pending", now))
 
         if not extracted:
             return 0
