@@ -24,6 +24,25 @@ REQUIRED_KEYS = {
 ALLOWED_SCHEMES = {"soc-internal", "https", "file"}
 
 def verify_payload(ledger_path: str) -> int:
+    """Verify the integrity of a payload ledger file.
+
+    Validates that the ledger file exists, contains valid JSON, has all 8 required
+    keys, uses an allowed URI scheme for origin_node, and has a properly formatted
+    integrity checksum.
+
+    Args:
+        ledger_path: Path to the ledger JSON file to verify.
+
+    Returns:
+        int: Exit code indicating verification result:
+            0 - PASS: All integrity checks passed
+            1 - FAIL: Missing file, missing keys, invalid URI scheme, or checksum length mismatch
+            2 - FAIL: Invalid JSON format
+
+    Raises:
+        OSError: If file cannot be read due to permissions or I/O error.
+        json.JSONDecodeError: If file contains invalid JSON (caught and returns 2).
+    """
     if not os.path.exists(ledger_path):
         print(f"FAIL: Ledger file not found at {ledger_path}")
         return 1
@@ -61,6 +80,20 @@ def verify_payload(ledger_path: str) -> int:
     return 0
 
 def main() -> int:
+    """Main entry point for the CI payload integrity check.
+
+    Reads the ledger file path from the LEDGER_PATH environment variable
+    (defaults to 'ledger.json') and runs the verification.
+
+    Returns:
+        int: Exit code from verify_payload():
+            0 - PASS: All integrity checks passed
+            1 - FAIL: Integrity verification failed
+            2 - FAIL: Invalid JSON format
+
+    Raises:
+        SystemExit: Exits with the return code from verify_payload().
+    """
     ledger_file = os.getenv("LEDGER_PATH", "ledger.json")
     return verify_payload(ledger_file)
 
