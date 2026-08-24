@@ -10,7 +10,7 @@ import argparse
 import sys
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 
 # LOCAL-SOC-SLM Blueprint v11.6.0 - Appendix Q.5
 # Alias-Table Writeback Adapter (Proposal-Only Mode)
@@ -28,6 +28,10 @@ def init_db() -> None:
         cursor.execute('''CREATE TABLE IF NOT EXISTS alias_proposals
                           (id INTEGER PRIMARY KEY, alias_name TEXT, ip_address TEXT, 
                            status TEXT, created_at TIMESTAMP)''')
+        cursor.execute('''CREATE INDEX IF NOT EXISTS idx_alias_proposals_alias_name 
+                          ON alias_proposals(alias_name)''')
+        cursor.execute('''CREATE INDEX IF NOT EXISTS idx_alias_proposals_status 
+                          ON alias_proposals(status)''')
         conn.commit()
         conn.close()
     except Exception:
@@ -46,7 +50,7 @@ def store_proposal(name: str, ip: str) -> None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute("INSERT INTO alias_proposals (alias_name, ip_address, status, created_at) VALUES (?, ?, ?, ?)",
-                       (name, ip, 'PENDING', datetime.now()))
+                       (name, ip, 'PENDING', datetime.now(timezone.utc)))
         conn.commit()
         conn.close()
         print(f"PROPOSAL_STORED: {name} -> {ip}")
