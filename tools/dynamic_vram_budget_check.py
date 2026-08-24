@@ -6,9 +6,22 @@ import sys
 import subprocess
 import xml.etree.ElementTree as ET
 import re
+from typing import Optional
 
-def get_gpu_info() -> ET.Element | None:
-    """Returns parsed XML root element from nvidia-smi -q -x, or None on failure."""
+def get_gpu_info() -> Optional[ET.Element]:
+    """
+    Execute nvidia-smi -q -x and return the parsed XML root element.
+
+    Returns:
+        ET.Element: Root element of the parsed XML from nvidia-smi query,
+                    containing GPU information including memory usage.
+        None: If nvidia-smi is not found, fails to execute, or returns
+              invalid XML that cannot be parsed.
+
+    This function queries the NVIDIA System Management Interface for
+    detailed GPU information in XML format, which is then parsed for
+    VRAM budget checking.
+    """
     try:
         result = subprocess.run(
             ['nvidia-smi', '-q', '-x'],
