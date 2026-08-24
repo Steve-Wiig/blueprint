@@ -8,7 +8,7 @@ import json
 import logging
 import requests
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Callable
 
 
 DRAFT_CASE_ID = 'DRAFT_ID_000'
@@ -34,8 +34,8 @@ def sanitize_input(data: Any) -> Dict[str, str]:
     return {str(k)[:64]: str(v)[:2048] for k, v in data.items()}
 
 
-def _handle_draft_mode(sanitized: Dict[str, str]) -> str:
-    """Handles draft mode by logging and returning a mock ID.
+def create_case_draft(sanitized: Dict[str, str]) -> str:
+    """Creates a draft case by logging and returning a mock ID.
 
     Args:
         sanitized: The sanitized payload.
@@ -47,8 +47,8 @@ def _handle_draft_mode(sanitized: Dict[str, str]) -> str:
     return DRAFT_CASE_ID
 
 
-def _make_api_request(api_url: str, api_key: str, sanitized: Dict[str, str]) -> str:
-    """Makes the API request to create a case.
+def create_case_live(api_url: str, api_key: str, sanitized: Dict[str, str]) -> str:
+    """Creates a case via the Security Onion API.
 
     Args:
         api_url: The base URL of the API.
@@ -72,8 +72,22 @@ def _make_api_request(api_url: str, api_key: str, sanitized: Dict[str, str]) -> 
         raise RuntimeError(f"Library code called exit(1)")
 
 
+def _get_case_creator(draft_mode: bool) -> Callable[..., str]:
+    """Factory function to get the appropriate case creator.
+
+    Args:
+        draft_mode: If True, returns draft creator; otherwise live creator.
+
+    Returns:
+        A callable that creates a case.
+    """
+    if draft_mode:
+        return lambda sanitized: create_case_draft(sanitized)
+    return lambda api_url, api_key, sanitized: create_case_live(api_url, api_key, sanitized)
+
+
 def create_case(api_url: str, api_key: str, payload: Dict[str, Any], draft_mode: bool) -> str:
-    """Creates a case via the Security Onion API.
+    """Creates a case via the Security Onion API (backward compatible).
 
     Args:
         api_url: The base URL of the API.
@@ -88,11 +102,11 @@ def create_case(api_url: str, api_key: str, payload: Dict[str, Any], draft_mode:
         RuntimeError: If the API request fails.
     """
     sanitized = sanitize_input(payload)
+    creator = _get_case_creator(draft_mode)
     
     if draft_mode:
-        return _handle_draft_mode(sanitized)
-    
-    return _make_api_request(api_url, api_key, sanitized)
+        return creator(sanitized)
+    return creator(api_url, api_key, sanitized)
 
 
 def write_to_ledger(payload_ref: str, case_id: str) -> None:
