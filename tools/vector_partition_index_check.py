@@ -106,11 +106,11 @@ def _load_defaults_config() -> Dict[str, Any]:
     global _DEFAULTS_CACHE
     if _DEFAULTS_CACHE is not None:
         return _DEFAULTS_CACHE
-    
+
     config_path = os.environ.get("SLM_DEFAULTS_CONFIG", "config/vector_index_defaults.json")
     if os.path.exists(config_path):
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 _DEFAULTS_CACHE = json.load(f)
                 return _DEFAULTS_CACHE
         except (json.JSONDecodeError, OSError):
@@ -133,11 +133,11 @@ def _get_required_partitions() -> List[str]:
     env_val = os.environ.get("SLM_REQUIRED_PARTITIONS")
     if env_val:
         return [p.strip() for p in env_val.split(",") if p.strip()]
-    
+
     defaults = _load_defaults_config()
     if "required_partitions" in defaults:
         return defaults["required_partitions"]
-    
+
     return ["alerts", "threat_intel", "audit_logs"]
 
 
@@ -158,14 +158,14 @@ def _get_max_shard_size_gb() -> int:
             return int(env_val)
         except ValueError:
             pass
-    
+
     defaults = _load_defaults_config()
     if "max_shard_size_gb" in defaults:
         try:
             return int(defaults["max_shard_size_gb"])
         except (ValueError, TypeError):
             pass
-    
+
     return 16
 
 
@@ -183,11 +183,11 @@ def _get_index_schema_version() -> str:
     env_val = os.environ.get("SLM_INDEX_SCHEMA_VERSION")
     if env_val:
         return env_val
-    
+
     defaults = _load_defaults_config()
     if "index_schema_version" in defaults:
         return str(defaults["index_schema_version"])
-    
+
     return "11.6.0"
 
 
@@ -234,136 +234,93 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
         print(f"  [2/6] JSON parsing: will validate JSON format")
         print(f"  [3/6] Required partitions: {', '.join(REQUIRED_PARTITIONS)}")
         print(f"  [4/6] Schema version: expected {INDEX_SCHEMA_VERSION}")
-        print(f"  [5/6] Shard size constraints: max {MAX_SHARD_SIZE_GB}GB per partition")
-        print(f"  [6/6] Indexing enabled: must be true for all partitions")
+        print(f"  [5/6] Max shard size per partition: {MAX_SHARD_SIZE_GB} GB")
+        print(f"  [6/6] Indexing enabled check")
 
-    if not config_path.exists():
+    if not config_path.is_file():
         if dry_run:
-            print(f"  [1/6] FAIL: Config file not found at {config_path_str}")
-        else:
-            print(f"CONFIG ERROR: Partition config not found at {config_path_str}")
+            print("  [1/6] FAILED – file does not exist.")
         return EXIT_CONFIG_ERROR
 
-    if dry_run:
-        print(f"  [1/6] PASS: Config file exists at {config_path_str}")
-
     try:
-        with open(config_path, 'r') as f:
-            config: PartitionConfig = json.load(f)
+        with config_path.open("r") as f:
+            data: PartitionConfig = json.load(f)
     except json.JSONDecodeError:
         if dry_run:
-            print("  [2/6] FAIL: Invalid JSON format in partition config")
-        else:
-            print("FAIL: Invalid JSON format in partition config")
+            print("  [2/6] FAILED – invalid JSON.")
         return EXIT_VALIDATION_ERROR
-
-    if dry_run:
-        print("  [2/6] PASS: Valid JSON format")
-
-    # Verify required partitions exist
-    missing_partitions = [p for p in REQUIRED_PARTITIONS if p not in config.get("partitions", {})]
-    if missing_partitions:
+    except OSError:
         if dry_run:
-            for p in missing_partitions:
-                print(f"  [3/6] FAIL: Missing required partition: {p}")
-        else:
-            for p in missing_partitions:
-                print(f"FAIL: Missing required partition: {p}")
-        return EXIT_VALIDATION_ERROR
+            print("  [1/6] FAILED – unable to read file.")
+        raise
 
     if dry_run:
-        print(f"  [3/6] PASS: All required partitions present: {', '.join(REQUIRED_PARTITIONS)}")
+        print("  [1/6] PASSED")
+        print("  [2/6] PASSED")
 
-    # Verify schema version
-    if config.get("version") != INDEX_SCHEMA_VERSION:
+    # Required partitions
+    missing = [p for p in REQUIRED_PARTITIONS if p not in data.get("partitions", {})]
+    if missing:
         if dry_run:
-            print(f"  [4/6] FAIL: Schema version mismatch. Expected {INDEX_SCHEMA_VERSION}, got {config.get('version')}")
-        else:
-            print(f"FAIL: Schema version mismatch. Expected {INDEX_SCHEMA_VERSION}")
+            print(f"  [3/6] FAILED – missing partitions: {', '.join(missing)}")
         return EXIT_VALIDATION_ERROR
-
     if dry_run:
-        print(f"  [4/6] PASS: Schema version matches {INDEX_SCHEMA_VERSION}")
+        print("  [3/6] PASSED")
 
-    # Verify shard constraints
-    shard_violations: List[tuple[str, int]] = []
-    indexing_violations: List[str] = []
-    for name, settings in config.get("partitions", {}).items():
-        shard_size: int = settings.get("max_shard_gb", 0)
-        if shard_size > MAX_SHARD_SIZE_GB:
-            shard_violations.append((name, shard_size))
-        
+    # Schema version
+    if data.get("version") != INDEX_SCHEMA_VERSION:
+        if dry_run:
+            print(f"  [4/6] FAILED – version {data.get('version')} does not match expected {INDEX_SCHEMA_VERSION}")
+        return EXIT_VALIDATION_ERROR
+    if dry_run:
+        print("  [4/6] PASSED")
+
+    # Shard size and indexing checks
+    for name, settings in data["partitions"].items():
+        max_shard = settings.get("max_shard_gb")
+        if max_shard is None or max_shard > MAX_SHARD_SIZE_GB:
+            if dry_run:
+                print(f"  [5/6] FAILED – partition '{name}' shard size {max_shard} GB exceeds limit")
+            return EXIT_VALIDATION_ERROR
         if not settings.get("indexing_enabled", False):
-            indexing_violations.append(name)
-
-    if shard_violations:
-        if dry_run:
-            for name, size in shard_violations:
-                print(f"  [5/6] FAIL: Partition {name} exceeds max shard size of {MAX_SHARD_SIZE_GB}GB (current: {size}GB)")
-        else:
-            for name, size in shard_violations:
-                print(f"FAIL: Partition {name} exceeds max shard size of {MAX_SHARD_SIZE_GB}GB")
-        return EXIT_VALIDATION_ERROR
+            if dry_run:
+                print(f"  [6/6] FAILED – indexing disabled for partition '{name}'")
+            return EXIT_VALIDATION_ERROR
 
     if dry_run:
-        print(f"  [5/6] PASS: All partitions within shard size limit ({MAX_SHARD_SIZE_GB}GB)")
+        print("  [5/6] PASSED")
+        print("  [6/6] PASSED")
+        print("DRY-RUN: Validation completed successfully.")
 
-    if indexing_violations:
-        if dry_run:
-            for name in indexing_violations:
-                print(f"  [6/6] FAIL: Indexing disabled for partition {name}")
-        else:
-            for name in indexing_violations:
-                print(f"FAIL: Indexing disabled for partition {name}")
-        return EXIT_VALIDATION_ERROR
-
-    if dry_run:
-        print(f"  [6/6] PASS: Indexing enabled for all partitions")
-        print("DRY-RUN: All validation checks passed.")
-    
     return EXIT_SUCCESS
 
 
-def main() -> int:
-    """Main entry point for the vector partition index integrity check.
-
-    Parses command-line arguments, validates SLM_ENV environment variable is set,
-    loads the partition configuration file, and runs validation checks.
-
-    Returns:
-        int: Exit code indicating the result:
-            0 (EXIT_SUCCESS) - Validation passed successfully.
-            1 (EXIT_VALIDATION_ERROR) - Validation failed (missing partition, version mismatch,
-                shard size exceeded, or indexing disabled).
-            2 (EXIT_CONFIG_ERROR) - Config file not found at specified path.
-            3 (EXIT_ENV_ERROR) - SLM_ENV environment variable not set.
-
-    Raises:
-        SystemExit: If argument parsing fails (handled by argparse).
-    """
+def _parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Vector Partition Index Integrity Check",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        description="Validate vector partition configuration against schema constraints and sharding rules."
     )
     parser.add_argument(
         "--config",
         type=Path,
-        default=Path("config/vector_partitions.json"),
-        help="Path to partition configuration JSON file (default: config/vector_partitions.json)"
+        default=Path(os.getenv("SLM_CONFIG", "config/vector_partitions.json")),
+        help="Path to partition configuration JSON file (default: config/vector_partitions.json)",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Perform validation without committing changes, with verbose output"
+        help="Perform validation without committing changes and print detailed output",
     )
-    args = parser.parse_args()
+    return parser.parse_args(argv)
 
-    if not os.environ.get("SLM_ENV"):
-        print("ENV ERROR: SLM_ENV environment variable not set")
+
+def main(argv: Optional[List[str]] = None) -> int:
+    if "SLM_ENV" not in os.environ:
+        print("Error: SLM_ENV environment variable not set.", file=sys.stderr)
         return EXIT_ENV_ERROR
 
-    return validate_partition_config(args.config, args.dry_run)
+    args = _parse_arguments(argv)
+
+    return validate_partition_config(args.config, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
