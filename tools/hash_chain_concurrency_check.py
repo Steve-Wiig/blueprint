@@ -30,6 +30,11 @@ class HashChainLedger:
     """
 
     def __init__(self) -> None:
+        """Initialize a new HashChainLedger with an empty chain and a threading lock.
+
+        The ledger is prepared for concurrent append operations. An internal
+        lock ensures atomicity of hash chain updates across multiple threads.
+        """
         self.lock = threading.Lock()
         self.chain: List[str] = []
 
@@ -110,6 +115,16 @@ def run_stress_test(num_threads: int) -> bool:
 
 
 def main() -> int:
+    """Entry point for the hash chain concurrency validator.
+
+    Validates the environment and runs stress tests to verify hash chain
+    integrity under concurrent writes. Outputs pass/fail status and returns
+    an exit code suitable for CI pipelines.
+
+    Returns:
+        0 if validation passes, 1 if race conditions are detected, 2 if
+        configuration errors prevent testing.
+    """
     now = datetime.now(timezone.utc)
     ledger_path = os.getenv("HASH_CHAIN_LEDGER", "/tmp/hash_chain.ledger")
     parser = argparse.ArgumentParser(description="Hash Chain Concurrency Validator")
