@@ -29,27 +29,17 @@ def check_idempotency(input_text, prefix):
 
 def main():
     test_cases = [
-        ("unprefixed_data", REQUIRED_DOC_PREFIX),
-        (f"{REQUIRED_DOC_PREFIX}already_prefixed", REQUIRED_DOC_PREFIX),
-        (f"{REQUIRED_DOC_PREFIX}{REQUIRED_DOC_PREFIX}double_prefixed", REQUIRED_DOC_PREFIX)
+        ("unprefixed_data", REQUIRED_DOC_PREFIX, True),
+        (f"{REQUIRED_DOC_PREFIX}already_prefixed", REQUIRED_DOC_PREFIX, True),
+        (f"{REQUIRED_DOC_PREFIX}{REQUIRED_DOC_PREFIX}double_prefixed", REQUIRED_DOC_PREFIX, False)
     ]
     
-    for text, prefix in test_cases:
-        # Logic: 
-        # 1. Unprefixed should pass (gets prefixed once)
-        # 2. Single-prefixed should pass (remains prefixed once)
-        # 3. Double-prefixed should fail (detected as invalid state)
-        
+    for text, prefix, expected_valid in test_cases:
         is_valid = check_idempotency(text, prefix)
         
-        if "double_prefixed" in text:
-            if is_valid:
-                print(f"FAIL: Double prefix not detected for: {text}")
-                return 1
-        else:
-            if not is_valid:
-                print(f"FAIL: Idempotency check failed for: {text}")
-                return 1
+        if is_valid != expected_valid:
+            print(f"FAIL: Expected valid={expected_valid}, got valid={is_valid} for: {text}")
+            return 1
                 
     print("PASS: Embedding prefix idempotency verified")
     return 0
