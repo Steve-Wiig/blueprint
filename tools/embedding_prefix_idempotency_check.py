@@ -6,6 +6,21 @@ import argparse
 REQUIRED_DOC_PREFIX = "search_document: "
 REQUIRED_QUERY_PREFIX = "search_query: "
 
+MOCK_TEST_CASES = [
+    ("unprefixed_data", REQUIRED_DOC_PREFIX, True),
+    (f"{REQUIRED_DOC_PREFIX}already_prefixed", REQUIRED_DOC_PREFIX, True),
+    (f"{REQUIRED_DOC_PREFIX}{REQUIRED_DOC_PREFIX}double_prefixed", REQUIRED_DOC_PREFIX, False),
+    ("unprefixed_query", REQUIRED_QUERY_PREFIX, True),
+    (f"{REQUIRED_QUERY_PREFIX}already_prefixed", REQUIRED_QUERY_PREFIX, True),
+    (f"{REQUIRED_QUERY_PREFIX}{REQUIRED_QUERY_PREFIX}double_prefixed", REQUIRED_QUERY_PREFIX, False),
+]
+
+PRODUCTION_TEST_CASES = [
+    ("unprefixed_data", REQUIRED_DOC_PREFIX, True),
+    (f"{REQUIRED_DOC_PREFIX}already_prefixed", REQUIRED_DOC_PREFIX, True),
+    (f"{REQUIRED_DOC_PREFIX}{REQUIRED_DOC_PREFIX}double_prefixed", REQUIRED_DOC_PREFIX, False),
+]
+
 def check_idempotency(input_text: str, prefix: str) -> bool:
     """
     Verifies that applying the prefix multiple times does not result in 
@@ -29,27 +44,29 @@ def check_idempotency(input_text: str, prefix: str) -> bool:
 
 def main(dry_run=False):
     """Run idempotency verification tests. Returns 0 on success, 1 on failure."""
-    test_cases = [
-        ("unprefixed_data", REQUIRED_DOC_PREFIX, True),
-        (f"{REQUIRED_DOC_PREFIX}already_prefixed", REQUIRED_DOC_PREFIX, True),
-        (f"{REQUIRED_DOC_PREFIX}{REQUIRED_DOC_PREFIX}double_prefixed", REQUIRED_DOC_PREFIX, False)
-    ]
+    test_cases = MOCK_TEST_CASES if dry_run else PRODUCTION_TEST_CASES
     
     if dry_run:
-        print("DRY RUN: Would test the following cases:")
-        for text, prefix, expected_valid in test_cases:
-            print(f"  Input: {text!r}, Prefix: {prefix!r}, Expected valid: {expected_valid}")
-        return 0
+        print("DRY RUN: Running with mock test data (both document and query prefixes)")
     
+    all_passed = True
     for text, prefix, expected_valid in test_cases:
         is_valid = check_idempotency(text, prefix)
         
         if is_valid != expected_valid:
             print(f"FAIL: Expected valid={expected_valid}, got valid={is_valid} for: {text}")
-            return 1
+            all_passed = False
+        elif dry_run:
+            print(f"  OK: {text!r} with {prefix!r} -> valid={is_valid}")
                 
-    print("PASS: Embedding prefix idempotency verified")
-    return 0
+    if dry_run:
+        print("DRY RUN: Completed (exit code forced to 0)")
+        return 0
+    
+    if all_passed:
+        print("PASS: Embedding prefix idempotency verified")
+        return 0
+    return 1
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CI Check Tool")
