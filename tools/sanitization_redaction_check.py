@@ -1,41 +1,81 @@
 import re
 import sys
-from typing import TypedDict
+from typing import TypedDict, Dict, Pattern
 from enum import IntEnum
 
+
 class CheckResult(IntEnum):
+    """Enumeration of possible sanitization check outcomes."""
     PASS = 0
     PATTERN_MISSING = 1
     PAYLOAD_MISSING = 2
     INTERNAL_ERROR = 3
 
+
 class PatternConfig(TypedDict):
+    """Configuration for a secret detection pattern."""
     pattern: str
     redaction_type: str
 
-PATTERNS: dict[str, PatternConfig] = {
-    "aws_key": {"pattern": r"\b(AKIA[0-9A-Z]{16})\b", "redaction_type": "full"},
-    "github_token": {"pattern": r"\b(ghp_[a-zA-Z0-9]{36})\b", "redaction_type": "full"},
-    "jwt_token": {"pattern": r"\b(eyJ[a-zA-Z0-9_-]{16,}\.[a-zA-Z0-9_-]{16,}\.[a-zA-Z0-9_-]{16,})\b", "redaction_type": "full"},
-    "ssh_key": {"pattern": r"(-----BEGIN[ A-Z0-9]+PRIVATE KEY-----)", "redaction_type": "full"},
-    "slack_token": {"pattern": r"\b(xox[baprs]-[0-9a-zA-Z]{10,48})\b", "redaction_type": "full"},
-    "auth_header": {"pattern": r"(?i)(Authorization:\s+(?:Bearer|Basic|Token)\s+)([a-zA-Z0-9\._\-\+/=]+)", "redaction_type": "group"},
-    "api_key_query": {"pattern": r"(?i)(api_key=)([a-zA-Z0-9]{20,})", "redaction_type": "group"},
-    "password_query": {"pattern": r"(?i)(password=)([^&\s]{8,})", "redaction_type": "group"}
+
+# Pattern definitions for secret detection.
+# Each entry maps a pattern key to its regex pattern and redaction strategy.
+# redaction_type "full": replace entire match with [REDACTED]
+# redaction_type "group": preserve first capture group (prefix), redact remainder
+PATTERNS: Dict[str, PatternConfig] = {
+    "aws_key": {
+        "pattern": r"\b(AKIA[0-9A-Z]{16})\b",
+        "redaction_type": "full"
+    },  # AWS Access Key ID (20 chars starting with AKIA)
+    "github_token": {
+        "pattern": r"\b(ghp_[a-zA-Z0-9]{36})\b",
+        "redaction_type": "full"
+    },  # GitHub Personal Access Token (classic)
+    "jwt_token": {
+        "pattern": r"\b(eyJ[a-zA-Z0-9_-]{16,}\.[a-zA-Z0-9_-]{16,}\.[a-zA-Z0-9_-]{16,})\b",
+        "redaction_type": "full"
+    },  # JSON Web Token (three base64url-encoded segments)
+    "ssh_key": {
+        "pattern": r"(-----BEGIN[ A-Z0-9]+PRIVATE KEY-----)",
+        "redaction_type": "full"
+    },  # SSH Private Key header (RSA, EC, OPENSSH, etc.)
+    "slack_token": {
+        "pattern": r"\b(xox[baprs]-[0-9a-zA-Z]{10,48})\b",
+        "redaction_type": "full"
+    },  # Slack API Token (bot, user, app, workspace, etc.)
+    "auth_header": {
+        "pattern": r"(?i)(Authorization:\s+(?:Bearer|Basic|Token)\s+)([a-zA-Z0-9\._\-\+/=]+)",
+        "redaction_type": "group"
+    },  # HTTP Authorization header with Bearer/Basic/Token scheme
+    "api_key_query": {
+        "pattern": r"(?i)(api_key=)([a-zA-Z0-9]{20,})",
+        "redaction_type": "group"
+    },  # API key in query string parameter
+    "password_query": {
+        "pattern": r"(?i)(password=)([^&\s]{8,})",
+        "redaction_type": "group"
+    },  # Password in query string parameter
 }
 
-COMPILED_PATTERNS: dict[str, re.Pattern[str]] = {k: re.compile(v["pattern"]) for k, v in PATTERNS.items()}
-
-TEST_PAYLOADS: dict[str, str] = {
-    "aws_key": "Access key is AKIAIOSFODNN7EXAMPLE",
-    "github_token": "Token: ghp_1234567890abcdef1234567890abcdef1234",
-    "jwt_token": "Header: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
-    "ssh_key": "Key: -----BEGIN RSA PRIVATE KEY-----",
-    "slack_token": "Slack: xoxb-1234567890-1234567890123",
-    "auth_header": "Authorization: Bearer mysecrettoken123",
-    "api_key_query": "url?api_key=abcdef1234567890abcdef12",
-    "password_query": "login?user=admin&password=supersecretpassword"
+# Pre-compiled regex patterns for performance.
+COMPILED_PATTERNS: Dict[str, Pattern[str]] = {
+    k: re.compile(v["pattern"]) for k, v in PATTERNS.items()
 }
+
+# Test payloads for validating each pattern.
+# Each key corresponds to a pattern in PATTERNS and contains a sample string
+# that should match the pattern and be redacted correctly.
+TEST_PAYLOADS: Dict[str, str] = {
+    "aws_key": "Access key is AKIAIOSFODNN7EXAMPLE",  # AWS Access Key ID
+    "github_token": "Token: ghp_1234567890abcdef1234567890abcdef1234",  # GitHub PAT
+    "jwt_token": "Header: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",  # JWT
+    "ssh_key": "Key: -----BEGIN RSA PRIVATE KEY-----",  # SSH private key header
+    "slack_token": "Slack: xoxb-1234567890-1234567890123",  # Slack bot token
+    "auth_header": "Authorization: Bearer mysecrettoken123",  # Auth header with Bearer token
+    "api_key_query": "url?api_key=abcdef1234567890abcdef12",  # API key in query param
+    "password_query": "login?user=admin&password=supersecretpassword"  # Password in query param
+}
+
 
 def redact(pattern_key: str, text: str) -> str:
     """Redact sensitive pattern in text, preserving prefix for query/header patterns.
@@ -63,6 +103,7 @@ def redact(pattern_key: str, text: str) -> str:
     if redaction_type == "group":
         return pattern.sub(r"\1[REDACTED]", text)
     return pattern.sub("[REDACTED]", text)
+
 
 def run_sanitization_check() -> CheckResult:
     """Run sanitization verification against known test payloads.
@@ -108,6 +149,7 @@ def run_sanitization_check() -> CheckResult:
         return CheckResult.INTERNAL_ERROR
     except Exception:
         return CheckResult.PAYLOAD_MISSING
+
 
 if __name__ == "__main__":
     sys.exit(run_sanitization_check())
