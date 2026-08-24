@@ -117,41 +117,98 @@ def validate_partition_config(config_path: str, dry_run: bool = False) -> int:
         json.JSONDecodeError: If the config file contains invalid JSON (caught internally, returns 1).
         OSError: If file cannot be read due to permissions (propagates to caller).
     """
+    if dry_run:
+        print("DRY-RUN: Starting validation checks...")
+        print(f"  [1/6] File existence check: {config_path}")
+        print(f"  [2/6] JSON parsing: will validate JSON format")
+        print(f"  [3/6] Required partitions: {', '.join(REQUIRED_PARTITIONS)}")
+        print(f"  [4/6] Schema version: expected {INDEX_SCHEMA_VERSION}")
+        print(f"  [5/6] Shard size constraints: max {MAX_SHARD_SIZE_GB}GB per partition")
+        print(f"  [6/6] Indexing enabled: must be true for all partitions")
+
     if not os.path.exists(config_path):
-        print(f"CONFIG ERROR: Partition config not found at {config_path}")
+        if dry_run:
+            print(f"  [1/6] FAIL: Config file not found at {config_path}")
+        else:
+            print(f"CONFIG ERROR: Partition config not found at {config_path}")
         return EXIT_CONFIG_NOT_FOUND
+
+    if dry_run:
+        print(f"  [1/6] PASS: Config file exists at {config_path}")
 
     try:
         with open(config_path, 'r') as f:
             config: PartitionConfig = json.load(f)
     except json.JSONDecodeError:
-        print("FAIL: Invalid JSON format in partition config")
+        if dry_run:
+            print("  [2/6] FAIL: Invalid JSON format in partition config")
+        else:
+            print("FAIL: Invalid JSON format in partition config")
         return EXIT_VALIDATION_FAILED
 
+    if dry_run:
+        print("  [2/6] PASS: Valid JSON format")
+
     # Verify required partitions exist
-    for p in REQUIRED_PARTITIONS:
-        if p not in config.get("partitions", {}):
-            print(f"FAIL: Missing required partition: {p}")
-            return EXIT_VALIDATION_FAILED
+    missing_partitions = [p for p in REQUIRED_PARTITIONS if p not in config.get("partitions", {})]
+    if missing_partitions:
+        if dry_run:
+            for p in missing_partitions:
+                print(f"  [3/6] FAIL: Missing required partition: {p}")
+        else:
+            for p in missing_partitions:
+                print(f"FAIL: Missing required partition: {p}")
+        return EXIT_VALIDATION_FAILED
+
+    if dry_run:
+        print(f"  [3/6] PASS: All required partitions present: {', '.join(REQUIRED_PARTITIONS)}")
 
     # Verify schema version
     if config.get("version") != INDEX_SCHEMA_VERSION:
-        print(f"FAIL: Schema version mismatch. Expected {INDEX_SCHEMA_VERSION}")
+        if dry_run:
+            print(f"  [4/6] FAIL: Schema version mismatch. Expected {INDEX_SCHEMA_VERSION}, got {config.get('version')}")
+        else:
+            print(f"FAIL: Schema version mismatch. Expected {INDEX_SCHEMA_VERSION}")
         return EXIT_VALIDATION_FAILED
 
+    if dry_run:
+        print(f"  [4/6] PASS: Schema version matches {INDEX_SCHEMA_VERSION}")
+
     # Verify shard constraints
+    shard_violations = []
+    indexing_violations = []
     for name, settings in config.get("partitions", {}).items():
         shard_size: int = settings.get("max_shard_gb", 0)
         if shard_size > MAX_SHARD_SIZE_GB:
-            print(f"FAIL: Partition {name} exceeds max shard size of {MAX_SHARD_SIZE_GB}GB")
-            return EXIT_VALIDATION_FAILED
+            shard_violations.append((name, shard_size))
         
         if not settings.get("indexing_enabled", False):
-            print(f"FAIL: Indexing disabled for partition {name}")
-            return EXIT_VALIDATION_FAILED
+            indexing_violations.append(name)
+
+    if shard_violations:
+        if dry_run:
+            for name, size in shard_violations:
+                print(f"  [5/6] FAIL: Partition {name} exceeds max shard size of {MAX_SHARD_SIZE_GB}GB (current: {size}GB)")
+        else:
+            for name, size in shard_violations:
+                print(f"FAIL: Partition {name} exceeds max shard size of {MAX_SHARD_SIZE_GB}GB")
+        return EXIT_VALIDATION_FAILED
 
     if dry_run:
-        print("DRY-RUN: Configuration validation passed.")
+        print(f"  [5/6] PASS: All partitions within shard size limit ({MAX_SHARD_SIZE_GB}GB)")
+
+    if indexing_violations:
+        if dry_run:
+            for name in indexing_violations:
+                print(f"  [6/6] FAIL: Indexing disabled for partition {name}")
+        else:
+            for name in indexing_violations:
+                print(f"FAIL: Indexing disabled for partition {name}")
+        return EXIT_VALIDATION_FAILED
+
+    if dry_run:
+        print(f"  [6/6] PASS: Indexing enabled for all partitions")
+        print("DRY-RUN: All validation checks passed.")
     
     return EXIT_SUCCESS
 
