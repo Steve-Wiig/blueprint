@@ -19,12 +19,11 @@ class EmbeddingService:
         except Exception:
             raise RuntimeError(f"Library code called exit(3)")
 
-    def _enforce_contract(self, vector: np.ndarray, as_list: bool = False) -> Union[np.ndarray, List[float]]:
-        """Validate embedding dimension matches contract. Returns vector as np.ndarray (float32) by default, or List[float] if as_list=True. Raises RuntimeError if dimension mismatch."""
+    def _enforce_contract(self, vector: np.ndarray) -> np.ndarray:
+        """Validate embedding dimension matches contract. Returns vector as np.ndarray (float32). Raises RuntimeError if dimension mismatch."""
         if vector.shape[-1] != self.DIMENSION:
             raise RuntimeError(f"Library code called exit(1)")
-        vector = vector.astype(np.float32, copy=False)
-        return vector.tolist() if as_list else vector
+        return vector.astype(np.float32, copy=False)
 
     def _apply_prefix(self, text: str, prefix: str) -> str:
         """Apply prefix idempotently. Returns text with prefix if not already present (case-sensitive check)."""
@@ -32,19 +31,19 @@ class EmbeddingService:
             return text
         return f"{prefix}{text}"
 
-    def embed_document(self, text: str, as_list: bool = False) -> Union[np.ndarray, List[float]]:
+    def embed_document(self, text: str) -> np.ndarray:
         try:
             processed = self._apply_prefix(text, self.PREFIX_DOC)
             embedding = self.model.encode(processed)
-            return self._enforce_contract(embedding, as_list=as_list)
+            return self._enforce_contract(embedding)
         except Exception:
             raise RuntimeError(f"Library code called exit(1)")
 
-    def embed_query(self, text: str, as_list: bool = False) -> Union[np.ndarray, List[float]]:
+    def embed_query(self, text: str) -> np.ndarray:
         try:
             processed = self._apply_prefix(text, self.PREFIX_QUERY)
             embedding = self.model.encode(processed)
-            return self._enforce_contract(embedding, as_list=as_list)
+            return self._enforce_contract(embedding)
         except Exception:
             raise RuntimeError(f"Library code called exit(1)")
 
