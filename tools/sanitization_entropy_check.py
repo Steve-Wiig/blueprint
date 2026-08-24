@@ -14,6 +14,8 @@ ALLOWLIST_PATTERNS = [
     r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}' # UUID
 ]
 
+ALLOWLIST_REGEX = re.compile('|'.join(f'(?:{p})' for p in ALLOWLIST_PATTERNS))
+
 def calculate_entropy(data):
     if not data:
         return 0
@@ -22,10 +24,7 @@ def calculate_entropy(data):
     return -sum((count / length) * math.log2(count / length) for count in counts.values())
 
 def is_allowlisted(token):
-    for pattern in ALLOWLIST_PATTERNS:
-        if re.fullmatch(pattern, token):
-            return True
-    return False
+    return ALLOWLIST_REGEX.fullmatch(token) is not None
 
 def sanitize_pass(text):
     tokens = text.split()
