@@ -36,27 +36,29 @@ def init_db() -> None:
         # Audit log table for append-only trail (Section 30 compliance)
         cursor.execute('''CREATE TABLE IF NOT EXISTS audit_log
                           (id INTEGER PRIMARY KEY, proposal_id INTEGER, action TEXT,
-                           actor TEXT, timestamp TIMESTAMP,
+                           old_status TEXT, new_status TEXT, changed_by TEXT,
+                           changed_at TIMESTAMP,
                            FOREIGN KEY(proposal_id) REFERENCES proposals(id))''')
         cursor.execute('''CREATE INDEX IF NOT EXISTS idx_audit_log_proposal_id
                           ON audit_log(proposal_id)''')
         cursor.execute('''CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp
-                          ON audit_log(timestamp)''')
+                          ON audit_log(changed_at)''')
         
         # Trigger on INSERT to proposals
         cursor.execute('''CREATE TRIGGER IF NOT EXISTS audit_proposals_insert
                           AFTER INSERT ON proposals
                           BEGIN
-                              INSERT INTO audit_log (proposal_id, action, actor, timestamp)
-                              VALUES (NEW.id, 'INSERT', 'wazuh-proposal-adapter', datetime('now'));
+                              INSERT INTO audit_log (proposal_id, action, old_status, new_status, changed_by, changed_at)
+                              VALUES (NEW.id, 'INSERT', NULL, NEW.status, 'wazuh-proposal-adapter', datetime('now'));
                           END;''')
         
-        # Trigger on UPDATE to proposals
-        cursor.execute('''CREATE TRIGGER IF NOT EXISTS audit_proposals_update
-                          AFTER UPDATE ON proposals
+        # Trigger on UPDATE of status column in proposals
+        cursor.execute('''CREATE TRIGGER IF NOT EXISTS audit_proposals_status_change
+                          AFTER UPDATE OF status ON proposals
+                          WHEN OLD.status != NEW.status
                           BEGIN
-                              INSERT INTO audit_log (proposal_id, action, actor, timestamp)
-                              VALUES (NEW.id, 'UPDATE', 'wazuh-proposal-adapter', datetime('now'));
+                              INSERT INTO audit_log (proposal_id, action, old_status, new_status, changed_by, changed_at)
+                              VALUES (NEW.id, 'STATUS_CHANGE', OLD.status, NEW.status, 'wazuh-proposal-adapter', datetime('now'));
                           END;''')
         
         conn.commit()
