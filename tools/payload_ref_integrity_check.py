@@ -74,7 +74,7 @@ def verify_payload(ledger_path: str) -> int:
 
     # 3. Verify SHA256 Integrity
     # Reconstruct payload for hash verification
-    payload_content = json.dumps(data.get("payload_hash"), sort_keys=True).encode('utf-8')
+    payload_content = json.dumps(data.get("payload_hash")).encode('utf-8')
     computed_hash = hashlib.sha256(payload_content).hexdigest()
     
     # Note: In production, this compares against a signed manifest
