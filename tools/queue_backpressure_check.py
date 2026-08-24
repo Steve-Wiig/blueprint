@@ -68,7 +68,7 @@ def check_backpressure(lab_url: str | None, dry_run: bool = False) -> int:
         print(f"FAIL: Unexpected error: {e}")
         return ERROR_CODES['API_ERROR']
 
-def main():
+def main() -> int:
     """Entry point for CI gate. Returns 0 on success, non-zero on failure."""
     parser = argparse.ArgumentParser(description="Queue Backpressure CI Gate")
     parser.add_argument("--dry-run", action="store_true", help="Skip network checks")
