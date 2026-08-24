@@ -1,9 +1,3 @@
-"""TheHive Case Writeback Adapter module.
-
-This module provides functionality to interface with TheHive API to create cases
-based on sanitized input data.
-"""
-
 import argparse
 import os
 import requests
@@ -61,7 +55,15 @@ def log_handoff(log_path: Path, case_id: str, mode: str) -> None:
 
 
 def main() -> None:
-    """Orchestrate the case writeback process."""
+    """Orchestrate the case writeback process.
+
+    Raises:
+        RuntimeError: With message indicating the exit code that would have been used:
+            - "Library code called exit(0)" on success
+            - "Library code called exit(1)" on API error or missing case ID
+            - "Library code called exit(2)" on JSON decode error
+            - "Library code called exit(3)" on request exception
+    """
     args = parse_args()
 
     log_path = Path(args.log_path) if args.log_path else Path(os.environ.get("HANDOFF_LOG_PATH", "handoff_log.txt"))
