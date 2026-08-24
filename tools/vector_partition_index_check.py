@@ -8,10 +8,27 @@ import argparse
 import json
 from typing import Dict, Any, List
 
-# LOCAL-SOC-SLM Blueprint v11.6.0 Constants
-REQUIRED_PARTITIONS: List[str] = ["alerts", "threat_intel", "audit_logs"]
-MAX_SHARD_SIZE_GB: int = 16
-INDEX_SCHEMA_VERSION: str = "11.6.0"
+def _get_required_partitions() -> List[str]:
+    env_val = os.environ.get("SLM_REQUIRED_PARTITIONS")
+    if env_val:
+        return [p.strip() for p in env_val.split(",") if p.strip()]
+    return ["alerts", "threat_intel", "audit_logs"]
+
+def _get_max_shard_size_gb() -> int:
+    env_val = os.environ.get("SLM_MAX_SHARD_SIZE_GB")
+    if env_val:
+        try:
+            return int(env_val)
+        except ValueError:
+            pass
+    return 16
+
+def _get_index_schema_version() -> str:
+    return os.environ.get("SLM_INDEX_SCHEMA_VERSION", "11.6.0")
+
+REQUIRED_PARTITIONS: List[str] = _get_required_partitions()
+MAX_SHARD_SIZE_GB: int = _get_max_shard_size_gb()
+INDEX_SCHEMA_VERSION: str = _get_index_schema_version()
 
 class PartitionSettings(Dict[str, Any]):
     max_shard_gb: int
