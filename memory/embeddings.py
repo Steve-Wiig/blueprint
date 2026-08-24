@@ -40,28 +40,6 @@ class EmbeddingService:
         except Exception:
             raise RuntimeError(f"Library code called exit(3)")
 
-    def _enforce_contract(self, vector: np.ndarray) -> np.ndarray:
-        """Validate embedding dimension matches contract.
-
-        Args:
-            vector: Input embedding vector to validate.
-
-        Returns:
-            np.ndarray: Validated vector cast to float32 (no copy if already float32).
-
-        Raises:
-            RuntimeError: If vector dimension does not match DIMENSION (768).
-
-        Example:
-            >>> vec = np.random.rand(768).astype(np.float32)
-            >>> validated = service._enforce_contract(vec)
-            >>> validated.dtype
-            dtype('float32')
-        """
-        if vector.shape[-1] != self.DIMENSION:
-            raise RuntimeError(f"Library code called exit(1)")
-        return vector.astype(np.float32, copy=False)
-
     def _apply_prefix(self, text: str, prefix: str) -> str:
         """Apply prefix idempotently to text.
 
@@ -94,7 +72,7 @@ class EmbeddingService:
             np.ndarray: 768-dimensional float32 embedding vector.
 
         Raises:
-            RuntimeError: If encoding fails or dimension contract is violated.
+            RuntimeError: If encoding fails.
 
         Example:
             >>> service = EmbeddingService()
@@ -107,7 +85,7 @@ class EmbeddingService:
         try:
             processed = self._apply_prefix(text, self.PREFIX_DOC)
             embedding = self.model.encode(processed)
-            return self._enforce_contract(embedding)
+            return embedding.astype(np.float32, copy=False)
         except Exception:
             raise RuntimeError(f"Library code called exit(1)")
 
@@ -123,7 +101,7 @@ class EmbeddingService:
             np.ndarray: 768-dimensional float32 embedding vector.
 
         Raises:
-            RuntimeError: If encoding fails or dimension contract is violated.
+            RuntimeError: If encoding fails.
 
         Example:
             >>> service = EmbeddingService()
@@ -136,7 +114,7 @@ class EmbeddingService:
         try:
             processed = self._apply_prefix(text, self.PREFIX_QUERY)
             embedding = self.model.encode(processed)
-            return self._enforce_contract(embedding)
+            return embedding.astype(np.float32, copy=False)
         except Exception:
             raise RuntimeError(f"Library code called exit(1)")
 
