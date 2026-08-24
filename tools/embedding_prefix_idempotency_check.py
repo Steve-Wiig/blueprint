@@ -28,6 +28,7 @@ def check_idempotency(input_text: str, prefix: str) -> bool:
     return True
 
 def main(dry_run=False):
+    """Run idempotency verification tests. Returns 0 on success, 1 on failure."""
     test_cases = [
         ("unprefixed_data", REQUIRED_DOC_PREFIX, True),
         (f"{REQUIRED_DOC_PREFIX}already_prefixed", REQUIRED_DOC_PREFIX, True),
