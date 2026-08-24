@@ -10,7 +10,7 @@ import sys
 import argparse
 import requests
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 def get_db(db_path: str) -> sqlite3.Connection:
@@ -23,11 +23,18 @@ def get_db(db_path: str) -> sqlite3.Connection:
         A sqlite3.Connection object configured with row_factory.
 
     Raises:
-        SystemExit: If the database connection fails.
+        RuntimeError: If the database connection fails.
     """
     try:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
+        # Create supporting index for priority claim query
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_triage_claim 
+            ON triage_queue(status, severity, created_at) 
+            WHERE status = 'pending'
+        """)
+        conn.commit()
         return conn
     except Exception as e:
         print(f"DB_ERROR: {e}")
@@ -42,10 +49,10 @@ def heartbeat(conn: sqlite3.Connection, job_id: int, lease_interval: int) -> Non
         lease_interval: The duration in seconds to extend the lease.
     """
     try:
-        expiry = datetime.now() + timedelta(seconds=lease_interval)
+        expiry = datetime.now(timezone.utc) + timedelta(seconds=lease_interval)
         conn.execute(
             "UPDATE triage_queue SET last_heartbeat_at = ?, lease_expires_at = ? WHERE id = ?",
-            (datetime.now(), expiry, job_id)
+            (datetime.now(timezone.utc), expiry, job_id)
         )
         conn.commit()
     except Exception as e:
@@ -59,7 +66,7 @@ def reap_stale(conn: sqlite3.Connection) -> None:
     """
     conn.execute(
         "UPDATE triage_queue SET status = 'pending', lease_expires_at = NULL WHERE status = 'processing' AND lease_expires_at < ?",
-        (datetime.now(),)
+        (datetime.now(timezone.utc),)
     )
     conn.commit()
 
@@ -96,7 +103,7 @@ def run_worker(args: argparse.Namespace) -> None:
                 LIMIT 1
             )
             RETURNING id, payload_ref
-        """, (datetime.now(), datetime.now() + timedelta(seconds=args.lease)))
+        """, (datetime.now(timezone.utc), datetime.now(timezone.utc) + timedelta(seconds=args.lease)))
         
         row = cursor.fetchone()
         conn.commit()
@@ -115,7 +122,7 @@ def run_worker(args: argparse.Namespace) -> None:
             # Write verdict
             conn.execute(
                 "INSERT INTO verdicts (job_id, result, processed_at) VALUES (?, ?, ?)",
-                (job_id, json.dumps(verdict), datetime.now())
+                (job_id, json.dumps(verdict), datetime.now(timezone.utc))
             )
             conn.execute("UPDATE triage_queue SET status = 'completed' WHERE id = ?", (job_id,))
             conn.commit()
