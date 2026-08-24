@@ -10,11 +10,12 @@ import sys
 import json
 import os
 from datetime import datetime, timezone
+from typing import NoReturn
 
 # LOCAL-SOC-SLM Blueprint v11.6.0 - Wazuh Proposal Adapter
 # Appendix Q.3: Writeback Isolation Layer
 
-DB_PATH = os.environ.get("WAZUH_PROPOSALS_DB", "/var/lib/wazuh-slm/proposals.db")
+DB_PATH: str = os.environ.get("WAZUH_PROPOSALS_DB", "/var/lib/wazuh-slm/proposals.db")
 
 
 class ProposalError(Exception):
@@ -168,7 +169,7 @@ def store_proposal(key: str, value: str) -> None:
         raise ProposalStorageError(f"Failed to store proposal: {e}")
 
 
-def main() -> None:
+def main() -> NoReturn:
     """Orchestrates the proposal writeback process.
 
     Raises:
