@@ -9,6 +9,7 @@ Public API (safe to import and use):
     - get_provider_cost: Get cost per enrichment for a provider (deprecated)
     - update_quota: Decrement quota for a provider
     - process_jobs: Process pending enrichment jobs in batches
+    - sanitize: Redact sensitive fields from enrichment results
 
 Script-only entrypoint:
     - main: Command-line entry point (guarded by if __name__ == "__main__")
@@ -28,7 +29,39 @@ import sqlite3
 import warnings
 import psycopg2
 from datetime import datetime, timezone
-from typing import Tuple, Dict, List, Optional
+from typing import Tuple, Dict, List, Optional, Any
+
+
+def sanitize(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Recursively sanitize a dictionary by redacting sensitive fields.
+
+    Args:
+        data: The dictionary to sanitize.
+
+    Returns:
+        A new dictionary with sensitive values redacted.
+    """
+    sensitive_patterns = [
+        'secret', 'token', 'password', 'key', 'api_key', 'apikey',
+        'access_token', 'refresh_token', 'client_secret', 'private_key'
+    ]
+
+    def _sanitize(obj: Any) -> Any:
+        if isinstance(obj, dict):
+            result = {}
+            for k, v in obj.items():
+                if any(pattern in k.lower() for pattern in sensitive_patterns):
+                    result[k] = "***REDACTED***"
+                else:
+                    result[k] = _sanitize(v)
+            return result
+        elif isinstance(obj, list):
+            return [_sanitize(item) for item in obj]
+        else:
+            return obj
+
+    return _sanitize(data)
+
 
 def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensions.connection, sqlite3.Connection]:
     """Establishes connections to PostgreSQL and SQLite databases.
@@ -47,6 +80,7 @@ def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensio
     except Exception as e:
         print(f"Connection error: {e}")
         raise RuntimeError("Failed to establish database connections") from e
+
 
 def check_quota(
     sq_conn: sqlite3.Connection,
@@ -86,6 +120,7 @@ def check_quota(
     row = cursor.fetchone()
     return row[0] if row else 0
 
+
 def get_provider_cost(
     sq_conn: sqlite3.Connection,
     provider: str,
@@ -124,6 +159,7 @@ def get_provider_cost(
     row = cursor.fetchone()
     return row[0] if row else 1
 
+
 def update_quota(sq_conn: sqlite3.Connection, provider: str, cost: int) -> None:
     """Decrements the quota for a specific provider in the SQLite database.
 
@@ -137,6 +173,7 @@ def update_quota(sq_conn: sqlite3.Connection, provider: str, cost: int) -> None:
         "UPDATE quota_ledger SET remaining = remaining - ? WHERE provider = ?",
         (cost, provider)
     )
+
 
 def _fetch_provider_data(
     sq_conn: sqlite3.Connection,
@@ -174,6 +211,7 @@ def _fetch_provider_data(
         cost_dict[provider] = cost if cost is not None else 1
 
     return quota_dict, cost_dict
+
 
 def process_jobs(
     pg_conn: psycopg2.extensions.connection,
@@ -219,7 +257,8 @@ def process_jobs(
             try:
                 # Mock enrichment logic
                 result = {"status": "enriched", "data": f"mock_data_for_{ioc}"}
-                result_json = json.dumps(result)
+                sanitized_result = sanitize(result)
+                result_json = json.dumps(sanitized_result)
                 processed_at = datetime.now(timezone.utc)
 
                 # Append-only audit log before updating job status
@@ -243,6 +282,7 @@ def process_jobs(
 
     sq_conn.commit()
 
+
 def main() -> None:
     """Parses command line arguments and initiates the job processing workflow.
 
@@ -265,6 +305,7 @@ def main() -> None:
     finally:
         pg_conn.close()
         sq_conn.close()
+
 
 if __name__ == "__main__":
     main()
