@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from enum import Enum
@@ -6,6 +7,8 @@ from typing import Any, Dict, Iterable, List, Tuple
 
 import psycopg2
 from psycopg2.extras import execute_values
+
+logger = logging.getLogger(__name__)
 
 
 class IOCType(Enum):
@@ -95,10 +98,10 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
         return 0
 
     except psycopg2.Error as e:
-        print(f"Database error: {e}")
+        logger.error("Database error: %s", e)
         return 2
     except Exception as e:
-        print(f"Extraction error: {e}")
+        logger.error("Extraction error: %s", e)
         return 1
 
 
