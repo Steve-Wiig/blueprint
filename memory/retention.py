@@ -19,6 +19,7 @@ Environment Variables:
     ARCHIVE_BASE: Base directory for archived partitions (default: /archive/iocs)
     CMR_MOUNT: Mount point for CMR storage (default: /mnt/cmr)
     PGPASSWORD: PostgreSQL password (alternative to password in connection string)
+    RETENTION_DAYS: Retention period in days (default: 90)
 """
 
 ARCHIVE_BASE = os.environ.get('ARCHIVE_BASE', '/archive/iocs')
@@ -77,12 +78,13 @@ def archive_partition(conn: PgConnection, partition_name: str) -> None:
         raise RuntimeError(f"Archive failed for {partition_name}: {e}") from e
 
 
-def run_retention(db_url: str) -> None:
+def run_retention(db_url: str, retention_days: int = None) -> None:
     """
-    Execute the retention policy: archive and drop partitions older than 90 days.
+    Execute the retention policy: archive and drop partitions older than the configured retention period.
     
     Args:
         db_url: PostgreSQL connection string.
+        retention_days: Number of days to retain partitions. Defaults to RETENTION_DAYS env var or 90.
         
     Raises:
         RuntimeError: If retention logic encounters an error.
@@ -90,7 +92,9 @@ def run_retention(db_url: str) -> None:
     check_cmr_mount()
     try:
         conn = psycopg2.connect(db_url)
-        cutoff = datetime.datetime.now(timezone.utc) - datetime.timedelta(days=90)
+        if retention_days is None:
+            retention_days = int(os.environ.get('RETENTION_DAYS', '90'))
+        cutoff = datetime.datetime.now(timezone.utc) - datetime.timedelta(days=retention_days)
         
         with conn.cursor() as cur:
             cutoff_str = cutoff.strftime('%Y_%m_%d')
@@ -129,9 +133,10 @@ def main() -> None:
     """
     parser = argparse.ArgumentParser(description="IOC Retention Manager")
     parser.add_argument("--db-url", required=True, help="Postgres connection string")
+    parser.add_argument("--retention-days", type=int, default=None, help="Retention period in days. Overrides RETENTION_DAYS env var.")
     args = parser.parse_args()
     
-    run_retention(args.db_url)
+    run_retention(args.db_url, retention_days=args.retention_days)
 
 
 if __name__ == "__main__":
