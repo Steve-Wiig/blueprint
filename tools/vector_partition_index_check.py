@@ -259,7 +259,7 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
         print("  [2/6] PASSED")
 
     # Required partitions
-    missing = [p for p in REQUIRED_PARTITIONS if p not in data.get("partitions", {})]
+    missing = set(REQUIRED_PARTITIONS) - set(data.get("partitions", {}).keys())
     if missing:
         if dry_run:
             print(f"  [3/6] FAILED – missing partitions: {', '.join(missing)}")
