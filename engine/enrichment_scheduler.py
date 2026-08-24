@@ -1,10 +1,25 @@
-"""Enrichment Scheduler Script
+"""Enrichment Scheduler Module
 
-This module is designed to be executed as a standalone script, not imported as a library.
-It processes pending enrichment jobs from PostgreSQL using quota tracking in SQLite.
+This module provides reusable functions for processing enrichment jobs from PostgreSQL
+using quota tracking in SQLite. It can be imported as a library or executed as a script.
 
-Usage:
+Public API (safe to import and use):
+    - get_db_connections: Establish PostgreSQL and SQLite connections
+    - check_quota: Check remaining quota for a provider
+    - get_provider_cost: Get cost per enrichment for a provider
+    - update_quota: Decrement quota for a provider
+    - process_jobs: Process pending enrichment jobs in batches
+
+Script-only entrypoint:
+    - main: Command-line entry point (guarded by if __name__ == "__main__")
+
+Usage as script:
     python enrichment_scheduler.py --pg-dsn "postgresql://..." [--sqlite-path ":memory:"]
+
+Usage as library:
+    from enrichment_scheduler import get_db_connections, process_jobs
+    pg_conn, sq_conn = get_db_connections(pg_dsn, sqlite_path)
+    process_jobs(pg_conn, sq_conn)
 """
 
 import argparse
