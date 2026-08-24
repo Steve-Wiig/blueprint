@@ -6,9 +6,12 @@ import os
 import sys
 import json
 import argparse
+from pathlib import Path
 
 SCHEMA_VERSION_REQUIRED = "11.6.0"
-SCHEMA_PATH = "config/memory_schema.json"
+BASE_DIR = Path(__file__).resolve().parent
+SCHEMA_PATH = BASE_DIR / "config" / "memory_schema.json"
+LEDGER_PATH = BASE_DIR / "logs" / "migration_ledger.log"
 
 def validate_schema(schema_data):
     """Validates schema structure against blueprint requirements."""
@@ -29,7 +32,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Validate without applying")
     args = parser.parse_args()
 
-    if not os.path.exists(SCHEMA_PATH):
+    if not SCHEMA_PATH.exists():
         print(f"CONFIG ERROR: {SCHEMA_PATH} not found")
         return 2
 
@@ -51,8 +54,7 @@ def main():
         return 0
 
     # Verify migration history ledger exists
-    ledger_path = "logs/migration_ledger.log"
-    if not os.path.exists(ledger_path):
+    if not LEDGER_PATH.exists():
         print("FAIL: Migration ledger missing. Audit trail required.")
         return 1
 
