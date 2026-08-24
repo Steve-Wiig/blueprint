@@ -7,6 +7,12 @@ import argparse
 import os
 from typing import Any, List
 
+# Exit code constants
+EXIT_OK = 0
+EXIT_VIOLATION = 1
+EXIT_CONFIG_ERROR = 2
+EXIT_CI_MISSING = 3
+
 # LOCAL-SOC-SLM Blueprint v11.6.0 Policy
 # Fields that must be redacted/sanitized before reaching the embedding pipeline
 FORBIDDEN_FIELDS = {
@@ -25,22 +31,22 @@ def validate_schema(schema_path: str) -> int:
         schema_path: Path to JSON schema file.
 
     Returns:
-        0 if validation passes, 1 if forbidden fields found or invalid JSON,
-        2 if schema file not found.
+        EXIT_OK if validation passes, EXIT_VIOLATION if forbidden fields found or invalid JSON,
+        EXIT_CONFIG_ERROR if schema file not found.
 
     Side Effects:
         Prints error messages to stdout for failures.
     """
     if not os.path.exists(schema_path):
         print(f"CONFIG ERROR: Schema file not found at {schema_path}")
-        return 2
+        return EXIT_CONFIG_ERROR
     
     try:
         with open(schema_path, 'r') as f:
             data = json.load(f)
     except json.JSONDecodeError:
         print("FAIL: Invalid JSON schema format")
-        return 1
+        return EXIT_VIOLATION
 
     # Recursive check for forbidden keys in nested schema definitions
     def find_forbidden(obj: Any, path: str = '') -> List[str]:
@@ -57,9 +63,9 @@ def validate_schema(schema_path: str) -> int:
     found = list(find_forbidden(data))
     if found:
         print(f"FAIL: Forbidden fields detected in schema: {', '.join(found)}")
-        return 1
+        return EXIT_VIOLATION
     
-    return 0
+    return EXIT_OK
 
 def main() -> int:
     """Run the sanitization field policy check.
@@ -67,7 +73,7 @@ def main() -> int:
     Parses command-line arguments, validates CI context, and executes schema validation.
 
     Returns:
-        0 on success, 1 on validation failure, 2 on config error, 3 if CI context missing.
+        EXIT_OK on success, EXIT_VIOLATION on validation failure, EXIT_CONFIG_ERROR on config error, EXIT_CI_MISSING if CI context missing.
 
     Side Effects:
         Prints status messages to stdout. Exits process via sys.exit when run as script.
@@ -79,13 +85,13 @@ def main() -> int:
 
     if not os.getenv("CI_PIPELINE_ID"):
         print("ENV_NOT_AVAILABLE: CI context missing")
-        return 3
+        return EXIT_CI_MISSING
 
     result = validate_schema(args.schema)
     
     if args.dry_run:
         print("DRY-RUN: Policy check completed.")
-        return 0
+        return EXIT_OK
         
     return result
 
