@@ -3,6 +3,12 @@ import json
 import sys
 from datetime import datetime, timezone, timedelta
 
+
+class DatabaseRetrievalError(Exception):
+    """Custom exception for database retrieval failures in stitch_memory_context."""
+    pass
+
+
 def stitch_memory_context(query_embedding, top_k=5, max_age_days=30):
     """
     Queries case_embeddings for semantic recall and formats for SLM injection.
@@ -11,9 +17,9 @@ def stitch_memory_context(query_embedding, top_k=5, max_age_days=30):
     try:
         conn = psycopg2.connect(dbname="soc_db", user="orchestrator")
         cur = conn.cursor()
-        
+
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=max_age_days)
-        
+
         query = """
             SELECT case_id, summary, cosine_distance(embedding, %s::vector) as dist
             FROM case_embeddings
@@ -21,13 +27,13 @@ def stitch_memory_context(query_embedding, top_k=5, max_age_days=30):
             ORDER BY dist ASC
             LIMIT %s;
         """
-        
+
         cur.execute(query, (json.dumps(query_embedding), cutoff_date, top_k))
         results = cur.fetchall()
-        
+
         context_blocks = []
         case_refs = []
-        
+
         for row in results:
             case_id, summary, dist = row
             context_blocks.append(f"<case_id={case_id} dist={dist:.4f}>{summary}</case_id>")
@@ -47,10 +53,10 @@ def stitch_memory_context(query_embedding, top_k=5, max_age_days=30):
 
     except psycopg2.Error as e:
         sys.stderr.write(f"Database error: {e}")
-        raise RuntimeError(f"Library code called exit(1)")
+        raise DatabaseRetrievalError(f"Failed to retrieve memory context: {e}") from e
     except Exception as e:
         sys.stderr.write(f"Stitcher error: {e}")
-        raise RuntimeError(f"Library code called exit(2)")
+        raise DatabaseRetrievalError(f"Unexpected error during stitching: {e}") from e
 
 if __name__ == "__main__":
     # Example usage for orchestrator integration
