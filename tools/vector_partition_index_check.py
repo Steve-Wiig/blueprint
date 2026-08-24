@@ -62,6 +62,7 @@ import os
 import sys
 import argparse
 import json
+from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 _DEFAULTS_CACHE: Optional[Dict[str, Any]] = None
@@ -190,7 +191,7 @@ class PartitionConfig(Dict[str, Any]):
     partitions: Dict[str, PartitionSettings]
 
 
-def validate_partition_config(config_path: str, dry_run: bool = False) -> int:
+def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
     """
     Validate vector partition configuration against schema constraints and sharding rules.
 
@@ -219,24 +220,25 @@ def validate_partition_config(config_path: str, dry_run: bool = False) -> int:
         json.JSONDecodeError: If the config file contains invalid JSON (caught internally, returns 1).
         OSError: If file cannot be read due to permissions (propagates to caller).
     """
+    config_path_str = str(config_path)
     if dry_run:
         print("DRY-RUN: Starting validation checks...")
-        print(f"  [1/6] File existence check: {config_path}")
+        print(f"  [1/6] File existence check: {config_path_str}")
         print(f"  [2/6] JSON parsing: will validate JSON format")
         print(f"  [3/6] Required partitions: {', '.join(REQUIRED_PARTITIONS)}")
         print(f"  [4/6] Schema version: expected {INDEX_SCHEMA_VERSION}")
         print(f"  [5/6] Shard size constraints: max {MAX_SHARD_SIZE_GB}GB per partition")
         print(f"  [6/6] Indexing enabled: must be true for all partitions")
 
-    if not os.path.exists(config_path):
+    if not config_path.exists():
         if dry_run:
-            print(f"  [1/6] FAIL: Config file not found at {config_path}")
+            print(f"  [1/6] FAIL: Config file not found at {config_path_str}")
         else:
-            print(f"CONFIG ERROR: Partition config not found at {config_path}")
+            print(f"CONFIG ERROR: Partition config not found at {config_path_str}")
         return EXIT_CONFIG_NOT_FOUND
 
     if dry_run:
-        print(f"  [1/6] PASS: Config file exists at {config_path}")
+        print(f"  [1/6] PASS: Config file exists at {config_path_str}")
 
     try:
         with open(config_path, 'r') as f:
@@ -327,16 +329,41 @@ def main() -> int:
         --dry-run: Validate without committing changes, with verbose output
 
     Returns:
-        int: Exit code from validate_partition_config() or EXIT_ENV_NOT_SET if
-        SLM_ENV environment variable is not set.
+        int: Exit code (0=success, 1=validation failed, 2=config not found, 3=env not set)
     """
-    parser = argparse.ArgumentParser(description="Vector Partition Index Check")
-    parser.add_argument("--config", default="config/vector_partitions.json", help="Path to partition config")
-    parser.add_argument("--dry-run", action="store_true", help="Validate without committing")
+    parser = argparse.ArgumentParser(
+        description="Validate vector database partition configuration against schema constraints and sharding rules.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Environment Variables:
+  SLM_ENV                    Required. Must be set for the tool to run.
+  SLM_DEFAULTS_CONFIG        Path to defaults JSON file (default: config/vector_index_defaults.json)
+  SLM_REQUIRED_PARTITIONS    Comma-separated list of required partition names (default: alerts,threat_intel,audit_logs)
+  SLM_MAX_SHARD_SIZE_GB      Maximum allowed shard size in GB (default: 16)
+  SLM_INDEX_SCHEMA_VERSION   Expected schema version string (default: 11.6.0)
+
+Exit Codes:
+  0  Validation passed successfully
+  1  Validation failed (missing partition, version mismatch, shard size exceeded, or indexing disabled)
+  2  Config file not found at specified path
+  3  SLM_ENV environment variable not set
+"""
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path("config/vector_partitions.json"),
+        help="Path to partition configuration JSON file (default: config/vector_partitions.json)"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Perform validation without committing changes, with verbose step-by-step output"
+    )
     args = parser.parse_args()
 
-    if "SLM_ENV" not in os.environ:
-        print("ENV_NOT_AVAILABLE: SLM_ENV not set")
+    if not os.environ.get("SLM_ENV"):
+        print("ERROR: SLM_ENV environment variable is not set")
         return EXIT_ENV_NOT_SET
 
     return validate_partition_config(args.config, args.dry_run)
