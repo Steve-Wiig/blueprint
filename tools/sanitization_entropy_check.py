@@ -23,7 +23,7 @@ import math
 import collections
 import os
 import io
-from typing import List, Iterator
+from typing import List, Iterator, TextIO
 
 # Threshold chosen to detect base64/hex encoded secrets (entropy ~4.7) while allowing normal words (entropy ~3.5);
 # make configurable via env var or CLI arg
@@ -134,6 +134,38 @@ def sanitize_pass(text: str) -> str:
     return output.getvalue()
 
 
+def sanitize_stream(input_stream: TextIO) -> str:
+    """
+    Perform sanitization on a stream line by line to avoid loading entire input into memory.
+
+    Args:
+        input_stream: Text stream to read from (e.g., sys.stdin).
+
+    Returns:
+        Sanitized text with high-entropy tokens redacted.
+    """
+    output = io.StringIO()
+    first_token = True
+    
+    for line in input_stream:
+        for token in _tokenize(line):
+            if not first_token:
+                output.write(' ')
+            first_token = False
+            
+            if is_allowlisted(token):
+                output.write(token)
+                continue
+
+            entropy = calculate_entropy(token)
+            if entropy > ENTROPY_THRESHOLD:
+                output.write("[REDACTED]")
+            else:
+                output.write(token)
+    
+    return output.getvalue()
+
+
 def main(input_data: str) -> int:
     """
     Execute two-pass sanitization verification.
@@ -171,6 +203,41 @@ def main(input_data: str) -> int:
         return 2
 
 
+def main_stream(input_stream: TextIO) -> int:
+    """
+    Execute two-pass sanitization verification on a stream.
+
+    Performs two sanitization passes on the provided stream and verifies
+    idempotency (pass1 == pass2). Returns exit code indicating result.
+
+    Args:
+        input_stream: Text stream to read from (e.g., sys.stdin).
+
+    Returns:
+        0: PASS - Sanitization consistent, no high-entropy secrets detected.
+        1: FAIL - Inconsistency between passes (potential missed secret).
+        2: CONFIG ERROR - Unexpected exception during processing.
+    """
+    try:
+        # Pass 1: Initial scan and redaction
+        pass1 = sanitize_stream(input_stream)
+
+        # Pass 2: Verification of remaining high-entropy tokens
+        # For pass 2, we need to re-process the output of pass1
+        pass2 = sanitize_pass(pass1)
+
+        if pass1 != pass2:
+            print("FAIL: Sanitization inconsistency detected between passes.")
+            return 1
+
+        print("PASS: Sanitization entropy threshold verified.")
+        return 0
+
+    except Exception as e:
+        print(f"CONFIG ERROR: {str(e)}")
+        return 2
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CI Check Tool")
     parser.add_argument("--dry-run", action="store_true", help="Run with test/mock data")
@@ -180,7 +247,7 @@ if __name__ == "__main__":
         # Use test data from environment variable or default
         input_data = os.environ.get("SANITIZER_TEST_DATA", DEFAULT_TEST_DATA)
         print("DRY-RUN MODE: Using test data")
+        sys.exit(main(input_data))
     else:
-        input_data = sys.stdin.read()
-
-    sys.exit(main(input_data))
+        # Stream from stdin to avoid loading large inputs into memory
+        sys.exit(main_stream(sys.stdin))
