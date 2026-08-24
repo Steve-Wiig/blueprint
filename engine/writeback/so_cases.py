@@ -12,6 +12,8 @@ from typing import Any, Dict
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
+DRAFT_CASE_ID = 'DRAFT_ID_000'
+
 
 def sanitize_input(data: Any) -> Dict[str, str]:
     """Sanitizes input dictionary by truncating keys and values.
@@ -37,7 +39,7 @@ def _handle_draft_mode(sanitized: Dict[str, str]) -> str:
         A draft case identifier.
     """
     logging.info(f"DRAFT MODE: Payload sanitized: {sanitized}")
-    return "DRAFT_ID_000"
+    return DRAFT_CASE_ID
 
 
 def _make_api_request(api_url: str, api_key: str, sanitized: Dict[str, str]) -> str:
