@@ -71,6 +71,4 @@ def main() -> int:
     return 0
 
 if __name__ == "__main__":
-    exit_code = main()
-    if exit_code != 0:
-        raise RuntimeError(f"Schema validation failed with exit code {exit_code}")
+    sys.exit(main())
