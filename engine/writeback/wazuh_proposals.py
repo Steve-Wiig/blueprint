@@ -32,6 +32,33 @@ def init_db() -> None:
                           ON proposals(key)''')
         cursor.execute('''CREATE INDEX IF NOT EXISTS idx_proposals_status 
                           ON proposals(status)''')
+        
+        # Audit log table for append-only trail (Section 30 compliance)
+        cursor.execute('''CREATE TABLE IF NOT EXISTS audit_log
+                          (id INTEGER PRIMARY KEY, proposal_id INTEGER, action TEXT,
+                           actor TEXT, timestamp TIMESTAMP,
+                           FOREIGN KEY(proposal_id) REFERENCES proposals(id))''')
+        cursor.execute('''CREATE INDEX IF NOT EXISTS idx_audit_log_proposal_id
+                          ON audit_log(proposal_id)''')
+        cursor.execute('''CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp
+                          ON audit_log(timestamp)''')
+        
+        # Trigger on INSERT to proposals
+        cursor.execute('''CREATE TRIGGER IF NOT EXISTS audit_proposals_insert
+                          AFTER INSERT ON proposals
+                          BEGIN
+                              INSERT INTO audit_log (proposal_id, action, actor, timestamp)
+                              VALUES (NEW.id, 'INSERT', 'wazuh-proposal-adapter', datetime('now'));
+                          END;''')
+        
+        # Trigger on UPDATE to proposals
+        cursor.execute('''CREATE TRIGGER IF NOT EXISTS audit_proposals_update
+                          AFTER UPDATE ON proposals
+                          BEGIN
+                              INSERT INTO audit_log (proposal_id, action, actor, timestamp)
+                              VALUES (NEW.id, 'UPDATE', 'wazuh-proposal-adapter', datetime('now'));
+                          END;''')
+        
         conn.commit()
         conn.close()
     except sqlite3.Error:
