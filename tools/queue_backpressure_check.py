@@ -13,6 +13,13 @@ MAX_QUEUE_DEPTH = int(os.getenv('MAX_QUEUE_DEPTH', '1000'))
 BACKPRESSURE_THRESHOLD = float(os.getenv('BACKPRESSURE_THRESHOLD', '0.85'))
 QUEUE_API_ENDPOINT = os.getenv('QUEUE_API_ENDPOINT', '/api/v1/queue/status')
 
+ERROR_CODES = {
+    'SUCCESS': 0,
+    'API_ERROR': 1,
+    'CONFIG_ERROR': 2,
+    'TOKEN_MISSING': 3
+}
+
 def check_backpressure(lab_url: str | None, dry_run: bool = False) -> int:
     """
     Queries the queue status and validates that backpressure signals
@@ -20,18 +27,18 @@ def check_backpressure(lab_url: str | None, dry_run: bool = False) -> int:
     """
     if not lab_url:
         print("CONFIG ERROR: LAB_URL not defined")
-        return 2
+        return ERROR_CODES['CONFIG_ERROR']
 
     if dry_run:
         print("DRY-RUN: Skipping network request. Simulating healthy queue.")
-        return 0
+        return ERROR_CODES['SUCCESS']
 
     try:
         # [LAB-VERIFY] Queue status requires internal service token
         token = os.getenv("QUEUE_SERVICE_TOKEN")
         if not token:
             print("ENV_NOT_AVAILABLE: QUEUE_SERVICE_TOKEN missing")
-            return 3
+            return ERROR_CODES['TOKEN_MISSING']
 
         headers = {"Authorization": f"Bearer {token}"}
         response = requests.get(f"{lab_url.rstrip('/')}{QUEUE_API_ENDPOINT}", 
@@ -39,7 +46,7 @@ def check_backpressure(lab_url: str | None, dry_run: bool = False) -> int:
         
         if response.status_code != 200:
             print(f"FAIL: Queue API returned {response.status_code}")
-            return 1
+            return ERROR_CODES['API_ERROR']
 
         data = response.json()
         current_depth = data.get("depth", 0)
@@ -49,17 +56,17 @@ def check_backpressure(lab_url: str | None, dry_run: bool = False) -> int:
         if current_depth > (MAX_QUEUE_DEPTH * BACKPRESSURE_THRESHOLD):
             if not backpressure_active:
                 print(f"FAIL: Backpressure not triggered at depth {current_depth}")
-                return 1
+                return ERROR_CODES['API_ERROR']
         
         print(f"PASS: Queue depth {current_depth} within operational limits.")
-        return 0
+        return ERROR_CODES['SUCCESS']
 
     except requests.RequestException as e:
         print(f"FAIL: Connection error: {e}")
-        return 1
+        return ERROR_CODES['API_ERROR']
     except Exception as e:
         print(f"FAIL: Unexpected error: {e}")
-        return 1
+        return ERROR_CODES['API_ERROR']
 
 def main():
     parser = argparse.ArgumentParser(description="Queue Backpressure CI Gate")
