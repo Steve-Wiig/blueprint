@@ -6,7 +6,7 @@ import argparse
 REQUIRED_DOC_PREFIX = "search_document: "
 REQUIRED_QUERY_PREFIX = "search_query: "
 
-def check_idempotency(input_text, prefix):
+def check_idempotency(input_text: str, prefix: str) -> bool:
     """
     Verifies that applying the prefix multiple times does not result in 
     nested prefixing (e.g., 'prefix: prefix: text').
