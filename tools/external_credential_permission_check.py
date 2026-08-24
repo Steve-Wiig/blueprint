@@ -13,6 +13,7 @@ import os
 import sys
 import argparse
 import json
+from dataclasses import dataclass
 from typing import Any
 
 try:
@@ -90,11 +91,10 @@ def load_config(config_path: str | None = None) -> dict:
     return config
 
 
+@dataclass
 class MockResponse:
     """Mock HTTP response for dry-run testing."""
-
-    def __init__(self, status_code: int) -> None:
-        self.status_code: int = status_code
+    status_code: int
 
 
 def get_mock_response(status_code: int) -> MockResponse:
