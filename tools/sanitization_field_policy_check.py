@@ -5,7 +5,7 @@ import sys
 import json
 import argparse
 import os
-from typing import Any, List
+from typing import Any, List, Optional
 
 # Exit code constants
 EXIT_OK = 0
@@ -67,6 +67,20 @@ def validate_schema(schema_path: str) -> int:
     
     return EXIT_OK
 
+def check_ci_context(dry_run: bool) -> Optional[int]:
+    """Validate CI environment context.
+
+    Args:
+        dry_run: Whether the check is running in dry-run mode.
+
+    Returns:
+        EXIT_CI_MISSING if CI_PIPELINE_ID is not set, None to continue.
+    """
+    if not os.getenv("CI_PIPELINE_ID"):
+        print("ENV_NOT_AVAILABLE: CI context missing")
+        return EXIT_CI_MISSING
+    return None
+
 def main() -> int:
     """Run the sanitization field policy check.
 
@@ -83,9 +97,9 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="Validate without enforcing")
     args = parser.parse_args()
 
-    if not os.getenv("CI_PIPELINE_ID"):
-        print("ENV_NOT_AVAILABLE: CI context missing")
-        return EXIT_CI_MISSING
+    ci_check = check_ci_context(args.dry_run)
+    if ci_check is not None:
+        return ci_check
 
     result = validate_schema(args.schema)
     
