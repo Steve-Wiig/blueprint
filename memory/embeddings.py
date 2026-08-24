@@ -20,6 +20,7 @@ class EmbeddingService:
             raise RuntimeError(f"Library code called exit(3)")
 
     def _enforce_contract(self, vector: np.ndarray) -> List[float]:
+        """Validate embedding dimension matches contract. Returns vector as List[float]. Raises RuntimeError if dimension mismatch."""
         if vector.shape[-1] != self.DIMENSION:
             raise RuntimeError(f"Library code called exit(1)")
         return vector.tolist()
