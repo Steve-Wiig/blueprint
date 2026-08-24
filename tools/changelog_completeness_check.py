@@ -11,7 +11,7 @@ import sys
 import subprocess
 import argparse
 import re
-from typing import List, Optional
+from typing import List, Optional, Pattern
 
 
 def main() -> int:
@@ -24,7 +24,7 @@ def main() -> int:
     """
     parser = argparse.ArgumentParser(description="Verify CHANGELOG completeness")
     parser.add_argument("--dry-run", action="store_true", help="Validate logic without failing")
-    args = parser.parse_args()
+    args: argparse.Namespace = parser.parse_args()
 
     # Ensure we are in a git repository
     if not os.path.exists(".git"):
@@ -33,7 +33,7 @@ def main() -> int:
 
     try:
         # Get the latest tag
-        latest_tag = subprocess.check_output(
+        latest_tag: str = subprocess.check_output(
             ["git", "describe", "--tags", "--abbrev=0"],
             stderr=subprocess.DEVNULL
         ).decode().strip()
@@ -43,7 +43,7 @@ def main() -> int:
 
     # Get list of commits since latest tag
     try:
-        commits = subprocess.check_output(
+        commits: list[str] = subprocess.check_output(
             ["git", "log", f"{latest_tag}..HEAD", "--pretty=format:%h %s"]
         ).decode().splitlines()
     except subprocess.CalledProcessError:
@@ -55,16 +55,16 @@ def main() -> int:
         return 1
 
     with open("CHANGELOG.md", "r") as f:
-        changelog_content = f.read()
+        changelog_content: str = f.read()
 
     # Parse changelog once: extract all commit hashes (7+ char hex) into a set for O(1) lookup
     # Matches abbreviated commit hashes (7-12 chars) typically used in changelogs
-    commit_hash_pattern = re.compile(r'\b([0-9a-f]{7,12})\b')
-    changelog_hashes = set(commit_hash_pattern.findall(changelog_content.lower()))
+    commit_hash_pattern: Pattern[str] = re.compile(r'\b([0-9a-f]{7,12})\b')
+    changelog_hashes: set[str] = set(commit_hash_pattern.findall(changelog_content.lower()))
 
-    missing_entries: List[str] = []
+    missing_entries: list[str] = []
     for commit in commits:
-        commit_hash = commit.split(" ")[0].lower()
+        commit_hash: str = commit.split(" ")[0].lower()
         if commit_hash not in changelog_hashes:
             missing_entries.append(commit)
 
