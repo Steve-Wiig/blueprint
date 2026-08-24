@@ -12,6 +12,19 @@ This module provides credential detection capabilities for security automation w
 It uses compiled regular expressions for efficient pattern matching and maintains
 allowlists of known safe values to reduce false positives.
 
+Patterns detected:
+    - AWS_KEY: AWS access key IDs (AKIA...)
+    - GITHUB_TOKEN: GitHub personal access tokens (ghp_...)
+    - BEARER_JWT: JWT bearer tokens (eyJ...)
+    - OPENSSH_KEY: OpenSSH private key headers
+    - SLACK_TOKEN: Slack bot/user/app tokens (xoxb-, xoxp-, etc.)
+    - API_KEY_PARAM: API key parameters in query strings
+    - PASSWORD_PARAM: Password parameters in query strings
+
+Allowlists:
+    - ALLOWLIST_SHA256: Known safe SHA256 hashes (empty string, common test values)
+    - ALLOWLIST_UUID: Known safe UUIDs (nil UUID, test UUID)
+
 Example:
     >>> from credential_sanitizer import scan_text
     >>> violations = scan_text("AKIAIOSFODNN7EXAMPLE")
@@ -22,24 +35,24 @@ Example:
 import re
 import sys
 import argparse
-from typing import List, Tuple, Dict, Pattern, Set
+from typing import Pattern
 
 # LOCAL-SOC-SLM Blueprint v11.6.0 - Credential Sanitization Tool
 # Appendix O.16 & Section 34.1 Compliance
 
-ALLOWLIST_SHA256: Set[str] = {
+ALLOWLIST_SHA256: set[str] = {
     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
 }
 
-ALLOWLIST_UUID: Set[str] = {
+ALLOWLIST_UUID: set[str] = {
     "00000000-0000-0000-0000-000000000000",
     "deadbeef-dead-beef-dead-beefdeadbeef"
 }
 
-ALLOWLIST: Set[str] = ALLOWLIST_SHA256 | ALLOWLIST_UUID
+ALLOWLIST: set[str] = ALLOWLIST_SHA256 | ALLOWLIST_UUID
 
-PATTERNS: Dict[str, str] = {
+PATTERNS: dict[str, str] = {
     "AWS_KEY": r"(AKIA[0-9A-Z]{16})",
     "GITHUB_TOKEN": r"(ghp_[a-zA-Z0-9]{36})",
     "BEARER_JWT": r"(eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9._-]{10,}\.[a-zA-Z0-9._-]{10,})",
@@ -49,11 +62,11 @@ PATTERNS: Dict[str, str] = {
     "PASSWORD_PARAM": r"(password=[a-zA-Z0-9!@#$%^&*()_+]{8,64})"
 }
 
-COMPILED_PATTERNS: Dict[str, Pattern[str]] = {
+COMPILED_PATTERNS: dict[str, Pattern[str]] = {
     name: re.compile(pattern, re.IGNORECASE) for name, pattern in PATTERNS.items()
 }
 
-DRY_RUN_PAYLOADS: List[str] = [
+DRY_RUN_PAYLOADS: list[str] = [
     "AKIAIOSFODNN7EXAMPLE",
     "ghp_1234567890abcdef1234567890abcdef1234",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
@@ -64,7 +77,7 @@ DRY_RUN_PAYLOADS: List[str] = [
 ]
 
 
-def scan_text(text: str) -> List[Tuple[str, str]]:
+def scan_text(text: str) -> list[tuple[str, str]]:
     """
     Scan text for credential patterns.
 
@@ -94,7 +107,7 @@ def scan_text(text: str) -> List[Tuple[str, str]]:
     if not isinstance(text, str):
         raise TypeError(f"Expected str, got {type(text).__name__}")
 
-    found: List[Tuple[str, str]] = []
+    found: list[tuple[str, str]] = []
     for name, compiled_pattern in COMPILED_PATTERNS.items():
         matches = compiled_pattern.findall(text)
         for match in matches:
@@ -103,7 +116,7 @@ def scan_text(text: str) -> List[Tuple[str, str]]:
     return found
 
 
-def scan_file(file_path: str) -> List[Tuple[str, str]]:
+def scan_file(file_path: str) -> list[tuple[str, str]]:
     """
     Scan a single file for credential violations.
 
