@@ -7,7 +7,7 @@ import subprocess
 import xml.etree.ElementTree as ET
 import re
 
-def get_gpu_info():
+def get_gpu_info() -> ET.Element | None:
     try:
         result = subprocess.run(
             ['nvidia-smi', '-q', '-x'],
@@ -19,12 +19,12 @@ def get_gpu_info():
     except (subprocess.CalledProcessError, FileNotFoundError, ET.ParseError):
         return None
 
-def parse_mem_value(val_str):
+def parse_mem_value(val_str: str) -> int:
     """Extracts integer value from strings like '16384 MiB'."""
     match = re.search(r'(\d+)', val_str)
     return int(match.group(1)) if match else 0
 
-def main():
+def main() -> int:
     gpu_data = get_gpu_info()
     if gpu_data is None:
         print("FAIL: GPU unavailable or nvidia-smi failed")
