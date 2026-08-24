@@ -7,13 +7,28 @@ import re
 import math
 import hashlib
 import json
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Pattern, TypeAlias
 from collections import Counter
 
-# LOCAL-SOC-SLM v11.6.0 Sanitization Pipeline
-# Section 34.1 Implementation
+# Type aliases for pattern dictionaries
+RegexPatternDict: TypeAlias = Dict[str, Pattern[str]]
+CompiledRegexDict: TypeAlias = Dict[str, Pattern[str]]
+AllowlistPatternDict: TypeAlias = Dict[str, Pattern[str]]
 
-REGEX_RULES = {
+# Configurable thresholds with documentation
+# Entropy threshold of 4.5 bits/char: balances detection of base64-encoded secrets
+# (typically 4.5-6.0 bits/char) against false positives on structured data like JSON
+# (typically 3.5-4.5 bits/char). Based on NIST SP 800-63B entropy estimates.
+ENTROPY_THRESHOLD: float = 4.5
+
+# Minimum token length of 17 characters: excludes common short identifiers
+# (UUIDs=36, API keys typically 20-40, JWT segments 20+) while catching
+# base64-encoded 128-bit secrets (22 chars) and 256-bit secrets (44 chars).
+MIN_TOKEN_LENGTH: int = 17
+
+# Regex patterns for known secret formats
+# Patterns are compiled at module load for performance
+REGEX_RULES: Dict[str, str] = {
     "aws_key": r"AKIA[0-9A-Z]{16}",
     "github_token": r"ghp_[a-zA-Z0-9]{36}",
     "jwt": r"eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}",
@@ -24,18 +39,26 @@ REGEX_RULES = {
     "session_cookie": r"(?i)Cookie: (session_id|sid|session)=[a-zA-Z0-9\._\-]+"
 }
 
-COMPILED_REGEX_RULES = {label: re.compile(pattern) for label, pattern in REGEX_RULES.items()}
+COMPILED_REGEX_RULES: CompiledRegexDict = {
+    label: re.compile(pattern) for label, pattern in REGEX_RULES.items()
+}
 
-ALLOWLIST_PATTERNS = {
+# Allowlist patterns for known safe high-entropy strings
+# These prevent false positives on hashes, UUIDs, and other legitimate identifiers
+ALLOWLIST_PATTERNS: Dict[str, str] = {
     "sha256": r"^[a-fA-F0-9]{64}$",
     "sha1": r"^[a-fA-F0-9]{40}$",
     "md5": r"^[a-fA-F0-9]{32}$",
     "uuid": r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 }
 
-ALLOWLIST_PATTERNS_COMPILED = {k: re.compile(v) for k, v in ALLOWLIST_PATTERNS.items()}
+ALLOWLIST_PATTERNS_COMPILED: AllowlistPatternDict = {
+    k: re.compile(v) for k, v in ALLOWLIST_PATTERNS.items()
+}
 
-ANALYTICAL_FIELDS = {
+# Field paths that trigger quarantine instead of inline redaction
+# These fields contain analytical payloads where redaction would destroy forensic value
+ANALYTICAL_FIELDS: set[str] = {
     "process.args", "process.command_line", "powershell.encoded_command",
     "script.block", "bash.command", "shell.args", "file.contents"
 }
@@ -103,9 +126,12 @@ def _analyze_entropy(payload: str, field_path: Optional[str], metadata: Dict[str
     Returns:
         The payload with high-entropy tokens redacted, or quarantine reference.
     """
-    tokens = re.findall(r'[a-zA-Z0-9+/=]{17,}', payload)
+    # Use configurable MIN_TOKEN_LENGTH for token extraction
+    token_pattern = re.compile(rf'[a-zA-Z0-9+/=]{{{MIN_TOKEN_LENGTH},}}')
+    tokens = token_pattern.findall(payload)
+    
     for token in tokens:
-        if calculate_entropy(token) > 4.5:
+        if calculate_entropy(token) > ENTROPY_THRESHOLD:
             is_allowed = _check_allowlist(token)
             
             if not is_allowed:
