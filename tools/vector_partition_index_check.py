@@ -22,6 +22,32 @@ class PartitionConfig(Dict[str, Any]):
     partitions: Dict[str, PartitionSettings]
 
 def validate_partition_config(config_path: str, dry_run: bool = False) -> int:
+    """
+    Validate vector partition configuration against schema constraints and sharding rules.
+
+    Performs the following validation steps in order:
+    1. File existence check - verifies the config file exists at the given path.
+    2. JSON parsing - ensures the file contains valid JSON.
+    3. Required partitions - confirms all required partitions (alerts, threat_intel, audit_logs) are present.
+    4. Schema version - validates the configuration version matches INDEX_SCHEMA_VERSION (11.6.0).
+    5. Shard size constraints - verifies no partition exceeds MAX_SHARD_SIZE_GB (16GB).
+    6. Indexing enabled - confirms indexing is enabled for all partitions.
+
+    Args:
+        config_path: Path to the partition configuration JSON file.
+        dry_run: If True, performs validation without committing changes. Defaults to False.
+
+    Returns:
+        int: Exit code indicating validation result:
+            0 - Validation passed successfully.
+            1 - Validation failed (missing partition, version mismatch, shard size exceeded, or indexing disabled).
+            2 - Config file not found at specified path.
+            3 - Environment variable SLM_ENV not set (handled by main()).
+
+    Raises:
+        json.JSONDecodeError: If the config file contains invalid JSON (caught internally, returns 1).
+        OSError: If file cannot be read due to permissions (propagates to caller).
+    """
     if not os.path.exists(config_path):
         print(f"CONFIG ERROR: Partition config not found at {config_path}")
         return 2
