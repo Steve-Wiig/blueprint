@@ -2,10 +2,33 @@ import argparse
 import os
 import requests
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 from engine.sanitization_pipeline import sanitize_payload
+
+
+_logger: Optional[logging.Logger] = None
+_log_path: Optional[Path] = None
+
+
+def _setup_logger(log_path: Path) -> logging.Logger:
+    """Configure and return a logger for handoff events."""
+    global _logger
+    logger = logging.getLogger("thehive_writeback.handoff")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    
+    # Clear existing handlers to avoid duplicates
+    logger.handlers.clear()
+    
+    handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(handler)
+    
+    _logger = logger
+    return logger
 
 
 def parse_args() -> argparse.Namespace:
@@ -49,9 +72,14 @@ def create_case(url: str, api_key: str, payload: Any) -> str:
 
 def log_handoff(log_path: Path, case_id: str, mode: str) -> None:
     """Log successful case creation to handoff log."""
+    global _logger, _log_path
+    
+    if _logger is None or _log_path != log_path:
+        _setup_logger(log_path)
+        _log_path = log_path
+    
     now = datetime.now(timezone.utc)
-    with open(log_path, "a") as f:
-        f.write(f"{now.isoformat()}|REF:{case_id}|STATUS:SUCCESS|MODE:{mode}\n")
+    _logger.info(f"{now.isoformat()}|REF:{case_id}|STATUS:SUCCESS|MODE:{mode}")
 
 
 def main() -> None:
