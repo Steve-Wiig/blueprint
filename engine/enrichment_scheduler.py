@@ -31,6 +31,11 @@ class JobStatus(str, Enum):
     FAILED = "FAILED"
 
 
+class ProviderNotConfiguredError(RuntimeError):
+    """Raised when an enrichment provider is not configured in the quota ledger."""
+    pass
+
+
 class EnrichmentProvider(ABC):
     """Abstract base class for enrichment providers.
 
@@ -321,6 +326,14 @@ def process_jobs(
                 quota_cache.update(quota_dict)
                 cost_cache.update(cost_dict)
 
+            # Verify all providers in this batch are configured in quota_ledger
+            for provider_name in providers_in_batch:
+                if provider_name not in quota_cache:
+                    raise ProviderNotConfiguredError(
+                        f"Provider '{provider_name}' not configured in quota_ledger. "
+                        "Add the provider to quota_ledger before processing jobs."
+                    )
+
             for job_id, ioc, provider_name in jobs:
                 last_id = job_id  # advance pagination marker
                 quota = quota_cache.get(provider_name, 0)
@@ -357,49 +370,42 @@ def process_jobs(
 
                     # Append-only audit log for successful completion
                     pg_cur.execute(
-                        "INSERT INTO enrichment_audit_log (job_id, provider, ioc_hash, quota_cost, status, timestamp, error_message, result) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-                        (job_id, provider_name, ioc_hash, cost, status, processed_at, error_message, result_json)
+                        "INSERT INTO enrichment_audit_log (job_id, provider, ioc_hash, quota_cost, status, timestamp, error_message) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                        (job_id, provider_name, ioc_hash, cost, status, processed_at, error_message)
                     )
                     pg_cur.execute(
                         "UPDATE enrichment_jobs SET status = %s, result = %s WHERE id = %s",
                         (status, result_json, job_id)
                     )
                     update_quota(sq_conn, provider_name, cost, sq_cur)
-
-                    # Update in‑memory cache to reflect the consumed quota.
-                    quota_cache[provider_name] = quota - cost
-
+                    pg_conn.commit()
+                    sq_conn.commit()
                 except Exception as e:
                     error_message = str(e)
-                    status = JobStatus.FAILED.value
-                    # Append-only audit log for processing failure
+                    logger.exception("Job processing failed for job_id=%s", job_id)
                     pg_cur.execute(
                         "INSERT INTO enrichment_audit_log (job_id, provider, ioc_hash, quota_cost, status, timestamp, error_message) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                        (job_id, provider_name, ioc_hash, cost, status, processed_at, error_message)
+                        (job_id, provider_name, ioc_hash, cost, JobStatus.FAILED.value, processed_at, error_message)
                     )
                     pg_cur.execute(
                         "UPDATE enrichment_jobs SET status = %s WHERE id = %s",
-                        (status, job_id)
+                        (JobStatus.FAILED.value, job_id)
                     )
-
-                # Commit each job's audit record and status update immediately for durability
-                pg_conn.commit()
-                sq_conn.commit()
-
+                    pg_conn.commit()
+                    sq_conn.commit()
     finally:
         sq_cur.close()
 
 
 def main() -> None:
-    """Parses command line arguments and initiates the job processing workflow.
-
-    This function is the entry point when the module is executed as a script.
-    It is not intended to be called when imported as a library.
-    """
-    parser = argparse.ArgumentParser(description="Process enrichment jobs.")
+    """Entry point for the enrichment job processor."""
+    parser = argparse.ArgumentParser(description="Process enrichment jobs")
     parser.add_argument("--pg-dsn", required=True, help="PostgreSQL DSN")
-    parser.add_argument("--sqlite-path", default=":memory:", help="SQLite database path")
+    parser.add_argument("--sqlite-path", required=True, help="SQLite database path")
+    parser.add_argument("--log-level", default="INFO", help="Logging level")
     args = parser.parse_args()
+
+    logging.basicConfig(level=args.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     pg_conn, sq_conn = get_db_connections(args.pg_dsn, args.sqlite_path)
     try:
