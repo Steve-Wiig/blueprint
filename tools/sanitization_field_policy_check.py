@@ -5,6 +5,7 @@ import sys
 import json
 import argparse
 import os
+from typing import Any, List
 
 # LOCAL-SOC-SLM Blueprint v11.6.0 Policy
 # Fields that must be redacted/sanitized before reaching the embedding pipeline
@@ -17,7 +18,7 @@ FORBIDDEN_FIELDS = {
     "aws_secret_access_key"
 }
 
-def validate_schema(schema_path):
+def validate_schema(schema_path: str) -> int:
     if not os.path.exists(schema_path):
         print(f"CONFIG ERROR: Schema file not found at {schema_path}")
         return 2
@@ -30,7 +31,7 @@ def validate_schema(schema_path):
         return 1
 
     # Recursive check for forbidden keys in nested schema definitions
-    def find_forbidden(obj, path=""):
+    def find_forbidden(obj: Any, path: str = '') -> List[str]:
         if isinstance(obj, dict):
             for k, v in obj.items():
                 current_path = f"{path}.{k}" if path else k
