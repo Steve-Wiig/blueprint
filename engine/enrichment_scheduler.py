@@ -1,31 +1,3 @@
-"""Enrichment Scheduler Module
-
-This module provides reusable functions for processing enrichment jobs from PostgreSQL
-using quota tracking in SQLite. It can be imported as a library or executed as a script.
-
-Public API (safe to import and use):
-    - get_db_connections: Establish PostgreSQL and SQLite connections
-    - check_quota: Check remaining quota for a provider (deprecated)
-    - get_provider_cost: Get cost per enrichment for a provider (deprecated)
-    - update_quota: Decrement quota for a provider
-    - process_jobs: Process pending enrichment jobs in batches
-    - sanitize: Redact sensitive fields from enrichment results
-    - JobStatus: Enum for job status values
-    - EnrichmentProvider: Abstract base class for enrichment providers
-    - MockEnrichmentProvider: Default mock implementation
-
-Script-only entrypoint:
-    - main: Command-line entry point (guarded by if __name__ == "__main__")
-
-Usage as script:
-    python enrichment_scheduler.py --pg-dsn "postgresql://..." [--sqlite-path ":memory:"]
-
-Usage as library:
-    from enrichment_scheduler import get_db_connections, process_jobs, MockEnrichmentProvider
-    pg_conn, sq_conn = get_db_connections(pg_dsn, sqlite_path)
-    process_jobs(pg_conn, sq_conn, provider=MockEnrichmentProvider())
-"""
-
 import argparse
 import json
 import logging
@@ -131,7 +103,8 @@ def _fetch_provider_values(
     sq_conn: sqlite3.Connection,
     providers: List[str],
     table: str,
-    column: str
+    column: str,
+    cursor: Optional[sqlite3.Cursor] = None
 ) -> Dict[str, int]:
     """Fetch provider-value pairs from a table for the given providers.
 
@@ -140,6 +113,7 @@ def _fetch_provider_values(
         providers: List of provider names.
         table: The table to query.
         column: The column to retrieve.
+        cursor: Optional cursor to reuse. If not provided, a new one is created.
 
     Returns:
         A dictionary mapping provider to the column value.
@@ -147,18 +121,26 @@ def _fetch_provider_values(
     if not providers:
         return {}
     placeholders = ','.join(['?'] * len(providers))
-    cursor = sq_conn.cursor()
-    cursor.execute(
-        f"SELECT provider, {column} FROM {table} WHERE provider IN ({placeholders})",
-        providers
-    )
-    return {row[0]: row[1] for row in cursor.fetchall()}
+    own_cursor = False
+    if cursor is None:
+        cursor = sq_conn.cursor()
+        own_cursor = True
+    try:
+        cursor.execute(
+            f"SELECT provider, {column} FROM {table} WHERE provider IN ({placeholders})",
+            providers
+        )
+        return {row[0]: row[1] for row in cursor.fetchall()}
+    finally:
+        if own_cursor:
+            cursor.close()
 
 
 def check_quota(
     sq_conn: sqlite3.Connection,
     provider: str,
-    cache: Optional[Dict[str, int]] = None
+    cache: Optional[Dict[str, int]] = None,
+    cursor: Optional[sqlite3.Cursor] = None
 ) -> int:
     """Checks the remaining quota for a specific provider.
 
@@ -172,6 +154,7 @@ def check_quota(
         sq_conn: The SQLite database connection.
         provider: The name of the enrichment provider.
         cache: Optional dict mapping providers to their remaining quota.
+        cursor: Optional cursor to reuse.
 
     Returns:
         The remaining quota as an integer.
@@ -185,14 +168,15 @@ def check_quota(
     if cache is not None and provider in cache:
         return cache[provider]
 
-    quota_dict = _fetch_provider_values(sq_conn, [provider], 'quota_ledger', 'remaining')
+    quota_dict = _fetch_provider_values(sq_conn, [provider], 'quota_ledger', 'remaining', cursor)
     return quota_dict.get(provider, 0)
 
 
 def get_provider_cost(
     sq_conn: sqlite3.Connection,
     provider: str,
-    cache: Optional[Dict[str, int]] = None
+    cache: Optional[Dict[str, int]] = None,
+    cursor: Optional[sqlite3.Cursor] = None
 ) -> int:
     """Retrieves the cost per enrichment for a provider.
 
@@ -206,6 +190,7 @@ def get_provider_cost(
         sq_conn: The SQLite database connection.
         provider: The name of the enrichment provider.
         cache: Optional dict mapping providers to their cost.
+        cursor: Optional cursor to reuse.
 
     Returns:
         The cost as an integer. Defaults to 1 if not specified.
@@ -219,34 +204,49 @@ def get_provider_cost(
     if cache is not None and provider in cache:
         return cache[provider]
 
-    cost_dict = _fetch_provider_values(sq_conn, [provider], 'provider_costs', 'cost')
+    cost_dict = _fetch_provider_values(sq_conn, [provider], 'provider_costs', 'cost', cursor)
     return cost_dict.get(provider, 1)
 
 
-def update_quota(sq_conn: sqlite3.Connection, provider: str, cost: int) -> None:
+def update_quota(
+    sq_conn: sqlite3.Connection,
+    provider: str,
+    cost: int,
+    cursor: Optional[sqlite3.Cursor] = None
+) -> None:
     """Decrements the quota for a specific provider in the SQLite database.
 
     Args:
         sq_conn: The SQLite database connection.
         provider: The name of the enrichment provider.
         cost: The amount to decrement from the quota.
+        cursor: Optional cursor to reuse.
     """
-    cursor = sq_conn.cursor()
-    cursor.execute(
-        "UPDATE quota_ledger SET remaining = remaining - ? WHERE provider = ?",
-        (cost, provider)
-    )
+    own_cursor = False
+    if cursor is None:
+        cursor = sq_conn.cursor()
+        own_cursor = True
+    try:
+        cursor.execute(
+            "UPDATE quota_ledger SET remaining = remaining - ? WHERE provider = ?",
+            (cost, provider)
+        )
+    finally:
+        if own_cursor:
+            cursor.close()
 
 
 def _fetch_provider_data(
     sq_conn: sqlite3.Connection,
-    providers: List[str]
+    providers: List[str],
+    cursor: Optional[sqlite3.Cursor] = None
 ) -> Tuple[Dict[str, int], Dict[str, int]]:
     """Fetches quota and cost for multiple providers in bulk.
 
     Args:
         sq_conn: The SQLite database connection.
         providers: List of provider names.
+        cursor: Optional cursor to reuse.
 
     Returns:
         Tuple of (quota_dict, cost_dict) keyed by provider.
@@ -254,8 +254,8 @@ def _fetch_provider_data(
     if not providers:
         return {}, {}
 
-    quota_dict = _fetch_provider_values(sq_conn, providers, 'quota_ledger', 'remaining')
-    cost_dict = _fetch_provider_values(sq_conn, providers, 'provider_costs', 'cost')
+    quota_dict = _fetch_provider_values(sq_conn, providers, 'quota_ledger', 'remaining', cursor)
+    cost_dict = _fetch_provider_values(sq_conn, providers, 'provider_costs', 'cost', cursor)
 
     # Ensure cost_dict has entries for all providers in quota_dict, defaulting to 1
     for provider in quota_dict:
@@ -287,60 +287,65 @@ def process_jobs(
     quota_cache: Dict[str, int] = {}
     cost_cache: Dict[str, int] = {}
 
-    while True:
-        pg_cur = pg_conn.cursor()
-        pg_cur.execute(
-            "SELECT id, ioc_value, provider FROM enrichment_jobs WHERE status = %s AND id > %s ORDER BY id LIMIT %s",
-            (JobStatus.PENDING.value, last_id, BATCH_SIZE)
-        )
-        jobs = pg_cur.fetchall()
-        if not jobs:
-            break
+    # Create a single SQLite cursor for reuse within this function
+    sq_cur = sq_conn.cursor()
+    try:
+        while True:
+            pg_cur = pg_conn.cursor()
+            pg_cur.execute(
+                "SELECT id, ioc_value, provider FROM enrichment_jobs WHERE status = %s AND id > %s ORDER BY id LIMIT %s",
+                (JobStatus.PENDING.value, last_id, BATCH_SIZE)
+            )
+            jobs = pg_cur.fetchall()
+            if not jobs:
+                break
 
-        # Collect unique providers in this batch that are not yet cached
-        providers_in_batch = {provider_name for _, _, provider_name in jobs}
-        providers_needed = [p for p in providers_in_batch if p not in quota_cache]
-        if providers_needed:
-            quota_dict, cost_dict = _fetch_provider_data(sq_conn, providers_needed)
-            quota_cache.update(quota_dict)
-            cost_cache.update(cost_dict)
+            # Collect unique providers in this batch that are not yet cached
+            providers_in_batch = {provider_name for _, _, provider_name in jobs}
+            providers_needed = [p for p in providers_in_batch if p not in quota_cache]
+            if providers_needed:
+                quota_dict, cost_dict = _fetch_provider_data(sq_conn, providers_needed, sq_cur)
+                quota_cache.update(quota_dict)
+                cost_cache.update(cost_dict)
 
-        try:
-            for job_id, ioc, provider_name in jobs:
-                last_id = job_id  # advance pagination marker
-                quota = quota_cache.get(provider_name, 0)
-                cost = cost_cache.get(provider_name, 1)
+            try:
+                for job_id, ioc, provider_name in jobs:
+                    last_id = job_id  # advance pagination marker
+                    quota = quota_cache.get(provider_name, 0)
+                    cost = cost_cache.get(provider_name, 1)
 
-                if quota < cost:
-                    continue  # Not enough quota; skip this job.
+                    if quota < cost:
+                        continue  # Not enough quota; skip this job.
 
-                # Use injected enrichment provider
-                result = provider.process(ioc)
-                sanitized_result = sanitize(result)
-                result_json = json.dumps(sanitized_result)
-                processed_at = datetime.now(timezone.utc)
+                    # Use injected enrichment provider
+                    result = provider.process(ioc)
+                    sanitized_result = sanitize(result)
+                    result_json = json.dumps(sanitized_result)
+                    processed_at = datetime.now(timezone.utc)
 
-                # Append-only audit log before updating job status
-                pg_cur.execute(
-                    "INSERT INTO enrichment_audit_log (job_id, status, result, processed_at) VALUES (%s, %s, %s, %s)",
-                    (job_id, JobStatus.COMPLETED.value, result_json, processed_at)
-                )
-                pg_cur.execute(
-                    "UPDATE enrichment_jobs SET status = %s, result = %s WHERE id = %s",
-                    (JobStatus.COMPLETED.value, result_json, job_id)
-                )
-                update_quota(sq_conn, provider_name, cost)
+                    # Append-only audit log before updating job status
+                    pg_cur.execute(
+                        "INSERT INTO enrichment_audit_log (job_id, status, result, processed_at) VALUES (%s, %s, %s, %s)",
+                        (job_id, JobStatus.COMPLETED.value, result_json, processed_at)
+                    )
+                    pg_cur.execute(
+                        "UPDATE enrichment_jobs SET status = %s, result = %s WHERE id = %s",
+                        (JobStatus.COMPLETED.value, result_json, job_id)
+                    )
+                    update_quota(sq_conn, provider_name, cost, sq_cur)
 
-                # Update in‑memory cache to reflect the consumed quota.
-                quota_cache[provider_name] = quota - cost
+                    # Update in‑memory cache to reflect the consumed quota.
+                    quota_cache[provider_name] = quota - cost
 
-            # Commit the whole batch at once
-            pg_conn.commit()
-            sq_conn.commit()
-        except Exception as e:
-            pg_conn.rollback()
-            sq_conn.rollback()
-            raise RuntimeError("Failed to process enrichment job") from e
+                # Commit the whole batch at once
+                pg_conn.commit()
+                sq_conn.commit()
+            except Exception as e:
+                pg_conn.rollback()
+                sq_conn.rollback()
+                raise RuntimeError("Failed to process enrichment job") from e
+    finally:
+        sq_cur.close()
 
 
 def main() -> None:
@@ -351,15 +356,10 @@ def main() -> None:
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("--pg-dsn", required=True, help="PostgreSQL DSN")
-    parser.add_argument(
-        "--sqlite-path",
-        default=":memory:",
-        help="Path to SQLite DB file; defaults to in‑memory DB for testing"
-    )
+    parser.add_argument("--sqlite-path", default=":memory:", help="SQLite database path")
     args = parser.parse_args()
 
     pg_conn, sq_conn = get_db_connections(args.pg_dsn, args.sqlite_path)
-
     try:
         process_jobs(pg_conn, sq_conn)
     finally:
