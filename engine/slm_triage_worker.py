@@ -87,28 +87,28 @@ def run_worker(args: argparse.Namespace) -> None:
         reap_stale(conn)
         
         # Claim job with priority logic
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE triage_queue 
-            SET status = 'processing', 
-                started_at = ?, 
-                attempts = attempts + 1, 
-                lease_expires_at = ? 
-            WHERE id = (
-                SELECT id FROM triage_queue 
-                WHERE status = 'pending' 
-                ORDER BY CASE severity 
-                    WHEN 'critical' THEN 1 
-                    WHEN 'high' THEN 2 
-                    WHEN 'medium' THEN 3 
-                    WHEN 'low' THEN 4 
-                    ELSE 5 END, created_at ASC 
-                LIMIT 1
-            )
-            RETURNING id, payload_ref
-        """, (datetime.now(timezone.utc), datetime.now(timezone.utc) + timedelta(seconds=args.lease)))
-        
-        row = cursor.fetchone()
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                UPDATE triage_queue 
+                SET status = 'processing', 
+                    started_at = ?, 
+                    attempts = attempts + 1, 
+                    lease_expires_at = ? 
+                WHERE id = (
+                    SELECT id FROM triage_queue 
+                    WHERE status = 'pending' 
+                    ORDER BY CASE severity 
+                        WHEN 'critical' THEN 1 
+                        WHEN 'high' THEN 2 
+                        WHEN 'medium' THEN 3 
+                        WHEN 'low' THEN 4 
+                        ELSE 5 END, created_at ASC 
+                    LIMIT 1
+                )
+                RETURNING id, payload_ref
+            """, (datetime.now(timezone.utc), datetime.now(timezone.utc) + timedelta(seconds=args.lease)))
+            
+            row = cursor.fetchone()
         conn.commit()
         
         if not row:
