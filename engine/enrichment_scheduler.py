@@ -1,3 +1,10 @@
+"""
+Enrichment job processor.
+
+This module is designed to be executed as a standalone script, not imported as a library.
+The public API is restricted to the `main` function via __all__.
+"""
+
 import argparse
 import json
 import logging
@@ -12,6 +19,8 @@ import psycopg2
 
 
 logger = logging.getLogger(__name__)
+
+__all__ = ['main']
 
 
 class JobStatus(str, Enum):
@@ -367,5 +376,5 @@ def main() -> None:
         sq_conn.close()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
