@@ -29,6 +29,14 @@ def check_queue_recovery(dry_run: bool = False) -> int:
         print("ENV_NOT_AVAILABLE: Queue path unreachable")
         return 3
 
+    if not os.path.isdir(queue_path):
+        print("CONFIG ERROR: SOC_QUEUE_PATH is not a directory")
+        return 4
+
+    if not os.access(queue_path, os.R_OK):
+        print("PERMISSION ERROR: SOC_QUEUE_PATH is not readable")
+        return 5
+
     if dry_run:
         print("DRY-RUN: Validation of queue recovery logic skipped.")
         return 0
