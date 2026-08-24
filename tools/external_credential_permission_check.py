@@ -13,14 +13,50 @@ import os
 import sys
 import argparse
 import json
+from typing import Any
 
 try:
     import requests
 except ImportError:
     print("FAIL: requests library is not installed")
-    raise RuntimeError(f"Library code called exit(2)")
+    raise RuntimeError("Library code called exit(2)")
 
 DEFAULT_CONFIG_PATH: str = os.path.join(os.path.dirname(__file__), "config.json")
+
+REQUIRED_KEYS = {"user_env", "token_env", "read", "forbidden", "forbidden_method"}
+VALID_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+
+
+def validate_config(config: dict) -> None:
+    """
+    Validate the configuration schema.
+
+    Args:
+        config: Configuration dictionary to validate.
+
+    Raises:
+        ValueError: If configuration is invalid.
+    """
+    if not isinstance(config, dict):
+        raise ValueError("Config must be a dictionary mapping service names to config objects")
+
+    for service, cfg in config.items():
+        if not isinstance(cfg, dict):
+            raise ValueError(f"Service '{service}' config must be a dictionary")
+
+        missing = REQUIRED_KEYS - set(cfg.keys())
+        if missing:
+            raise ValueError(f"Service '{service}' missing required keys: {missing}")
+
+        if cfg["forbidden_method"].upper() not in VALID_METHODS:
+            raise ValueError(
+                f"Service '{service}' has invalid forbidden_method: {cfg['forbidden_method']}. "
+                f"Must be one of {VALID_METHODS}"
+            )
+
+        for key in ("read", "forbidden"):
+            if not isinstance(cfg[key], str) or not cfg[key].startswith("/"):
+                raise ValueError(f"Service '{service}' {key} must be a path starting with '/'")
 
 
 def load_config(config_path: str | None = None) -> dict:
@@ -35,23 +71,23 @@ def load_config(config_path: str | None = None) -> dict:
         Dictionary mapping service names to their configuration objects.
 
     Raises:
-        SystemExit: If config file is not found or contains invalid JSON.
+        RuntimeError: If config file is not found, contains invalid JSON, or fails validation.
     """
     path = config_path or os.getenv("CONFIG_FILE", DEFAULT_CONFIG_PATH)
     try:
         with open(path, "r") as f:
-            return json.load(f)
+            config = json.load(f)
     except FileNotFoundError:
-        print(f"CONFIG ERROR: config file not found at {path}")
-        sys.exit(2)
+        raise RuntimeError(f"CONFIG ERROR: config file not found at {path}")
     except json.JSONDecodeError as exc:
-        print(f"CONFIG ERROR: invalid JSON in {path}: {exc}")
-        sys.exit(2)
+        raise RuntimeError(f"CONFIG ERROR: invalid JSON in {path}: {exc}")
 
+    try:
+        validate_config(config)
+    except ValueError as exc:
+        raise RuntimeError(f"CONFIG ERROR: validation failed: {exc}")
 
-#: Global configuration dictionary loaded from config.json.
-#: Maps service names to dicts with keys: user_env, token_env, read, forbidden, forbidden_method.
-CONFIG: dict = load_config()
+    return config
 
 
 class MockResponse:
@@ -126,15 +162,18 @@ def main() -> int:
 
     Returns:
         0 if all services pass permission checks, 1 if any fail,
-        2 if configuration error (missing LAB_URL).
+        2 if configuration error (missing LAB_URL or config error).
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--config", help="Path to config JSON file")
     args = parser.parse_args()
 
-    global CONFIG
-    CONFIG = load_config(args.config)
+    try:
+        config = load_config(args.config)
+    except RuntimeError as exc:
+        print(exc)
+        return 2
 
     lab_url = os.getenv("LAB_URL", "http://localhost:8080" if args.dry_run else "")
     if not lab_url:
@@ -142,7 +181,7 @@ def main() -> int:
         return 2
 
     all_pass = True
-    for service, cfg in CONFIG.items():
+    for service, cfg in config.items():
         if not check_service(service, cfg, lab_url, args.dry_run):
             all_pass = False
 
