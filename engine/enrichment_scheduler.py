@@ -5,8 +5,8 @@ using quota tracking in SQLite. It can be imported as a library or executed as a
 
 Public API (safe to import and use):
     - get_db_connections: Establish PostgreSQL and SQLite connections
-    - check_quota: Check remaining quota for a provider
-    - get_provider_cost: Get cost per enrichment for a provider
+    - check_quota: Check remaining quota for a provider (deprecated)
+    - get_provider_cost: Get cost per enrichment for a provider (deprecated)
     - update_quota: Decrement quota for a provider
     - process_jobs: Process pending enrichment jobs in batches
 
@@ -25,6 +25,7 @@ Usage as library:
 import argparse
 import json
 import sqlite3
+import warnings
 import psycopg2
 from datetime import datetime, timezone
 from typing import Tuple, Dict, List, Optional
@@ -57,6 +58,9 @@ def check_quota(
     If a cache dictionary is supplied and contains the provider, the cached value is returned
     to avoid an extra database query.
 
+    .. deprecated:: 1.0
+        Use `_fetch_provider_data` for bulk quota checks instead.
+
     Args:
         sq_conn: The SQLite database connection.
         provider: The name of the enrichment provider.
@@ -65,6 +69,12 @@ def check_quota(
     Returns:
         The remaining quota as an integer.
     """
+    warnings.warn(
+        "check_quota is deprecated and will be removed in a future version. "
+        "Use _fetch_provider_data for bulk quota checks.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     if cache is not None and provider in cache:
         return cache[provider]
 
@@ -86,6 +96,9 @@ def get_provider_cost(
     If a cache dictionary is supplied and contains the provider, the cached value is returned
     to avoid an extra database query.
 
+    .. deprecated:: 1.0
+        Use `_fetch_provider_data` for bulk cost checks instead.
+
     Args:
         sq_conn: The SQLite database connection.
         provider: The name of the enrichment provider.
@@ -94,6 +107,12 @@ def get_provider_cost(
     Returns:
         The cost as an integer. Defaults to 1 if not specified.
     """
+    warnings.warn(
+        "get_provider_cost is deprecated and will be removed in a future version. "
+        "Use _fetch_provider_data for bulk cost checks.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     if cache is not None and provider in cache:
         return cache[provider]
 
@@ -181,10 +200,18 @@ def process_jobs(
         if not jobs:
             break
 
+        # Collect unique providers in this batch that are not yet cached
+        providers_in_batch = {provider for _, _, provider in jobs}
+        providers_needed = [p for p in providers_in_batch if p not in quota_cache]
+        if providers_needed:
+            quota_dict, cost_dict = _fetch_provider_data(sq_conn, providers_needed)
+            quota_cache.update(quota_dict)
+            cost_cache.update(cost_dict)
+
         for job_id, ioc, provider in jobs:
             last_id = job_id  # advance pagination marker
-            quota = check_quota(sq_conn, provider, quota_cache)
-            cost = get_provider_cost(sq_conn, provider, cost_cache)
+            quota = quota_cache.get(provider, 0)
+            cost = cost_cache.get(provider, 1)
 
             if quota < cost:
                 continue  # Not enough quota; skip this job.
