@@ -35,7 +35,7 @@ ALLOWLIST_PATTERNS: List[str] = [
     r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'  # UUID
 ]
 
-ALLOWLIST_REGEX = re.compile('|'.join(f'(?:{p})' for p in ALLOWLIST_PATTERNS))
+ALLOWLIST_REGEX = [re.compile(p) for p in ALLOWLIST_PATTERNS]
 
 # Default test data for dry-run mode
 DEFAULT_TEST_DATA = """
@@ -82,7 +82,7 @@ def is_allowlisted(token: str) -> bool:
     Returns:
         True if token matches SHA256, SHA1, MD5, or UUID format; False otherwise.
     """
-    return ALLOWLIST_REGEX.fullmatch(token) is not None
+    return any(regex.fullmatch(token) for regex in ALLOWLIST_REGEX)
 
 
 def _tokenize(text: str) -> Iterator[str]:
