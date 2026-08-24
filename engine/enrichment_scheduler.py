@@ -255,15 +255,15 @@ def process_jobs(
             quota_cache.update(quota_dict)
             cost_cache.update(cost_dict)
 
-        for job_id, ioc, provider in jobs:
-            last_id = job_id  # advance pagination marker
-            quota = quota_cache.get(provider, 0)
-            cost = cost_cache.get(provider, 1)
+        try:
+            for job_id, ioc, provider in jobs:
+                last_id = job_id  # advance pagination marker
+                quota = quota_cache.get(provider, 0)
+                cost = cost_cache.get(provider, 1)
 
-            if quota < cost:
-                continue  # Not enough quota; skip this job.
+                if quota < cost:
+                    continue  # Not enough quota; skip this job.
 
-            try:
                 # Mock enrichment logic
                 result = {"status": "enriched", "data": f"mock_data_for_{ioc}"}
                 sanitized_result = sanitize(result)
@@ -284,12 +284,13 @@ def process_jobs(
                 # Update in‑memory cache to reflect the consumed quota.
                 quota_cache[provider] = quota - cost
 
-                pg_conn.commit()
-            except Exception as e:
-                pg_conn.rollback()
-                raise RuntimeError("Failed to process enrichment job") from e
-
-    sq_conn.commit()
+            # Commit the whole batch at once
+            pg_conn.commit()
+            sq_conn.commit()
+        except Exception as e:
+            pg_conn.rollback()
+            sq_conn.rollback()
+            raise RuntimeError("Failed to process enrichment job") from e
 
 
 def main() -> None:
