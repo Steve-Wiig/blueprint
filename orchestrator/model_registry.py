@@ -36,18 +36,18 @@ class ModelRegistryClient:
 
     VALID_STATUSES = {'canary', 'active', 'retired'}
 
-    def __init__(self, db_path: str, routing_config_path: str):
+    def __init__(self, db_path: str, routing_config_path: Optional[str] = None, routing_config: Optional[Dict] = None):
         """Initialize the ModelRegistryClient.
 
         Args:
             db_path: Path to the SQLite database file.
             routing_config_path: Path to the YAML routing configuration file.
+                Mutually exclusive with routing_config.
+            routing_config: Pre-loaded routing configuration dictionary.
+                Mutually exclusive with routing_config_path.
 
         Raises:
-            ValueError: If the routing configuration file cannot be loaded
-                or parsed as valid YAML.
-            FileNotFoundError: If the routing configuration file does not exist.
-            yaml.YAMLError: If the routing configuration contains invalid YAML.
+            ValueError: If both or neither of routing_config_path and routing_config are provided.
 
         Note:
             The database connection is established lazily on first use via
@@ -56,11 +56,44 @@ class ModelRegistryClient:
         """
         self.db_path = db_path
         self._conn: sqlite3.Connection = None
+        self._routing_config_path = routing_config_path
+        self._routing_config = routing_config
+
+        if (routing_config_path is not None) == (routing_config is not None):
+            raise ValueError("Exactly one of routing_config_path or routing_config must be provided")
+
+    def load_config(self) -> Dict:
+        """Load the routing configuration from the YAML file.
+
+        Returns:
+            The loaded routing configuration dictionary.
+
+        Raises:
+            ValueError: If the routing configuration file cannot be loaded
+                or parsed as valid YAML.
+            FileNotFoundError: If the routing configuration file does not exist.
+            yaml.YAMLError: If the routing configuration contains invalid YAML.
+        """
+        if self._routing_config is not None:
+            return self._routing_config
+
+        if self._routing_config_path is None:
+            raise ValueError("No routing config path provided")
+
         try:
-            with open(routing_config_path, 'r') as f:
-                self.routing_config = yaml.safe_load(f)
+            with open(self._routing_config_path, 'r') as f:
+                self._routing_config = yaml.safe_load(f)
         except Exception:
-            raise ValueError(f"CONFIG ERROR: Could not load routing config: {routing_config_path}")
+            raise ValueError(f"CONFIG ERROR: Could not load routing config: {self._routing_config_path}")
+
+        return self._routing_config
+
+    @property
+    def routing_config(self) -> Dict:
+        """Get the routing configuration, loading it lazily if needed."""
+        if self._routing_config is None:
+            self.load_config()
+        return self._routing_config
 
     def _get_connection(self) -> sqlite3.Connection:
         """Get or create a database connection.
@@ -203,7 +236,7 @@ class ModelRegistryClient:
 
 if __name__ == "__main__":
     import sys
-    client = ModelRegistryClient("orchestration.db", "routing.json")
+    client = ModelRegistryClient("orchestration.db", routing_config_path="routing.json")
     adapter = client.get_adapter("triage_analysis")
     
     if adapter['status'] == 'retired':
