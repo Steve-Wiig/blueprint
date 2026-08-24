@@ -17,7 +17,20 @@ class StitcherError(Exception):
 def stitch_memory_context(query_embedding: list[float], top_k: int = 5, max_age_days: int = 30) -> tuple[str, dict]:
     """
     Queries case_embeddings for semantic recall and formats for SLM injection.
-    Returns tuple: (formatted_string, metadata_dict)
+
+    Args:
+        query_embedding: List of floats representing the query vector for cosine similarity search.
+        top_k: Maximum number of similar cases to retrieve. Defaults to 5.
+        max_age_days: Maximum age of cases to consider in days. Defaults to 30.
+
+    Returns:
+        A tuple containing:
+        - formatted_context (str): XML-formatted string with retrieved case summaries and distances.
+        - metadata (dict): Dictionary with retrieval metadata including timestamp, case IDs, and parameters.
+
+    Raises:
+        DatabaseError: If a psycopg2 database error occurs during query execution or connection.
+        StitcherError: If an unexpected error occurs during memory context stitching.
     """
     try:
         conn = psycopg2.connect(dbname="soc_db", user="orchestrator")
