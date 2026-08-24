@@ -27,10 +27,18 @@ def validate_schema(schema_data):
         
     return True, "Schema valid"
 
-def main():
+def main() -> int:
+    """Run memory schema migration integrity check.
+    
+    Validates the local memory schema against blueprint v11.6.0 requirements
+    and verifies migration ledger existence unless --dry-run is specified.
+    
+    Returns:
+        int: Exit code (0=success, 1=validation failure, 2=config missing).
+    """
     parser = argparse.ArgumentParser(description="Memory Schema Migration Check")
     parser.add_argument("--dry-run", action="store_true", help="Validate without applying")
-    args = parser.parse_args()
+    args: argparse.Namespace = parser.parse_args()
 
     if not SCHEMA_PATH.exists():
         print(f"CONFIG ERROR: {SCHEMA_PATH} not found")
