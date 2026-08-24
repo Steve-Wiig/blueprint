@@ -10,8 +10,11 @@ import sys
 import argparse
 import requests
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 def get_db(db_path: str) -> sqlite3.Connection:
     """Establishes a connection to the SQLite database.
@@ -37,7 +40,7 @@ def get_db(db_path: str) -> sqlite3.Connection:
         conn.commit()
         return conn
     except Exception as e:
-        print(f"DB_ERROR: {e}")
+        logger.error(f"DB_ERROR: {e}")
         raise RuntimeError(f"Library code called exit(2)")
 
 def heartbeat(conn: sqlite3.Connection, job_id: int, lease_interval: int) -> None:
@@ -56,7 +59,7 @@ def heartbeat(conn: sqlite3.Connection, job_id: int, lease_interval: int) -> Non
         )
         conn.commit()
     except Exception as e:
-        print(f"HEARTBEAT_FAIL: {e}")
+        logger.error(f"HEARTBEAT_FAIL: {e}")
 
 def reap_stale(conn: sqlite3.Connection) -> None:
     """Resets jobs that have exceeded their lease time back to 'pending'.
