@@ -20,7 +20,26 @@ def _get_connection() -> sqlite3.Connection:
         _connection = sqlite3.connect(DB_PATH, check_same_thread=False)
         _connection.execute("PRAGMA journal_mode=WAL")
         _connection.execute("PRAGMA busy_timeout=5000")
+        _init_audit_table(_connection)
     return _connection
+
+def _init_audit_table(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL,
+            alert_id TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            details TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+
+def _audit_log(conn: sqlite3.Connection, event_type: str, alert_id: str, details: dict[str, Any]) -> None:
+    conn.execute(
+        "INSERT INTO audit_log (event_type, alert_id, timestamp, details) VALUES (?, ?, ?, ?)",
+        (event_type, alert_id, datetime.now(timezone.utc).isoformat(), json.dumps(details))
+    )
 
 def sanitize_payload(data: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
     try:
@@ -65,6 +84,12 @@ def intake_adapter(raw_payload: str) -> int:
             json.dumps(sanitized['payload']),
             sanitized['timestamp']
         ))
+        
+        _audit_log(conn, 'intake', sanitized['id'], {
+            'severity': sanitized['severity'],
+            'payload': sanitized['payload'],
+            'status': 'pending'
+        })
         
         conn.commit()
         return 202
