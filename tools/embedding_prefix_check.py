@@ -24,6 +24,7 @@ Example:
 
 import sys
 import argparse
+import logging
 from typing import Callable
 
 REQUIRED_DOC_PREFIX = "search_document: "
@@ -31,6 +32,8 @@ REQUIRED_QUERY_PREFIX = "search_query: "
 REQUIRED_DIM = 768
 
 calls: list[str] = []
+
+logger = logging.getLogger(__name__)
 
 
 def fake_encode(text: str) -> list[float]:
@@ -146,11 +149,11 @@ def run_verification(dry_run: bool = False) -> int:
     svc = EmbeddingService(fake_encode)
 
     if dry_run:
-        print("DRY-RUN: EmbeddingService instantiated successfully.")
-        print(f"DRY-RUN: Required document prefix: '{REQUIRED_DOC_PREFIX}'")
-        print(f"DRY-RUN: Required query prefix: '{REQUIRED_QUERY_PREFIX}'")
-        print(f"DRY-RUN: Required dimension: {REQUIRED_DIM}")
-        print("PASS: Dry-run verification completed.")
+        logger.info("DRY-RUN: EmbeddingService instantiated successfully.")
+        logger.info("DRY-RUN: Required document prefix: '%s'", REQUIRED_DOC_PREFIX)
+        logger.info("DRY-RUN: Required query prefix: '%s'", REQUIRED_QUERY_PREFIX)
+        logger.info("DRY-RUN: Required dimension: %d", REQUIRED_DIM)
+        logger.info("PASS: Dry-run verification completed.")
         return 0
 
     doc_text = "accepted triage summary"
@@ -161,21 +164,21 @@ def run_verification(dry_run: bool = False) -> int:
 
     # Verify Dimensions
     if len(doc_vector) != REQUIRED_DIM:
-        print(f"FAIL: document embedding dim is {len(doc_vector)}, expected {REQUIRED_DIM}")
+        logger.error("FAIL: document embedding dim is %d, expected %d", len(doc_vector), REQUIRED_DIM)
         return 1
     if len(query_vector) != REQUIRED_DIM:
-        print(f"FAIL: query embedding dim is {len(query_vector)}, expected {REQUIRED_DIM}")
+        logger.error("FAIL: query embedding dim is %d, expected %d", len(query_vector), REQUIRED_DIM)
         return 1
 
     # Verify Prefixes
     if not calls[0].startswith(REQUIRED_DOC_PREFIX):
-        print(f"FAIL: document prefix mismatch. Got: {calls[0][:20]}...")
+        logger.error("FAIL: document prefix mismatch. Got: %s...", calls[0][:20])
         return 1
     if not calls[1].startswith(REQUIRED_QUERY_PREFIX):
-        print(f"FAIL: query prefix mismatch. Got: {calls[1][:20]}...")
+        logger.error("FAIL: query prefix mismatch. Got: %s...", calls[1][:20])
         return 1
 
-    print("PASS: Embedding prefix and dimension contract verified.")
+    logger.info("PASS: Embedding prefix and dimension contract verified.")
     return 0
 
 
@@ -200,6 +203,11 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s: %(message)s",
+        stream=sys.stdout
+    )
     result = main()
     if result != 0:
         raise RuntimeError("Embedding contract verification failed")
