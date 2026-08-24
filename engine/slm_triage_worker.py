@@ -117,23 +117,49 @@ def run_worker(args: argparse.Namespace) -> None:
             
         job_id, payload = row['id'], row['payload_ref']
         
-        try:
-            # Call SLM Endpoint
-            resp = requests.post(args.slm_url, json={"ref": payload}, timeout=30)
-            verdict = resp.json()
-            
-            # Write verdict
-            conn.execute(
-                "INSERT INTO verdicts (job_id, result, processed_at) VALUES (?, ?, ?)",
-                (job_id, json.dumps(verdict), datetime.now(timezone.utc))
-            )
-            conn.execute("UPDATE triage_queue SET status = 'completed' WHERE id = ?", (job_id,))
-            conn.commit()
-            
-        except Exception as e:
-            conn.execute("UPDATE triage_queue SET status = 'failed', failure_reason = ? WHERE id = ?", (str(e), job_id))
-            conn.commit()
-            
+        # Retry logic with exponential backoff for SLM call
+        max_retries = args.max_retries
+        base_delay = args.base_delay
+        last_exception = None
+        
+        for attempt in range(max_retries + 1):
+            try:
+                # Call SLM Endpoint
+                resp = requests.post(args.slm_url, json={"ref": payload}, timeout=30)
+                
+                # Retry on 5xx server errors
+                if 500 <= resp.status_code < 600:
+                    raise requests.exceptions.HTTPError(f"Server error: {resp.status_code}", response=resp)
+                
+                resp.raise_for_status()
+                verdict = resp.json()
+                
+                # Write verdict
+                conn.execute(
+                    "INSERT INTO verdicts (job_id, result, processed_at) VALUES (?, ?, ?)",
+                    (job_id, json.dumps(verdict), datetime.now(timezone.utc))
+                )
+                conn.execute("UPDATE triage_queue SET status = 'completed' WHERE id = ?", (job_id,))
+                conn.commit()
+                break  # Success, exit retry loop
+                
+            except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+                last_exception = e
+                if attempt < max_retries:
+                    delay = base_delay * (2 ** attempt)
+                    logger.warning(f"SLM call failed (attempt {attempt + 1}/{max_retries + 1}): {e}. Retrying in {delay}s...")
+                    time.sleep(delay)
+                else:
+                    logger.error(f"SLM call failed after {max_retries + 1} attempts: {e}")
+                    conn.execute("UPDATE triage_queue SET status = 'failed', failure_reason = ? WHERE id = ?", (str(e), job_id))
+                    conn.commit()
+            except Exception as e:
+                # Non-retryable exception (e.g., database error)
+                logger.error(f"Non-retryable error processing job {job_id}: {e}")
+                conn.execute("UPDATE triage_queue SET status = 'failed', failure_reason = ? WHERE id = ?", (str(e), job_id))
+                conn.commit()
+                break
+        
         time.sleep(1)
 
 if __name__ == "__main__":
@@ -141,6 +167,8 @@ if __name__ == "__main__":
     parser.add_argument("--db", required=True)
     parser.add_argument("--slm-url", required=True)
     parser.add_argument("--lease", type=int, default=900)
+    parser.add_argument("--max-retries", type=int, default=3, help="Maximum number of retry attempts for SLM calls")
+    parser.add_argument("--base-delay", type=float, default=1.0, help="Base delay in seconds for exponential backoff")
     args = parser.parse_args()
     
     try:
