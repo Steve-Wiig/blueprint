@@ -1,14 +1,13 @@
 import sqlite3
 import hashlib
-import json
 import yaml
 import sys
-from typing import Dict, Optional
+from typing import Dict
 
 class ModelRegistryClient:
     def __init__(self, db_path: str, routing_config_path: str):
         self.db_path = db_path
-        self._conn: Optional[sqlite3.Connection] = None
+        self._conn: sqlite3.Connection = None
         try:
             with open(routing_config_path, 'r') as f:
                 self.routing_config = yaml.safe_load(f)
