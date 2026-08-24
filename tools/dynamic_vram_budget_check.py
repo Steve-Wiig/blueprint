@@ -34,7 +34,24 @@ def get_gpu_info() -> Optional[ET.Element]:
         return None
 
 def parse_mem_value(val_str: str) -> int:
-    """Extracts integer value from strings like '16384 MiB'."""
+    """
+    Extract integer memory value from a string containing numeric digits.
+
+    Args:
+        val_str: String containing a memory value, typically in formats like
+                 "16384 MiB", "8 GiB", "1024", "  2048 MB  ", etc.
+                 The function searches for the first sequence of digits.
+
+    Returns:
+        int: The extracted integer value in the original units (typically MiB).
+             Returns 0 if no digits are found or if the input is empty/None.
+
+    Edge Cases:
+        - Leading/trailing whitespace is ignored by the regex search.
+        - Only the first digit sequence is extracted (e.g., "1.5 GiB" returns 1).
+        - Non-numeric strings return 0 without raising an exception.
+        - None input will raise AttributeError (caller should handle).
+    """
     match = re.search(r'(\d+)', val_str)
     return int(match.group(1)) if match else 0
 
