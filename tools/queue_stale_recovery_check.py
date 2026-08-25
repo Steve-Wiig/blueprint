@@ -7,13 +7,16 @@ import os
 import sys
 import argparse
 import time
+from typing import Literal
 
 # Blueprint v11.6.0 Constants
 STALE_THRESHOLD_SECONDS = 300
 REQUIRED_RECOVERY_LOG_PATTERN = "RECOVERY_INITIATED_STALE_MSG"
 MANIFEST_FILENAME = os.getenv('RECOVERY_MANIFEST_FILE', 'recovery_manifest.log')
 
-def check_queue_recovery(dry_run: bool = False) -> int:
+ExitCode = Literal[0, 1, 2, 3, 4, 5]
+
+def check_queue_recovery(dry_run: bool = False) -> ExitCode:
     """
     Verifies that the local message queue interface supports stale message recovery.
     In a production environment, this would query the local message broker status.
@@ -57,7 +60,7 @@ def check_queue_recovery(dry_run: bool = False) -> int:
         print(f"FAIL: Unexpected error during check: {e}")
         return 1
 
-def main() -> int:
+def main() -> ExitCode:
     """Entry point for queue stale recovery check. Returns exit code."""
     parser = argparse.ArgumentParser(description="Queue Stale Recovery Check")
     parser.add_argument("--dry-run", action="store_true", help="Skip actual verification")
