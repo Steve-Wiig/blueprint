@@ -205,6 +205,8 @@ if __name__ == "__main__":
     parser.add_argument("--base-delay", type=float, default=1.0, help="Base delay in seconds for exponential backoff")
     args = parser.parse_args()
     
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+    
     config = WorkerConfig(
         db=args.db,
         slm_url=args.slm_url,
