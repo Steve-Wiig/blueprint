@@ -6,6 +6,7 @@ import sys
 import subprocess
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+from typing import Optional
 
 EXIT_PASS = 0
 EXIT_FAIL = 1
@@ -26,7 +27,7 @@ class VramCheckResult:
     exit_code: int
 
 
-def get_gpu_info() -> ET.Element | None:
+def get_gpu_info() -> Optional[ET.Element]:
     """
     Execute nvidia-smi -q -x and return the parsed XML root element.
 
