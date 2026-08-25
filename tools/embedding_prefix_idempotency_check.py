@@ -85,20 +85,20 @@ PREFIXES = get_prefixes()
 REQUIRED_DOC_PREFIX = PREFIXES["document"]
 REQUIRED_QUERY_PREFIX = PREFIXES["query"]
 
-MOCK_TEST_CASES = [
+DOC_TEST_CASES = [
     ("unprefixed_data", REQUIRED_DOC_PREFIX, True),
     (f"{REQUIRED_DOC_PREFIX}already_prefixed", REQUIRED_DOC_PREFIX, True),
     (f"{REQUIRED_DOC_PREFIX}{REQUIRED_DOC_PREFIX}double_prefixed", REQUIRED_DOC_PREFIX, False),
+]
+
+QUERY_TEST_CASES = [
     ("unprefixed_query", REQUIRED_QUERY_PREFIX, True),
     (f"{REQUIRED_QUERY_PREFIX}already_prefixed", REQUIRED_QUERY_PREFIX, True),
     (f"{REQUIRED_QUERY_PREFIX}{REQUIRED_QUERY_PREFIX}double_prefixed", REQUIRED_QUERY_PREFIX, False),
 ]
 
-PRODUCTION_TEST_CASES = [
-    ("unprefixed_data", REQUIRED_DOC_PREFIX, True),
-    (f"{REQUIRED_DOC_PREFIX}already_prefixed", REQUIRED_DOC_PREFIX, True),
-    (f"{REQUIRED_DOC_PREFIX}{REQUIRED_DOC_PREFIX}double_prefixed", REQUIRED_DOC_PREFIX, False),
-]
+MOCK_TEST_CASES = DOC_TEST_CASES + QUERY_TEST_CASES
+PRODUCTION_TEST_CASES = DOC_TEST_CASES
 
 
 def check_idempotency(input_text: str, prefix: str) -> bool:
