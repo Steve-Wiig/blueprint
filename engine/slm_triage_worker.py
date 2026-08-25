@@ -157,6 +157,10 @@ def run_worker(config: WorkerConfig) -> None:
         last_exception = None
         
         for attempt in range(max_retries + 1):
+            # Send heartbeat before each retry attempt (after the first) to extend lease during long processing
+            if attempt > 0:
+                heartbeat(conn, job_id, config.lease)
+            
             try:
                 # Call SLM Endpoint
                 resp = requests.post(config.slm_url, json={"ref": payload}, timeout=30)
@@ -167,6 +171,9 @@ def run_worker(config: WorkerConfig) -> None:
                 
                 resp.raise_for_status()
                 verdict = resp.json()
+                
+                # Send heartbeat after successful SLM call before writing verdict
+                heartbeat(conn, job_id, config.lease)
                 
                 # Write verdict
                 conn.execute(
