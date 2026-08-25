@@ -4,6 +4,17 @@ import sys
 from datetime import datetime, timezone, timedelta
 
 
+# Module-level connection cache for connection pooling/reuse
+_PG_CONN = None
+
+def _get_pg_conn():
+    """Get or create a cached PostgreSQL connection."""
+    global _PG_CONN
+    if _PG_CONN is None or getattr(_PG_CONN, 'closed', True):
+        _PG_CONN = psycopg2.connect(dbname="soc_db", user="orchestrator")
+    return _PG_CONN
+
+
 class DatabaseError(Exception):
     """Custom exception for database-related failures in stitch_memory_context."""
     pass
@@ -33,7 +44,7 @@ def stitch_memory_context(query_embedding: list[float], top_k: int = 5, max_age_
         StitcherError: If an unexpected error occurs during memory context stitching.
     """
     try:
-        conn = psycopg2.connect(dbname="soc_db", user="orchestrator")
+        conn = _get_pg_conn()
         cur = conn.cursor()
 
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=max_age_days)
@@ -61,7 +72,7 @@ def stitch_memory_context(query_embedding: list[float], top_k: int = 5, max_age_
         }
         
         cur.close()
-        conn.close()
+        # Connection stays open for reuse (module-level cache)
         return formatted_context, metadata
 
     except psycopg2.Error as e:

@@ -11,6 +11,17 @@ from psycopg2.extras import execute_values
 logger = logging.getLogger(__name__)
 
 
+# Module-level connection cache for connection pooling/reuse
+_PG_CONN = None
+
+def _get_pg_conn():
+    """Get or create a cached PostgreSQL connection."""
+    global _PG_CONN
+    if _PG_CONN is None or getattr(_PG_CONN, 'closed', True):
+        _PG_CONN = psycopg2.connect("dbname=soc_memory user=orchestrator")
+    return _PG_CONN
+
+
 class IOCType(Enum):
     IPV4 = "ipv4"
     DOMAIN = "domain"
@@ -102,7 +113,7 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
         alert_id = _extract_alert_id(sanitized_alert_json)
         ioc_count = len(extracted)
 
-        conn = psycopg2.connect("dbname=soc_memory user=orchestrator")
+        conn = _get_pg_conn()
         cur = conn.cursor()
 
         query = """
@@ -121,7 +132,7 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
 
         conn.commit()
         cur.close()
-        conn.close()
+        # Connection stays open for reuse (module-level cache)
 
         logger.info(
             "IOC extraction audit: alert_id=%s ioc_count=%s timestamp=%s",

@@ -105,17 +105,6 @@
     "deferred_reason": "failed 3 attempts"
   },
   {
-    "file": "engine/writeback/so_cases.py",
-    "issue": {
-      "description": "No connection pooling: creates new TCP connection for each API call, inefficient for repeated use",
-      "category": "performance",
-      "severity": "low",
-      "suggestion": "Use requests.Session() for connection reuse if this adapter is called repeatedly in same process"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
     "file": "engine/writeback/thehive.py",
     "issue": {
       "category": "maintainability",
@@ -126,21 +115,6 @@
       "suggestion": "Add schema validation (pydantic/jsonschema) for case_data structure before sanitization",
       "impact": "medium",
       "effort": "small"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "orchestrator/context_stitcher.py",
-    "issue": {
-      "category": "performance",
-      "severity": "medium",
-      "line_start": 9,
-      "line_end": 9,
-      "description": "Creates new database connection on every function call. No connection pooling causes high latency and connection overhead under load.",
-      "suggestion": "Implement connection pooling using psycopg2.pool.ThreadedConnectionPool or use a singleton pool initialized at module load.",
-      "impact": "high",
-      "effort": "medium"
     },
     "attempts": 3,
     "deferred_reason": "failed 3 attempts"
@@ -243,21 +217,6 @@
     "deferred_reason": "failed 3 attempts"
   },
   {
-    "file": "engine/ioc_extractor.py",
-    "issue": {
-      "category": "performance",
-      "severity": "medium",
-      "line_start": 60,
-      "line_end": 60,
-      "description": "No connection pooling - new connection per extraction call",
-      "suggestion": "Use psycopg2.pool.ThreadedConnectionPool or external pooler (PgBouncer) for high-throughput scenarios",
-      "impact": "medium",
-      "effort": "medium"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
     "file": "engine/queue_manager.py",
     "issue": {
       "category": "performance",
@@ -342,21 +301,6 @@
       "description": "Hardcoded DB_PATH prevents use of :memory: databases for testing per AMEND-65",
       "suggestion": "Accept database path as parameter to init_db() and store_proposal(), default to environment variable",
       "impact": "medium",
-      "effort": "small"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/writeback/so_cases.py",
-    "issue": {
-      "category": "performance",
-      "severity": "low",
-      "line_start": 61,
-      "line_end": 61,
-      "description": "No connection pooling or session reuse; new TCP/TLS handshake per call",
-      "suggestion": "Use requests.Session() with connection pooling; create session at module level or pass as parameter",
-      "impact": "low",
       "effort": "small"
     },
     "attempts": 3,

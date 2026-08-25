@@ -27,7 +27,7 @@ def test_write_to_ledger_failure():
         with pytest.raises(RuntimeError, match="Library code called exit\\(2\\)"):
             write_to_ledger("ref", "id")
 
-@patch("requests.post")
+@patch("engine.writeback.so_cases._HTTP_SESSION.post")
 def test_create_case_api_success(mock_post):
     mock_response = MagicMock()
     mock_response.json.return_value = {"id": "SO-123"}
@@ -38,7 +38,7 @@ def test_create_case_api_success(mock_post):
     assert result == "SO-123"
     mock_post.assert_called_once()
 
-@patch("requests.post")
+@patch("engine.writeback.so_cases._HTTP_SESSION.post")
 def test_create_case_api_failure(mock_post):
     mock_post.side_effect = Exception("Connection Error")
     with pytest.raises(RuntimeError, match="Library code called exit\\(1\\)"):

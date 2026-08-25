@@ -35,7 +35,9 @@ def test_extract_iocs_returns_int():
         "fields": ["network"],
     }
 
-    with patch("engine.ioc_extractor.psycopg2", _make_mock_psycopg2()):
+    mock_conn = MagicMock()
+    mock_conn.cursor.return_value = MagicMock()
+    with patch("engine.ioc_extractor._get_pg_conn", return_value=mock_conn):
         with patch("engine.ioc_extractor.execute_values") as mock_ev:
             result = extract_iocs(alert)
 
@@ -52,7 +54,9 @@ def test_extract_iocs_empty_alert():
         "fields": [],
     }
 
-    with patch("engine.ioc_extractor.psycopg2", _make_mock_psycopg2()):
+    mock_conn = MagicMock()
+    mock_conn.cursor.return_value = MagicMock()
+    with patch("engine.ioc_extractor._get_pg_conn", return_value=mock_conn):
         with patch("engine.ioc_extractor.execute_values") as mock_ev:
             result = extract_iocs(alert)
 
@@ -63,7 +67,9 @@ def test_extract_iocs_handles_minimal_structure():
     """Should not crash on minimal/malformed alert structure."""
     alert = {"alert_id": "test-003"}
 
-    with patch("engine.ioc_extractor.psycopg2", _make_mock_psycopg2()):
+    mock_conn = MagicMock()
+    mock_conn.cursor.return_value = MagicMock()
+    with patch("engine.ioc_extractor._get_pg_conn", return_value=mock_conn):
         with patch("engine.ioc_extractor.execute_values") as mock_ev:
             result = extract_iocs(alert)
 

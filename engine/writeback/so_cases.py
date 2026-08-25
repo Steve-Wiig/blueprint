@@ -7,6 +7,9 @@ import argparse
 import json
 import logging
 import requests
+
+# Module-level session for HTTP connection pooling (TCP keepalive)
+_HTTP_SESSION = requests.Session()
 from datetime import datetime, timezone
 from typing import Any, Dict, Callable
 
@@ -63,7 +66,7 @@ def create_case_live(api_url: str, api_key: str, sanitized: Dict[str, str]) -> s
     """
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     try:
-        response = requests.post(f"{api_url}/api/cases", json=sanitized, headers=headers, timeout=10)
+        response = _HTTP_SESSION.post(f"{api_url}/api/cases", json=sanitized, headers=headers, timeout=10)
         response.raise_for_status()
         case_id = response.json().get("id")
         return case_id
