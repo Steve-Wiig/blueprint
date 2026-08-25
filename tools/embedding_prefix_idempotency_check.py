@@ -103,8 +103,8 @@ PRODUCTION_TEST_CASES = DOC_TEST_CASES
 
 def check_idempotency(input_text: str, prefix: str) -> bool:
     """
-    Verifies that applying the prefix multiple times does not result in 
-    nested prefixing (e.g., 'prefix: prefix: text').
+    Verifies that the input text, after applying prefix logic once,
+    does not contain a double prefix.
     """
     if input_text.startswith(prefix):
         processed = input_text
