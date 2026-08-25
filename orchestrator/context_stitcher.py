@@ -2,18 +2,35 @@
 import psycopg2
 import sys
 from datetime import datetime, timezone, timedelta
-from typing import TypedDict
+from typing import TypedDict, Optional
 from xml.sax.saxutils import escape
 
 
 # Module-level connection cache for connection pooling/reuse
 _PG_CONN = None
+_PG_CONN_PARAMS = None
+
+
+def configure_connection(dbname: str = "soc_db", user: str = "orchestrator", **kwargs) -> None:
+    """Configure database connection parameters. Call before first use or let defaults apply."""
+    global _PG_CONN_PARAMS, _PG_CONN
+    _PG_CONN_PARAMS = {"dbname": dbname, "user": user, **kwargs}
+    # Reset cached connection so new params take effect
+    if _PG_CONN is not None:
+        try:
+            _PG_CONN.close()
+        except Exception:
+            pass
+        _PG_CONN = None
+
 
 def _get_pg_conn():
     """Get or create a cached PostgreSQL connection."""
-    global _PG_CONN
+    global _PG_CONN, _PG_CONN_PARAMS
     if _PG_CONN is None or getattr(_PG_CONN, 'closed', True):
-        _PG_CONN = psycopg2.connect(dbname="soc_db", user="orchestrator")
+        if _PG_CONN_PARAMS is None:
+            _PG_CONN_PARAMS = {"dbname": "soc_db", "user": "orchestrator"}
+        _PG_CONN = psycopg2.connect(**_PG_CONN_PARAMS)
     return _PG_CONN
 
 
@@ -35,7 +52,12 @@ class MemoryMetadata(TypedDict):
     max_age_days: int
 
 
-def stitch_memory_context(query_embedding: list[float], top_k: int = 5, max_age_days: int = 30) -> tuple[str, MemoryMetadata]:
+def stitch_memory_context(
+    query_embedding: list[float],
+    top_k: int = 5,
+    max_age_days: int = 30,
+    conn: Optional[psycopg2.extensions.connection] = None
+) -> tuple[str, MemoryMetadata]:
     """
     Queries case_embeddings for semantic recall and formats for SLM injection.
 
@@ -43,6 +65,7 @@ def stitch_memory_context(query_embedding: list[float], top_k: int = 5, max_age_
         query_embedding: List of floats representing the query vector for cosine similarity search.
         top_k: Maximum number of similar cases to retrieve. Defaults to 5.
         max_age_days: Maximum age of cases to consider in days. Defaults to 30.
+        conn: Optional psycopg2 connection to use. If not provided, uses module-level cached connection.
 
     Returns:
         A tuple containing:
@@ -53,8 +76,12 @@ def stitch_memory_context(query_embedding: list[float], top_k: int = 5, max_age_
         DatabaseError: If a psycopg2 database error occurs during query execution or connection.
         StitcherError: If an unexpected error occurs during memory context stitching.
     """
-    try:
+    use_cached = conn is None
+    if use_cached:
         conn = _get_pg_conn()
+    
+    cur = None
+    try:
         cur = conn.cursor()
 
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=max_age_days)
@@ -81,14 +108,22 @@ def stitch_memory_context(query_embedding: list[float], top_k: int = 5, max_age_
             "max_age_days": max_age_days
         }
         
-        cur.close()
-        # Connection stays open for reuse (module-level cache)
         return formatted_context, metadata
 
     except psycopg2.Error as e:
         raise DatabaseError(f"Failed to retrieve memory context from database: {e}") from e
     except Exception as e:
         raise StitcherError(f"Unexpected error during memory context stitching: {e}") from e
+    finally:
+        if cur is not None:
+            cur.close()
+        # Don't close cached connection; only close if caller provided their own
+        if not use_cached and conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
 
 if __name__ == "__main__":
     # Example usage for orchestrator integration
