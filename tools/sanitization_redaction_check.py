@@ -148,8 +148,15 @@ class Sanitizer:
             return CheckResult.PAYLOAD_MISSING
 
 
-# Backward-compatible module-level functions using default sanitizer
-_default_sanitizer = Sanitizer()
+_default_sanitizer: Optional[Sanitizer] = None
+
+
+def _get_default_sanitizer() -> Sanitizer:
+    """Get or create the default sanitizer instance (lazy initialization)."""
+    global _default_sanitizer
+    if _default_sanitizer is None:
+        _default_sanitizer = Sanitizer()
+    return _default_sanitizer
 
 
 def redact(pattern_key: str, text: str) -> str:
@@ -167,7 +174,7 @@ def redact(pattern_key: str, text: str) -> str:
     Raises:
         KeyError: If pattern_key is not found in PATTERNS.
     """
-    return _default_sanitizer.redact(pattern_key, text)
+    return _get_default_sanitizer().redact(pattern_key, text)
 
 
 def run_sanitization_check() -> CheckResult:
@@ -176,7 +183,7 @@ def run_sanitization_check() -> CheckResult:
     Returns:
         CheckResult enum indicating verification status.
     """
-    return _default_sanitizer.run_sanitization_check()
+    return _get_default_sanitizer().run_sanitization_check()
 
 
 if __name__ == "__main__":
