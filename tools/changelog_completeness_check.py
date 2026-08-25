@@ -36,7 +36,7 @@ import sys
 import subprocess
 import argparse
 import re
-from typing import List, Optional, Pattern, Set
+from typing import List, Optional, Pattern, Set, Iterator
 
 
 EXIT_PASS = 0
@@ -62,6 +62,30 @@ def get_latest_tag() -> Optional[str]:
         return None
 
 
+def iter_commits_since_tag(tag: str) -> Iterator[str]:
+    """
+    Stream commits since the given tag without loading all into memory.
+
+    Args:
+        tag: The Git tag to compare against.
+
+    Yields:
+        Commit strings in format "%h %s" (short hash + subject).
+    """
+    proc = subprocess.Popen(
+        ["git", "log", f"{tag}..HEAD", "--pretty=format:%h %s"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    try:
+        if proc.stdout:
+            for line in proc.stdout:
+                yield line.rstrip("\n")
+    finally:
+        proc.wait()
+
+
 def get_commits_since_tag(tag: str) -> List[str]:
     """
     Get all commits since the given tag.
@@ -72,13 +96,7 @@ def get_commits_since_tag(tag: str) -> List[str]:
     Returns:
         List of commit strings in format "%h %s" (short hash + subject).
     """
-    try:
-        output = subprocess.check_output(
-            ["git", "log", f"{tag}..HEAD", "--pretty=format:%h %s"]
-        ).decode()
-        return output.splitlines() if output else []
-    except subprocess.CalledProcessError:
-        return []
+    return list(iter_commits_since_tag(tag))
 
 
 def parse_changelog_hashes(changelog_path: str) -> Set[str]:
