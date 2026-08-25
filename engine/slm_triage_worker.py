@@ -1,9 +1,3 @@
-"""
-SLM Triage Worker module.
-
-This module provides functionality to process triage jobs from a SQLite database,
-interact with an SLM endpoint, and manage job states and heartbeats.
-"""
 import sqlite3
 import time
 import argparse
@@ -51,10 +45,12 @@ def get_db(db_path: str) -> sqlite3.Connection:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         
-        # Ensure priority column exists
         cursor = conn.cursor()
+        
+        # Ensure priority column exists
         cursor.execute("PRAGMA table_info(triage_queue)")
         columns = [row[1] for row in cursor.fetchall()]
+        priority_column_added = False
         if 'priority' not in columns:
             cursor.execute("ALTER TABLE triage_queue ADD COLUMN priority INTEGER DEFAULT ?", (DEFAULT_PRIORITY,))
             # Populate priority for existing rows based on severity
@@ -65,14 +61,21 @@ def get_db(db_path: str) -> sqlite3.Connection:
                 )
             # Set default for any remaining NULL/unknown severities
             cursor.execute("UPDATE triage_queue SET priority = ? WHERE priority IS NULL", (DEFAULT_PRIORITY,))
+            priority_column_added = True
         
-        # Recreate claim index using priority
-        cursor.execute("DROP INDEX IF EXISTS idx_triage_claim")
-        cursor.execute("""
-            CREATE INDEX idx_triage_claim 
-            ON triage_queue(status, priority, created_at) 
-            WHERE status = 'pending'
-        """)
+        # Create claim index using priority if it doesn't exist
+        # Only recreate if we just added the priority column (schema migration) or index is missing
+        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_triage_claim'")
+        index_exists = cursor.fetchone() is not None
+        
+        if priority_column_added or not index_exists:
+            cursor.execute("DROP INDEX IF EXISTS idx_triage_claim")
+            cursor.execute("""
+                CREATE INDEX idx_triage_claim 
+                ON triage_queue(status, priority, created_at) 
+                WHERE status = 'pending'
+            """)
+        
         conn.commit()
         return conn
     except Exception as e:
