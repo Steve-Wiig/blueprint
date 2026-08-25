@@ -26,17 +26,6 @@
     "deferred_reason": "failed 3 attempts"
   },
   {
-    "file": "tools/sanitization_entropy_check.py",
-    "issue": {
-      "description": "The entropy threshold (ENTROPY_THRESHOLD = 4.5) is hard-coded, making it difficult to tune for different environments.",
-      "category": "maintainability",
-      "severity": "medium",
-      "suggestion": "Expose the threshold as a command-line argument (--entropy-threshold) with a sensible default, and store the value in a constant that can be overridden via environment variable or config file."
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
     "file": "engine/hash_chain_sealer.py",
     "issue": {
       "category": "maintainability",
