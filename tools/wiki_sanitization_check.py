@@ -1,37 +1,3 @@
-#!/usr/bin/env python3
-"""
-Credential Sanitization Tool for SOC Automation Platform.
-
-Scans text content for sensitive credential patterns including AWS keys, GitHub tokens,
-JWT bearer tokens, SSH private keys, Slack tokens, API keys, and passwords.
-Supports allowlisting of known safe values and dry-run testing mode.
-
-Compliance: LOCAL-SOC-SLM Blueprint v11.6.0 - Appendix O.16 & Section 34.1
-
-This module provides credential detection capabilities for security automation workflows.
-It uses compiled regular expressions for efficient pattern matching and maintains
-allowlists of known safe values to reduce false positives.
-
-Patterns detected:
-    - AWS_KEY: AWS access key IDs (AKIA...)
-    - GITHUB_TOKEN: GitHub personal access tokens (ghp_...)
-    - BEARER_JWT: JWT bearer tokens (eyJ...)
-    - OPENSSH_KEY: OpenSSH private key headers
-    - SLACK_TOKEN: Slack bot/user/app tokens (xoxb-, xoxp-, etc.)
-    - API_KEY_PARAM: API key parameters in query strings
-    - PASSWORD_PARAM: Password parameters in query strings
-
-Allowlists:
-    - ALLOWLIST_SHA256: Known safe SHA256 hashes (empty string, common test values)
-    - ALLOWLIST_UUID: Known safe UUIDs (nil UUID, test UUID)
-
-Example:
-    >>> from credential_sanitizer import scan_text
-    >>> violations = scan_text("AKIAIOSFODNN7EXAMPLE")
-    >>> print(violations)
-    [('AWS_KEY', 'AKIAIOSFODNN7EXAMPLE')]
-"""
-
 import re
 import sys
 import argparse
@@ -64,16 +30,6 @@ PATTERNS: dict[str, str] = {
 
 _COMBINED_PATTERN: str = '|'.join(f'(?P<{name}>{pattern})' for name, pattern in PATTERNS.items())
 COMPILED_COMBINED: Pattern[str] = re.compile(_COMBINED_PATTERN, re.IGNORECASE)
-
-DRY_RUN_PAYLOADS: list[str] = [
-    "AKIAIOSFODNN7EXAMPLE",
-    "ghp_1234567890abcdef1234567890abcdef1234",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
-    "-----BEGIN RSA PRIVATE KEY-----",
-    "xoxb-1234567890-1234567890123",
-    "api_key=secret1234567890abcdef",
-    "password=supersecret123"
-]
 
 
 class ScanExit(RuntimeError):
@@ -141,6 +97,24 @@ def scan_file(file_path: str) -> list[tuple[str, str]]:
     return scan_text(content)
 
 
+def _generate_dry_run_payloads() -> list[str]:
+    """
+    Generate test payloads programmatically to avoid hardcoded credential-like strings.
+
+    Returns:
+        List of test payloads that match credential patterns but are clearly test values.
+    """
+    return [
+        "AKIATESTTESTTESTTEST",  # AWS_KEY: AKIA + 16 chars
+        "ghp_TESTTESTTESTTESTTESTTESTTESTTESTTEST",  # GITHUB_TOKEN: ghp_ + 36 chars
+        "eyJTESTTESTTEST.TESTTESTTEST.TESTTESTTEST",  # BEARER_JWT: three base64url parts
+        "-----BEGIN TEST PRIVATE KEY-----",  # OPENSSH_KEY: test key header
+        "xoxb-TESTTESTTESTTEST",  # SLACK_TOKEN: xoxb- + 12 chars
+        "api_key=TESTTESTTESTTEST",  # API_KEY_PARAM: api_key= + 16 chars
+        "password=TESTTESTTEST"  # PASSWORD_PARAM: password= + 12 chars
+    ]
+
+
 def run_dry_run() -> bool:
     """
     Execute dry-run self-test with built-in payloads.
@@ -149,7 +123,7 @@ def run_dry_run() -> bool:
         True if all payloads are detected, False otherwise.
     """
     print("Running dry-run with test payloads...")
-    for payload in DRY_RUN_PAYLOADS:
+    for payload in _generate_dry_run_payloads():
         result = scan_text(payload)
         if not result:
             print(f"FAIL: Dry-run payload missed: {payload}")
