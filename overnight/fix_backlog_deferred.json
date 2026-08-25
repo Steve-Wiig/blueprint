@@ -205,21 +205,6 @@
     "file": "engine/queue_manager.py",
     "issue": {
       "category": "maintainability",
-      "severity": "medium",
-      "line_start": 30,
-      "line_end": 32,
-      "description": "Hardcoded configuration (lease_interval, max_attempts, emergency_depth) prevents environment-specific tuning without code changes.",
-      "suggestion": "Add parameters to __init__ with defaults: def __init__(self, db_path='soc_triage.db', lease_interval=900, max_attempts=3, emergency_depth=1000):",
-      "impact": "medium",
-      "effort": "trivial"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/queue_manager.py",
-    "issue": {
-      "category": "maintainability",
       "severity": "low",
       "line_start": 1,
       "line_end": 3,
