@@ -1,7 +1,7 @@
 import sqlite3
 import hashlib
 import yaml
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 
 
 class AdapterNotFoundError(Exception):
@@ -36,7 +36,7 @@ class ModelRegistryClient:
 
     VALID_STATUSES = {'canary', 'active', 'retired'}
 
-    def __init__(self, db_path: str, routing_config_path: Optional[str] = None, routing_config: Optional[Dict] = None):
+    def __init__(self, db_path: str, routing_config_path: Optional[str] = None, routing_config: Optional[Dict[str, Any]] = None):
         """Initialize the ModelRegistryClient.
 
         Args:
@@ -64,7 +64,7 @@ class ModelRegistryClient:
         if routing_config_path is None and routing_config is None:
             raise ValueError("Exactly one of routing_config_path or routing_config must be provided")
 
-    def load_config(self) -> Dict:
+    def load_config(self) -> Dict[str, Any]:
         """Load the routing configuration from the YAML file.
 
         Returns:
@@ -91,7 +91,7 @@ class ModelRegistryClient:
         return self._routing_config
 
     @property
-    def routing_config(self) -> Dict:
+    def routing_config(self) -> Dict[str, Any]:
         """Get the routing configuration, loading it lazily if needed."""
         if self._routing_config is None:
             self.load_config()
@@ -112,7 +112,7 @@ class ModelRegistryClient:
             self._conn.row_factory = sqlite3.Row
         return self._conn
 
-    def get_adapter(self, task_type: str) -> Dict:
+    def get_adapter(self, task_type: str) -> Dict[str, Any]:
         """Retrieve adapter information for a given task type.
 
         Looks up the adapter ID from the routing configuration, then queries
@@ -164,7 +164,7 @@ class ModelRegistryClient:
         except sqlite3.Error as e:
             raise DatabaseError(f"Database error retrieving adapter {adapter_id}: {e}")
 
-    def verify_integrity(self, adapter_data: Dict, file_path: str) -> Optional[bool]:
+    def verify_integrity(self, adapter_data: Dict[str, Any], file_path: str) -> Optional[bool]:
         """Verify the SHA256 integrity of an adapter file.
 
         Computes the SHA256 hash of the file at `file_path` and compares it
