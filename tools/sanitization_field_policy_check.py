@@ -134,6 +134,18 @@ def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = Non
             print(f"FAIL: {err}")
         return EXIT_META_SCHEMA_ERROR
 
+    def format_path(components: List[str]) -> str:
+        """Format path components into dot/bracket notation string."""
+        if not components:
+            return ""
+        result = components[0]
+        for comp in components[1:]:
+            if comp.startswith('['):
+                result += comp
+            else:
+                result += '.' + comp
+        return result
+
     # Iterative check for forbidden keys in nested schema definitions using a stack
     def find_forbidden(obj: Any) -> List[str]:
         """Recursively search for forbidden field names in a JSON schema object.
@@ -163,18 +175,6 @@ def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = Non
                     new_path = path_components + [f"[{i}]"]
                     stack.append((item, new_path))
         return found
-
-    def format_path(components: List[str]) -> str:
-        """Format path components into dot/bracket notation string."""
-        if not components:
-            return ""
-        result = components[0]
-        for comp in components[1:]:
-            if comp.startswith('['):
-                result += comp
-            else:
-                result += '.' + comp
-        return result
 
     found = find_forbidden(data)
     if found:
