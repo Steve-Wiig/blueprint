@@ -47,21 +47,6 @@
   {
     "file": "engine/queue_manager.py",
     "issue": {
-      "category": "blueprint_compliance",
-      "severity": "medium",
-      "line_start": 1,
-      "line_end": 98,
-      "description": "Missing append-only audit patterns per Section 30. No audit trail for job state transitions (pending->processing->completed/failed). Critical for SOC handoffs and compliance.",
-      "suggestion": "Add audit_log table with (job_id, from_status, to_status, worker_id, timestamp, reason). Insert audit row on every status change in claim_job, heartbeat, reap_stale_jobs, complete_job.",
-      "impact": "medium",
-      "effort": "medium"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/queue_manager.py",
-    "issue": {
       "category": "maintainability",
       "severity": "low",
       "line_start": 12,
@@ -116,42 +101,12 @@
     "deferred_reason": "failed 3 attempts"
   },
   {
-    "file": "orchestrator/context_stitcher.py",
-    "issue": {
-      "category": "performance",
-      "severity": "medium",
-      "line_start": 12,
-      "line_end": 12,
-      "description": "A new PostgreSQL connection is opened on every function call, causing unnecessary latency under load.",
-      "suggestion": "Introduce a connection pool (e.g., `psycopg2.pool.ThreadedConnectionPool`) and reuse connections.",
-      "impact": "medium",
-      "effort": "medium"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
     "file": "tools/sanitization_entropy_check.py",
     "issue": {
       "description": "The entropy threshold (ENTROPY_THRESHOLD = 4.5) is hard-coded, making it difficult to tune for different environments.",
       "category": "maintainability",
       "severity": "medium",
       "suggestion": "Expose the threshold as a command-line argument (--entropy-threshold) with a sensible default, and store the value in a constant that can be overridden via environment variable or config file."
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/enrichment_scheduler.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "medium",
-      "line_start": 71,
-      "line_end": 77,
-      "description": "Quota mutations (`update_quota`) are performed without an audit trail, violating the \"append\u2011only audit patterns\" requirement.",
-      "suggestion": "Insert an audit record into an `audit_log` table after each quota update, e.g., `INSERT INTO audit_log (provider, change, timestamp) VALUES (?, ?, CURRENT_TIMESTAMP);` using the same SQLite connection.",
-      "impact": "medium",
-      "effort": "small"
     },
     "attempts": 3,
     "deferred_reason": "failed 3 attempts"
