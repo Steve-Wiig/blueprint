@@ -28,6 +28,9 @@ VALID_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
 SUCCESS_CODES = {200, 201}
 DENIED_CODES = {401, 403}
 
+MOCK_USER = "mock_user"
+MOCK_TOKEN = "mock_token"
+
 
 def validate_config(config: dict) -> None:
     """
@@ -131,8 +134,8 @@ def check_service(service: str, cfg: dict, lab_url: str, dry_run: bool = False) 
         True if read access succeeds (200/201) and forbidden action is denied (401/403),
         False otherwise.
     """
-    user = os.getenv(cfg["user_env"], "mock_user") if dry_run else os.getenv(cfg["user_env"])
-    token = os.getenv(cfg["token_env"], "mock_token") if dry_run else os.getenv(cfg["token_env"])
+    user = os.getenv(cfg["user_env"], MOCK_USER) if dry_run else os.getenv(cfg["user_env"])
+    token = os.getenv(cfg["token_env"], MOCK_TOKEN) if dry_run else os.getenv(cfg["token_env"])
 
     if not user or not token:
         print(f"CONFIG ERROR: missing credentials for {service}")
