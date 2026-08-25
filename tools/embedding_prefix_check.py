@@ -68,6 +68,7 @@ class EmbeddingService:
                  representing the embedding vector.
         doc_prefix: Prefix to prepend for document embeddings.
         query_prefix: Prefix to prepend for query embeddings.
+        strict: If True, validate that encoder returns vectors of REQUIRED_DIM.
 
     Example:
         >>> def encoder(text: str) -> list[float]:
@@ -81,12 +82,16 @@ class EmbeddingService:
     encoder: Callable[[str], list[float]]
     doc_prefix: str
     query_prefix: str
+    strict: bool
+    expected_dim: int
 
     def __init__(
         self,
         encoder: Callable[[str], list[float]],
         doc_prefix: Optional[str] = None,
         query_prefix: Optional[str] = None,
+        strict: bool = False,
+        expected_dim: Optional[int] = None,
     ) -> None:
         """
         Initialize the EmbeddingService with an encoder function.
@@ -95,18 +100,42 @@ class EmbeddingService:
             encoder: Callable that takes a string and returns a list of floats
                      representing the embedding vector. The encoder is expected
                      to handle the prefixed text and return a vector of dimension
-                     REQUIRED_DIM (768).
+                     REQUIRED_DIM (768) unless a different expected_dim is provided.
             doc_prefix: Optional prefix for document embeddings. Defaults to
                         REQUIRED_DOC_PREFIX from environment or default.
             query_prefix: Optional prefix for query embeddings. Defaults to
                           REQUIRED_QUERY_PREFIX from environment or default.
+            strict: If True, validate that encoder returns vectors of the expected
+                    dimension. If False (default), no dimension validation is performed.
+            expected_dim: Expected dimension for validation when strict=True.
+                          Defaults to REQUIRED_DIM from environment or default.
 
         Raises:
             TypeError: If encoder is not callable.
         """
+        if not callable(encoder):
+            raise TypeError("encoder must be callable")
         self.encoder = encoder
         self.doc_prefix = doc_prefix if doc_prefix is not None else REQUIRED_DOC_PREFIX
         self.query_prefix = query_prefix if query_prefix is not None else REQUIRED_QUERY_PREFIX
+        self.strict = strict
+        self.expected_dim = expected_dim if expected_dim is not None else REQUIRED_DIM
+
+    def _validate_dimension(self, vector: list[float], context: str) -> None:
+        """
+        Validate that the embedding vector has the expected dimension.
+
+        Args:
+            vector: The embedding vector to validate.
+            context: Description of the context (e.g., "document", "query").
+
+        Raises:
+            ValueError: If strict mode is enabled and vector dimension doesn't match expected_dim.
+        """
+        if self.strict and len(vector) != self.expected_dim:
+            raise ValueError(
+                f"{context} embedding dimension is {len(vector)}, expected {self.expected_dim}"
+            )
 
     def embed_document(self, text: str) -> list[float]:
         """
@@ -123,13 +152,19 @@ class EmbeddingService:
             Embedding vector of length REQUIRED_DIM (768) as returned by
             the underlying encoder.
 
+        Raises:
+            ValueError: If strict mode is enabled and encoder returns a vector
+                        with incorrect dimension.
+
         Example:
             >>> svc = EmbeddingService(lambda t: [0.0]*768)
             >>> vec = svc.embed_document("CPU usage spike detected")
             >>> len(vec)
             768
         """
-        return self.encoder(self.doc_prefix + text)
+        vector = self.encoder(self.doc_prefix + text)
+        self._validate_dimension(vector, "document")
+        return vector
 
     def embed_query(self, text: str) -> list[float]:
         """
@@ -146,13 +181,19 @@ class EmbeddingService:
             Embedding vector of length REQUIRED_DIM (768) as returned by
             the underlying encoder.
 
+        Raises:
+            ValueError: If strict mode is enabled and encoder returns a vector
+                        with incorrect dimension.
+
         Example:
             >>> svc = EmbeddingService(lambda t: [0.0]*768)
             >>> vec = svc.embed_query("CPU spike alerts")
             >>> len(vec)
             768
         """
-        return self.encoder(self.query_prefix + text)
+        vector = self.encoder(self.query_prefix + text)
+        self._validate_dimension(vector, "query")
+        return vector
 
 
 def run_verification(
@@ -182,6 +223,8 @@ def run_verification(
         fake_encode,
         doc_prefix=effective_doc_prefix,
         query_prefix=effective_query_prefix,
+        strict=True,
+        expected_dim=effective_dim,
     )
 
     if dry_run:
