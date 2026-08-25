@@ -4,6 +4,21 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# Status constants
+STATUS_PENDING = 'pending'
+STATUS_PROCESSING = 'processing'
+STATUS_COMPLETED = 'completed'
+STATUS_FAILED = 'failed'
+STATUS_SHED = 'shed'
+
+# Severity constants (for Python-side comparisons)
+SEVERITY_CRITICAL = 'critical'
+SEVERITY_HIGH = 'high'
+SEVERITY_MEDIUM = 'medium'
+SEVERITY_LOW = 'low'
+SEVERITY_INFORMATIONAL = 'informational'
+
+
 class TriageQueueManager:
     """
     Manages a triage queue stored in SQLite.
@@ -61,6 +76,10 @@ class TriageQueueManager:
 
             CREATE INDEX IF NOT EXISTS idx_triage_queue_pending
                 ON triage_queue (status, severity, created_at);
+
+            CREATE INDEX IF NOT EXISTS idx_triage_queue_lease
+                ON triage_queue (lease_expires_at)
+                WHERE status = 'processing';
 
             CREATE TABLE IF NOT EXISTS triage_queue_counters (
                 name TEXT PRIMARY KEY,
@@ -129,6 +148,14 @@ class TriageQueueManager:
         logger.debug("Database schema initialized")
 
     def _get_job_severity(self, job_id: int) -> Optional[str]:
+        """Fetch the severity of a job by ID.
+        
+        Args:
+            job_id: The job ID to look up.
+            
+        Returns:
+            The severity string, or None if not found.
+        """
         row = self.cursor.execute("SELECT severity FROM triage_queue WHERE id = ?", (job_id,)).fetchone()
         return row[0] if row else None
 

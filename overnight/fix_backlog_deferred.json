@@ -1,80 +1,5 @@
 [
   {
-    "file": "engine/queue_manager.py",
-    "issue": {
-      "category": "performance",
-      "severity": "medium",
-      "line_start": 71,
-      "line_end": 86,
-      "description": "reap_stale_jobs lacks index on lease_expires_at for the WHERE clause. Full table scan on processing jobs as queue grows.",
-      "suggestion": "Add CREATE INDEX IF NOT EXISTS idx_triage_queue_lease ON triage_queue (status, lease_expires_at) in _init_schema.",
-      "impact": "medium",
-      "effort": "trivial"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/queue_manager.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 1,
-      "line_end": 98,
-      "description": "No type hints on any method signatures. Reduces IDE support, makes refactoring risky, and obscures expected types (e.g., payload_ref could be str, dict, bytes).",
-      "suggestion": "Add type hints: def enqueue(self, severity: str, payload_ref: str) -> int, def claim_job(self, worker_id: str) -> Optional[int], etc. Use typing.Optional, typing.Literal for severity/status enums.",
-      "impact": "medium",
-      "effort": "small"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/queue_manager.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 12,
-      "line_end": 98,
-      "description": "No docstrings for public methods. Unclear contract: what does enqueue return (0/1)? What exceptions can claim_job raise? What does heartbeat do on missing job?",
-      "suggestion": "Add Google/NumPy style docstrings for each public method documenting params, returns, raises, and side effects.",
-      "impact": "medium",
-      "effort": "small"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/queue_manager.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 12,
-      "line_end": 25,
-      "description": "Magic strings for severity and status scattered across SQL and Python. Typos won't be caught until runtime. No central definition.",
-      "suggestion": "Define class-level enums or constants: class Severity(Enum), class Status(Enum). Use them in CHECK constraints via migration or application-level validation.",
-      "impact": "low",
-      "effort": "small"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/queue_manager.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "low",
-      "line_start": 1,
-      "line_end": 3,
-      "description": "datetime imported but not used with timezone.utc per AMEND-63. Code relies on SQLite's CURRENT_TIMESTAMP which uses UTC but application logic should use timezone-aware datetimes if doing any time math in Python.",
-      "suggestion": "If Python datetime used for lease calculations, use datetime.now(timezone.utc). Remove unused datetime import if only SQLite time is used.",
-      "impact": "low",
-      "effort": "trivial"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
     "file": "engine/writeback/thehive.py",
     "issue": {
       "category": "maintainability",
@@ -152,21 +77,6 @@
       "suggestion": "Use single UPDATE with CASE: SET status = CASE WHEN attempts < ? THEN 'pending' ELSE 'failed' END, ... WHERE status='processing' AND lease_expires_at < CURRENT_TIMESTAMP;",
       "impact": "low",
       "effort": "small"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/queue_manager.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 1,
-      "line_end": 3,
-      "description": "datetime imported but not used with timezone.utc. Code relies on SQLite's CURRENT_TIMESTAMP (local time). Inconsistent with AMEND-63 guidance.",
-      "suggestion": "Remove unused datetime import or use datetime.now(timezone.utc) for Python-side timestamps. Prefer UTC everywhere.",
-      "impact": "low",
-      "effort": "trivial"
     },
     "attempts": 3,
     "deferred_reason": "failed 3 attempts"
