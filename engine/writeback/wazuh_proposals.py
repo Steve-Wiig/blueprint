@@ -3,8 +3,9 @@ import sqlite3
 import sys
 import json
 import os
+import atexit
 from datetime import datetime, timezone
-from typing import NoReturn
+from typing import NoReturn, Optional
 
 # LOCAL-SOC-SLM Blueprint v11.6.0 - Wazuh Proposal Adapter
 # Appendix Q.3: Writeback Isolation Layer
@@ -12,6 +13,7 @@ from typing import NoReturn
 DB_PATH: str = os.environ.get("WAZUH_PROPOSALS_DB", "/var/lib/wazuh-slm/proposals.db")
 
 _db_initialized: bool = False
+_db_connection: Optional[sqlite3.Connection] = None
 
 
 class ProposalError(Exception):
@@ -51,6 +53,26 @@ class ProposalSuccess(ProposalError):
         super().__init__(message, 0)
 
 
+def _get_connection() -> sqlite3.Connection:
+    """Get or create a persistent database connection with WAL mode enabled."""
+    global _db_connection
+    if _db_connection is None:
+        _db_connection = sqlite3.connect(DB_PATH)
+        _db_connection.execute("PRAGMA journal_mode=WAL")
+        _db_connection.execute("PRAGMA synchronous=NORMAL")
+        _db_connection.execute("PRAGMA busy_timeout=5000")
+        atexit.register(_close_connection)
+    return _db_connection
+
+
+def _close_connection() -> None:
+    """Close the persistent database connection."""
+    global _db_connection
+    if _db_connection is not None:
+        _db_connection.close()
+        _db_connection = None
+
+
 def init_db() -> None:
     """Initializes the SQLite database and creates the proposals table if it does not exist.
 
@@ -61,7 +83,7 @@ def init_db() -> None:
     if _db_initialized:
         return
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = _get_connection()
         cursor = conn.cursor()
         cursor.execute('''CREATE TABLE IF NOT EXISTS proposals 
                           (id INTEGER PRIMARY KEY, key TEXT, value TEXT, 
@@ -108,7 +130,6 @@ def init_db() -> None:
                           END;''')
         
         conn.commit()
-        conn.close()
         _db_initialized = True
     except sqlite3.Error as e:
         raise ProposalStorageError(f"Database initialization failed: {e}")
@@ -143,14 +164,13 @@ def validate_approval_token(token: str) -> bool:
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = _get_connection()
         cursor = conn.cursor()
         cursor.execute(
             "SELECT 1 FROM approval_tokens WHERE token_hash = ? AND is_active = 1 AND (expires_at IS NULL OR expires_at > datetime('now'))",
             (token_hash,)
         )
         result = cursor.fetchone()
-        conn.close()
         return result is not None
     except sqlite3.Error:
         return False
@@ -207,12 +227,11 @@ def store_proposal(key: str, value: str, approval_token: str | None = None) -> N
     
     try:
         init_db()
-        conn = sqlite3.connect(DB_PATH)
+        conn = _get_connection()
         cursor = conn.cursor()
         cursor.execute("INSERT INTO proposals (key, value, status, created_at) VALUES (?, ?, ?, ?)",
                        (key, value, 'PENDING', datetime.now(timezone.utc)))
         conn.commit()
-        conn.close()
     except ProposalError:
         raise
     except Exception as e:
