@@ -19,11 +19,10 @@ import sys
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Union
 from engine.sanitization_pipeline import sanitize_payload
 
 REQUIRED_CASE_FIELDS = {'title', 'description'}
-
 
 _logger: Optional[logging.Logger] = None
 _log_path: Optional[Path] = None
@@ -111,10 +110,10 @@ def call_thehive_api(url: str, api_key: str, payload: Any) -> str:
         timeout=30
     )
     if response.status_code not in [200, 201]:
-        raise RuntimeError(f"Library code called exit(1)")
+        raise RuntimeError(f"TheHive API error: {response.status_code} - {response.text}")
     case_id = response.json().get('id')
     if not case_id:
-        raise RuntimeError(f"Library code called exit(1)")
+        raise RuntimeError("TheHive API response missing case ID")
     return case_id
 
 
@@ -136,12 +135,12 @@ def log_handoff(log_path: Path, case_id: str, mode: str) -> None:
     _logger.info(f"{now.isoformat()}|REF:{case_id}|STATUS:SUCCESS|MODE:{mode}")
 
 
-def main() -> int:
+def main() -> Union[str, int]:
     """Orchestrate the case writeback process.
 
     Returns:
-        int: Exit code (0=success, 1=validation/API error, 2=JSON decode error, 3=request exception)
-    """
+        str: Case ID on success.
+        int: Exit code on failure (1=validation/API error, 2=JSON decode error, 3=request exception)
 
     Example:
         >>> import argparse
@@ -168,10 +167,16 @@ def main() -> int:
     try:
         case_id = call_thehive_api(args.url, args.api_key, sanitized_data)
         log_handoff(log_path, case_id, args.mode)
-        return 0
+        return case_id
     except requests.exceptions.RequestException:
         return 3
+    except RuntimeError:
+        return 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    result = main()
+    if isinstance(result, str):
+        sys.exit(0)
+    else:
+        sys.exit(result)
