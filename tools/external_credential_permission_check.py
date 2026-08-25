@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 try:
     import requests
@@ -13,7 +14,7 @@ except ImportError:
     logging.error("FAIL: requests library is not installed")
     raise RuntimeError("Library code called exit(2)")
 
-DEFAULT_CONFIG_PATH: str = os.path.join(os.path.dirname(__file__), "config.json")
+DEFAULT_CONFIG_PATH: str = str(Path(__file__).parent / "config.json")
 
 REQUIRED_KEYS = {"user_env", "token_env", "read", "forbidden", "forbidden_method"}
 VALID_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
