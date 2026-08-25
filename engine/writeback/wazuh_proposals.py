@@ -2,6 +2,7 @@
 
 LOCAL-SOC-SLM Blueprint v11.6.0 - Wazuh Proposal Adapter
 Appendix Q.3: Writeback Isolation Layer
+
 """
 
 import argparse
@@ -191,5 +192,4 @@ if __name__ == "__main__":
     try:
         main()
     except ProposalError as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(e.exit_code)
+        raise RuntimeError(e.exit_code) from e
