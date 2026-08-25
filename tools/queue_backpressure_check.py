@@ -8,6 +8,7 @@ import sys
 import argparse
 import logging
 import requests
+import json
 
 # Blueprint v11.6.0 Constants (configurable via environment variables)
 MAX_QUEUE_DEPTH = int(os.getenv('MAX_QUEUE_DEPTH', '1000'))
@@ -18,7 +19,8 @@ ERROR_CODES = {
     'SUCCESS': 0,
     'API_ERROR': 1,
     'CONFIG_ERROR': 2,
-    'TOKEN_MISSING': 3
+    'TOKEN_MISSING': 3,
+    'API_RESPONSE_ERROR': 4
 }
 
 logging.basicConfig(
@@ -72,15 +74,9 @@ def check_backpressure(lab_url: str | None, dry_run: bool = False) -> int:
     except requests.RequestException as e:
         logger.error("FAIL: Connection error: %s", e)
         return ERROR_CODES['API_ERROR']
-    except ValueError as e:
-        logger.error("FAIL: Data parsing error: %s", e)
-        return ERROR_CODES['CONFIG_ERROR']
-    except KeyError as e:
-        logger.error("FAIL: Missing key in response: %s", e)
-        return ERROR_CODES['CONFIG_ERROR']
-    except TypeError as e:
-        logger.error("FAIL: Type mismatch: %s", e)
-        return ERROR_CODES['CONFIG_ERROR']
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError) as e:
+        logger.error("FAIL: Response parsing error: %s", e)
+        return ERROR_CODES['API_RESPONSE_ERROR']
     except Exception as e:
         logger.error("FAIL: Unexpected error: %s", e)
         return ERROR_CODES['API_ERROR']
