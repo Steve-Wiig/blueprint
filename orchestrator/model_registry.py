@@ -26,8 +26,12 @@ class ModelRegistryClient:
     and provides methods for retrieving adapter information and verifying
     file integrity against stored SHA256 hashes.
 
-    This class is not thread-safe. Each thread should create its own instance
-    or use external synchronization when sharing an instance across threads.
+    This class is not thread-safe. Each thread must create its own instance.
+    Sharing an instance across threads requires external synchronization.
+
+    The database connection uses `check_same_thread=False` to allow the
+    connection to be used if the instance is passed between threads, but
+    concurrent access from multiple threads is not safe without external locking.
 
     Attributes:
         db_path: Path to the SQLite database file.
@@ -52,7 +56,9 @@ class ModelRegistryClient:
         Note:
             The database connection is established lazily on first use via
             `_get_connection()`. The connection uses `check_same_thread=False`
-            to allow use across threads, but the class itself is not thread-safe.
+            to allow the connection to be used if the instance is passed between
+            threads, but the class itself is not thread-safe. Each thread should
+            create its own instance.
         """
         self.db_path = db_path
         self._conn: sqlite3.Connection = None
@@ -106,6 +112,7 @@ class ModelRegistryClient:
         Note:
             This method is not thread-safe. Concurrent calls from multiple
             threads may result in multiple connections being created.
+            Each thread should use its own ModelRegistryClient instance.
         """
         if self._conn is None:
             self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
@@ -141,6 +148,7 @@ class ModelRegistryClient:
         Note:
             This method is not thread-safe. Concurrent calls from multiple threads
             sharing the same instance may result in race conditions.
+            Each thread should use its own ModelRegistryClient instance.
         """
         adapter_id = self.routing_config.get(task_type)
         if not adapter_id:
@@ -209,7 +217,8 @@ class ModelRegistryClient:
 
         Note:
             This method is not thread-safe. Ensure no other threads are
-            using the connection before calling.
+            using the connection before calling. Each thread should manage
+            its own instance lifecycle.
         """
         if self._conn is not None:
             self._conn.close()
