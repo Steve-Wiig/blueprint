@@ -239,21 +239,6 @@
     "deferred_reason": "failed 3 attempts"
   },
   {
-    "file": "tools/queue_stale_recovery_check.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "medium",
-      "line_start": 44,
-      "line_end": 44,
-      "description": "Use of sys.exit() in library code violates blueprint requirement",
-      "suggestion": "Replace sys.exit(main()) with a raise RuntimeError(main()) or let the caller handle the exit.",
-      "impact": "medium",
-      "effort": "trivial"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
     "file": "tools/sanitization_entropy_check.py",
     "issue": {
       "description": "The entropy threshold (ENTROPY_THRESHOLD = 4.5) is hard-coded, making it difficult to tune for different environments.",
@@ -499,21 +484,6 @@
       "description": "compute_row_hash creates new dict allocation for each row - minor performance impact",
       "suggestion": "Consider using a tuple of sorted items or pre-allocated buffer for high-volume chains",
       "impact": "low",
-      "effort": "small"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "tools/queue_stale_recovery_check.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "medium",
-      "line_start": 59,
-      "line_end": 59,
-      "description": "sys.exit() used in library code; blueprint AMEND-64 requires raise RuntimeError() instead of sys.exit()/exit()",
-      "suggestion": "Replace sys.exit(main()) with: raise RuntimeError(f'Queue recovery check failed with exit code {main()}') or restructure as CLI-only script",
-      "impact": "medium",
       "effort": "small"
     },
     "attempts": 3,
