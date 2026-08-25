@@ -9,6 +9,21 @@ from typing import Generator, Optional
 DB_PATH = "quota_ledger.db"
 
 
+class QuotaLedgerError(Exception):
+    """Base exception for quota ledger errors."""
+    pass
+
+
+class QuotaExceededError(QuotaLedgerError):
+    """Raised when an adapter's quota is exceeded."""
+    pass
+
+
+class QuotaAdapterNotFoundError(QuotaLedgerError):
+    """Raised when an adapter is not found in the ledger."""
+    pass
+
+
 @contextmanager
 def get_db_connection(db_path: Optional[str] = None) -> Generator[sqlite3.Connection, None, None]:
     """Context manager for database connections with automatic commit/rollback."""
@@ -16,9 +31,9 @@ def get_db_connection(db_path: Optional[str] = None) -> Generator[sqlite3.Connec
     try:
         yield conn
         conn.commit()
-    except sqlite3.Error:
+    except sqlite3.Error as e:
         conn.rollback()
-        raise RuntimeError("Library code called exit(1)")
+        raise QuotaLedgerError(f"Database error: {e}") from e
     finally:
         conn.close()
 
@@ -37,8 +52,8 @@ def init_db(db_path: Optional[str] = None) -> None:
                     last_reset_date TEXT
                 )
             ''')
-    except sqlite3.Error:
-        raise RuntimeError("Library code called exit(2)")
+    except sqlite3.Error as e:
+        raise QuotaLedgerError(f"Database initialization failed: {e}") from e
 
 
 def check_quota(adapter_id: str, estimated_tokens: int, db_path: Optional[str] = None) -> bool:
@@ -73,8 +88,8 @@ def check_quota(adapter_id: str, estimated_tokens: int, db_path: Optional[str] =
         if (used + estimated_tokens) > daily_limit or estimated_tokens > job_limit:
             return False
         return True
-    except sqlite3.Error:
-        raise RuntimeError("Library code called exit(1)")
+    except sqlite3.Error as e:
+        raise QuotaLedgerError(f"Database error during quota check: {e}") from e
 
 
 def record_usage(adapter_id: str, tokens_used: int, db_path: Optional[str] = None) -> None:
@@ -103,8 +118,8 @@ def record_usage(adapter_id: str, tokens_used: int, db_path: Optional[str] = Non
                     "UPDATE quota_ledger SET tokens_used_today = ?, last_reset_date = ? WHERE adapter_id = ?",
                     (new_used, today, adapter_id)
                 )
-    except sqlite3.Error:
-        raise RuntimeError("Library code called exit(1)")
+    except sqlite3.Error as e:
+        raise QuotaLedgerError(f"Database error during usage recording: {e}") from e
 
 
 def main() -> None:
