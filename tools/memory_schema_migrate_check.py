@@ -83,4 +83,6 @@ def main() -> int:
     return 0
 
 if __name__ == "__main__":
-    raise RuntimeError(f'Exit code {main()}')
+    exit_code = main()
+    if exit_code != 0:
+        raise RuntimeError(f'Exit code {exit_code}')
