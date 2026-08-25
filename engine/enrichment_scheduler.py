@@ -282,6 +282,147 @@ def _fetch_provider_data(
     return quota_dict, filtered_cost_dict
 
 
+def _fetch_job_batch(
+    pg_conn: psycopg2.extensions.connection,
+    last_id: int,
+    batch_size: int
+) -> List[Tuple[int, str, str]]:
+    """Fetch a batch of pending enrichment jobs.
+
+    Args:
+        pg_conn: The PostgreSQL database connection.
+        last_id: The last processed job ID for pagination.
+        batch_size: Maximum number of jobs to fetch.
+
+    Returns:
+        List of tuples (job_id, ioc_value, provider_name).
+    """
+    pg_cur = pg_conn.cursor()
+    pg_cur.execute(
+        "SELECT id, ioc_value, provider FROM enrichment_jobs WHERE status = %s AND id > %s ORDER BY id LIMIT %s",
+        (JobStatus.PENDING.value, last_id, batch_size)
+    )
+    return pg_cur.fetchall()
+
+
+def _check_batch_quota(
+    sq_conn: sqlite3.Connection,
+    sq_cur: sqlite3.Cursor,
+    providers_in_batch: set,
+    quota_cache: Dict[str, int],
+    cost_cache: Dict[str, int]
+) -> None:
+    """Check and cache quota for providers in the current batch.
+
+    Args:
+        sq_conn: The SQLite database connection.
+        sq_cur: Reusable SQLite cursor.
+        providers_in_batch: Set of provider names in the current batch.
+        quota_cache: Cache dictionary for quota values.
+        cost_cache: Cache dictionary for cost values.
+
+    Raises:
+        ProviderNotConfiguredError: If any provider is not configured in quota_ledger.
+    """
+    providers_needed = [p for p in providers_in_batch if p not in quota_cache]
+    if providers_needed:
+        quota_dict, cost_dict = _fetch_provider_data(sq_conn, providers_needed, sq_cur)
+        quota_cache.update(quota_dict)
+        cost_cache.update(cost_dict)
+
+    for provider_name in providers_in_batch:
+        if provider_name not in quota_cache:
+            raise ProviderNotConfiguredError(
+                f"Provider '{provider_name}' not configured in quota_ledger. "
+                "Add the provider to quota_ledger before processing jobs."
+            )
+
+
+def _process_single_job(
+    provider: EnrichmentProvider,
+    ioc: str,
+    provider_name: str,
+    quota: int,
+    cost: int
+) -> Tuple[str, Optional[str], Optional[Dict[str, Any]]]:
+    """Process a single enrichment job.
+
+    Args:
+        provider: The enrichment provider instance.
+        ioc: The indicator of compromise to enrich.
+        provider_name: Name of the provider.
+        quota: Available quota for the provider.
+        cost: Cost per enrichment for the provider.
+
+    Returns:
+        Tuple of (status, error_message, result_json).
+    """
+    if quota < cost:
+        return JobStatus.FAILED.value, "Insufficient quota", None
+
+    try:
+        result = provider.process(ioc)
+        result_json = json.dumps(sanitize(result))
+        return JobStatus.COMPLETED.value, None, result_json
+    except Exception as e:
+        logger.exception("Enrichment failed for job")
+        return JobStatus.FAILED.value, str(e), None
+
+
+def _write_audit_log(
+    pg_cur: psycopg2.extensions.cursor,
+    job_id: int,
+    provider_name: str,
+    ioc_hash: str,
+    quota_cost: int,
+    status: str,
+    processed_at: datetime,
+    error_message: Optional[str]
+) -> None:
+    """Write an audit log entry for a job attempt.
+
+    Args:
+        pg_cur: PostgreSQL cursor.
+        job_id: The job ID.
+        provider_name: Name of the enrichment provider.
+        ioc_hash: SHA256 hash of the IOC.
+        quota_cost: Quota cost for this job.
+        status: Job status (COMPLETED or FAILED).
+        processed_at: Timestamp of processing.
+        error_message: Error message if failed, None otherwise.
+    """
+    pg_cur.execute(
+        "INSERT INTO enrichment_audit_log (job_id, provider, ioc_hash, quota_cost, status, timestamp, error_message) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+        (job_id, provider_name, ioc_hash, quota_cost, status, processed_at, error_message)
+    )
+
+
+def _update_job_status(
+    pg_cur: psycopg2.extensions.cursor,
+    job_id: int,
+    status: str,
+    result_json: Optional[str]
+) -> None:
+    """Update the job status in the database.
+
+    Args:
+        pg_cur: PostgreSQL cursor.
+        job_id: The job ID.
+        status: New job status.
+        result_json: Enrichment result JSON if completed, None otherwise.
+    """
+    if result_json is not None:
+        pg_cur.execute(
+            "UPDATE enrichment_jobs SET status = %s, result = %s WHERE id = %s",
+            (status, result_json, job_id)
+        )
+    else:
+        pg_cur.execute(
+            "UPDATE enrichment_jobs SET status = %s WHERE id = %s",
+            (status, job_id)
+        )
+
+
 def process_jobs(
     pg_conn: psycopg2.extensions.connection,
     sq_conn: sqlite3.Connection,
@@ -305,100 +446,53 @@ def process_jobs(
     quota_cache: Dict[str, int] = {}
     cost_cache: Dict[str, int] = {}
 
-    # Create a single SQLite cursor for reuse within this function
     sq_cur = sq_conn.cursor()
     try:
         while True:
-            pg_cur = pg_conn.cursor()
-            pg_cur.execute(
-                "SELECT id, ioc_value, provider FROM enrichment_jobs WHERE status = %s AND id > %s ORDER BY id LIMIT %s",
-                (JobStatus.PENDING.value, last_id, BATCH_SIZE)
-            )
-            jobs = pg_cur.fetchall()
+            jobs = _fetch_job_batch(pg_conn, last_id, BATCH_SIZE)
             if not jobs:
                 break
 
-            # Collect unique providers in this batch that are not yet cached
             providers_in_batch = {provider_name for _, _, provider_name in jobs}
-            providers_needed = [p for p in providers_in_batch if p not in quota_cache]
-            if providers_needed:
-                quota_dict, cost_dict = _fetch_provider_data(sq_conn, providers_needed, sq_cur)
-                quota_cache.update(quota_dict)
-                cost_cache.update(cost_dict)
+            _check_batch_quota(sq_conn, sq_cur, providers_in_batch, quota_cache, cost_cache)
 
-            # Verify all providers in this batch are configured in quota_ledger
-            for provider_name in providers_in_batch:
-                if provider_name not in quota_cache:
-                    raise ProviderNotConfiguredError(
-                        f"Provider '{provider_name}' not configured in quota_ledger. "
-                        "Add the provider to quota_ledger before processing jobs."
+            pg_cur = pg_conn.cursor()
+            try:
+                for job_id, ioc, provider_name in jobs:
+                    last_id = job_id
+                    quota = quota_cache.get(provider_name, 0)
+                    cost = cost_cache.get(provider_name, 1)
+
+                    ioc_hash = hashlib.sha256(ioc.encode()).hexdigest()
+                    processed_at = datetime.now(timezone.utc)
+
+                    status, error_message, result_json = _process_single_job(
+                        provider, ioc, provider_name, quota, cost
                     )
 
-            for job_id, ioc, provider_name in jobs:
-                last_id = job_id  # advance pagination marker
-                quota = quota_cache.get(provider_name, 0)
-                cost = cost_cache.get(provider_name, 1)
-
-                # Compute IOC hash for audit trail
-                ioc_hash = hashlib.sha256(ioc.encode()).hexdigest()
-                processed_at = datetime.now(timezone.utc)
-                error_message = None
-                status = JobStatus.FAILED.value
-                result_json = None
-
-                try:
-                    if quota < cost:
-                        error_message = "Insufficient quota"
-                        # Append-only audit log for quota exhaustion
-                        pg_cur.execute(
-                            "INSERT INTO enrichment_audit_log (job_id, provider, ioc_hash, quota_cost, status, timestamp, error_message) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                            (job_id, provider_name, ioc_hash, cost, JobStatus.FAILED.value, processed_at, error_message)
-                        )
-                        pg_cur.execute(
-                            "UPDATE enrichment_jobs SET status = %s WHERE id = %s",
-                            (JobStatus.FAILED.value, job_id)
-                        )
-                        pg_conn.commit()
-                        sq_conn.commit()
-                        continue
-
-                    # Use injected enrichment provider
-                    result = provider.process(ioc)
-                    sanitized_result = sanitize(result)
-                    result_json = json.dumps(sanitized_result)
-                    status = JobStatus.COMPLETED.value
-
-                    # Append-only audit log for successful completion
-                    pg_cur.execute(
-                        "INSERT INTO enrichment_audit_log (job_id, provider, ioc_hash, quota_cost, status, timestamp, error_message) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                        (job_id, provider_name, ioc_hash, cost, status, processed_at, error_message)
+                    _write_audit_log(
+                        pg_cur, job_id, provider_name, ioc_hash, cost,
+                        status, processed_at, error_message
                     )
-                    pg_cur.execute(
-                        "UPDATE enrichment_jobs SET status = %s, result = %s WHERE id = %s",
-                        (status, result_json, job_id)
-                    )
-                    update_quota(sq_conn, provider_name, cost, sq_cur)
-                    pg_conn.commit()
-                    sq_conn.commit()
-                except Exception as e:
-                    error_message = str(e)
-                    logger.exception("Job processing failed for job_id=%s", job_id)
-                    pg_cur.execute(
-                        "INSERT INTO enrichment_audit_log (job_id, provider, ioc_hash, quota_cost, status, timestamp, error_message) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                        (job_id, provider_name, ioc_hash, cost, JobStatus.FAILED.value, processed_at, error_message)
-                    )
-                    pg_cur.execute(
-                        "UPDATE enrichment_jobs SET status = %s WHERE id = %s",
-                        (JobStatus.FAILED.value, job_id)
-                    )
-                    pg_conn.commit()
-                    sq_conn.commit()
+
+                    _update_job_status(pg_cur, job_id, status, result_json)
+
+                    if status == JobStatus.COMPLETED.value:
+                        update_quota(sq_conn, provider_name, cost, sq_cur)
+                        quota_cache[provider_name] = quota - cost
+
+                pg_conn.commit()
+            except Exception:
+                pg_conn.rollback()
+                raise
+            finally:
+                pg_cur.close()
     finally:
         sq_cur.close()
 
 
 def main() -> None:
-    """Entry point for the enrichment job processor."""
+    """Main entry point for the enrichment job processor."""
     parser = argparse.ArgumentParser(description="Process enrichment jobs")
     parser.add_argument("--pg-dsn", required=True, help="PostgreSQL DSN")
     parser.add_argument("--sqlite-path", required=True, help="SQLite database path")
