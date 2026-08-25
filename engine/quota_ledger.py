@@ -4,15 +4,15 @@ import sqlite3
 import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Generator
+from typing import Generator, Optional
 
 DB_PATH = "quota_ledger.db"
 
 
 @contextmanager
-def get_db_connection() -> Generator[sqlite3.Connection, None, None]:
+def get_db_connection(db_path: Optional[str] = None) -> Generator[sqlite3.Connection, None, None]:
     """Context manager for database connections with automatic commit/rollback."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(db_path or DB_PATH)
     try:
         yield conn
         conn.commit()
@@ -23,10 +23,10 @@ def get_db_connection() -> Generator[sqlite3.Connection, None, None]:
         conn.close()
 
 
-def init_db() -> None:
+def init_db(db_path: Optional[str] = None) -> None:
     """Initializes the quota ledger database and creates the table if it does not exist."""
     try:
-        with get_db_connection() as conn:
+        with get_db_connection(db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS quota_ledger (
@@ -42,18 +42,19 @@ def init_db() -> None:
         raise RuntimeError("Library code called exit(2)")
 
 
-def check_quota(adapter_id: str, estimated_tokens: int) -> bool:
+def check_quota(adapter_id: str, estimated_tokens: int, db_path: Optional[str] = None) -> bool:
     """Checks if an adapter has sufficient quota for a given token usage.
 
     Args:
         adapter_id: The unique identifier for the adapter.
         estimated_tokens: The number of tokens to be used.
+        db_path: Optional database path for testing.
 
     Returns:
         True if the usage is within limits, False otherwise.
     """
     try:
-        with get_db_connection() as conn:
+        with get_db_connection(db_path) as conn:
             cursor = conn.cursor()
             today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
@@ -77,15 +78,16 @@ def check_quota(adapter_id: str, estimated_tokens: int) -> bool:
         raise RuntimeError("Library code called exit(1)")
 
 
-def record_usage(adapter_id: str, tokens_used: int) -> None:
+def record_usage(adapter_id: str, tokens_used: int, db_path: Optional[str] = None) -> None:
     """Records token usage for a specific adapter in the database.
 
     Args:
         adapter_id: The unique identifier for the adapter.
         tokens_used: The number of tokens to record.
+        db_path: Optional database path for testing.
     """
     try:
-        with get_db_connection() as conn:
+        with get_db_connection(db_path) as conn:
             cursor = conn.cursor()
             today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
