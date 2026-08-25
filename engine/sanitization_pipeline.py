@@ -1,8 +1,4 @@
-"""
-LOCAL-SOC-SLM v11.6.0 Sanitization Pipeline
-Section 34.1 Implementation
-"""
-
+import os
 import re
 import math
 import hashlib
@@ -15,16 +11,32 @@ RegexPatternDict: TypeAlias = Dict[str, Pattern[str]]
 CompiledRegexDict: TypeAlias = Dict[str, Pattern[str]]
 AllowlistPatternDict: TypeAlias = Dict[str, Pattern[str]]
 
-# Configurable thresholds with documentation
-# Entropy threshold of 4.5 bits/char: balances detection of base64-encoded secrets
-# (typically 4.5-6.0 bits/char) against false positives on structured data like JSON
-# (typically 3.5-4.5 bits/char). Based on NIST SP 800-63B entropy estimates.
-ENTROPY_THRESHOLD: float = 4.5
+# Configurable thresholds loaded from environment variables with validation
+def _load_entropy_threshold() -> float:
+    """Load and validate entropy threshold from environment."""
+    raw = os.getenv('SANITIZER_ENTROPY_THRESHOLD', '4.5')
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ValueError(f"SANITIZER_ENTROPY_THRESHOLD must be a valid float, got '{raw}'")
+    if not (0.0 < value <= 8.0):
+        raise ValueError(f"SANITIZER_ENTROPY_THRESHOLD must be in range (0.0, 8.0], got {value}")
+    return value
 
-# Minimum token length of 17 characters: excludes common short identifiers
-# (UUIDs=36, API keys typically 20-40, JWT segments 20+) while catching
-# base64-encoded 128-bit secrets (22 chars) and 256-bit secrets (44 chars).
-MIN_TOKEN_LENGTH: int = 17
+def _load_min_token_length() -> int:
+    """Load and validate minimum token length from environment."""
+    raw = os.getenv('SANITIZER_MIN_TOKEN_LENGTH', '17')
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ValueError(f"SANITIZER_MIN_TOKEN_LENGTH must be a valid integer, got '{raw}'")
+    if not (1 <= value <= 1000):
+        raise ValueError(f"SANITIZER_MIN_TOKEN_LENGTH must be in range [1, 1000], got {value}")
+    return value
+
+# Module-level constants initialized with validation at import time
+ENTROPY_THRESHOLD: float = _load_entropy_threshold()
+MIN_TOKEN_LENGTH: int = _load_min_token_length()
 
 # Regex patterns for known secret formats
 # Patterns are compiled at module load for performance
@@ -76,7 +88,7 @@ ANALYTICAL_FIELDS: set[str] = {
     "script.block", "bash.command", "shell.args", "file.contents"
 }
 
-# Pre-compiled token pattern for entropy analysis
+# Pre-compiled token pattern for entropy analysis (uses configurable MIN_TOKEN_LENGTH)
 TOKEN_PATTERN: Pattern[str] = re.compile(rf'[a-zA-Z0-9+/=]{{{MIN_TOKEN_LENGTH},}}')
 
 def calculate_entropy(data: str) -> float:
