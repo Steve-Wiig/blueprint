@@ -1,20 +1,5 @@
 [
   {
-    "file": "engine/intake_wazuh.py",
-    "issue": {
-      "category": "performance",
-      "severity": "medium",
-      "line_start": 62,
-      "line_end": 62,
-      "description": "Entire payload stored as JSON blob in triage_queue.payload column prevents efficient SQL querying on fields like src_ip, dst_ip, rule_id",
-      "suggestion": "Normalize schema: add columns for frequently queried fields (src_ip, dst_ip, rule_id, agent) and keep JSON blob for full payload; create indexes on query columns",
-      "impact": "medium",
-      "effort": "medium"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
     "file": "engine/queue_manager.py",
     "issue": {
       "category": "performance",
@@ -146,21 +131,6 @@
     "deferred_reason": "failed 3 attempts"
   },
   {
-    "file": "tools/queue_backpressure_check.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "medium",
-      "line_start": 10,
-      "line_end": 12,
-      "description": "Hardcoded configuration values for MAX_QUEUE_DEPTH and BACKPRESSURE_THRESHOLD should be defined in environment variables or a configuration file to align with blueprint requirements.",
-      "suggestion": "Define MAX_QUEUE_DEPTH and BACKPRESSURE_THRESHOLD as environment variables.",
-      "impact": "medium",
-      "effort": "small"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
     "file": "tools/sanitization_entropy_check.py",
     "issue": {
       "description": "The entropy threshold (ENTROPY_THRESHOLD = 4.5) is hard-coded, making it difficult to tune for different environments.",
@@ -197,21 +167,6 @@
       "suggestion": "Split into: get_last_chain_state(), fetch_pending_batches(), compute_chain_hashes(), insert_chain_links(). Each with clear inputs/outputs. Use dependency injection for database connection.",
       "impact": "medium",
       "effort": "medium"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/intake_wazuh.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 22,
-      "line_end": 23,
-      "description": "Hardcoded default paths for DB and log file reduce portability and testability",
-      "suggestion": "Keep env var overrides but consider config file or centralized config module for defaults",
-      "impact": "low",
-      "effort": "small"
     },
     "attempts": 3,
     "deferred_reason": "failed 3 attempts"
@@ -287,51 +242,6 @@
       "suggestion": "Change default to ':memory:' or require explicit path. Document that file path is for production only.",
       "impact": "low",
       "effort": "trivial"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/writeback/pfsense_alias.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "medium",
-      "line_start": 14,
-      "line_end": 14,
-      "description": "Hardcoded DB_PATH prevents use of :memory: databases for testing per AMEND-65",
-      "suggestion": "Accept database path as parameter to init_db() and store_proposal(), default to environment variable",
-      "impact": "medium",
-      "effort": "small"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "memory/retention.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 6,
-      "line_end": 7,
-      "description": "Hardcoded paths ARCHIVE_BASE and CMR_MOUNT at module level. Violates blueprint 'no module-level side effects' and makes testing/deployment difficult.",
-      "suggestion": "Move to configuration file or environment variables. Pass as parameters to functions.",
-      "impact": "medium",
-      "effort": "small"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "memory/retention.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 1,
-      "line_end": 84,
-      "description": "No type hints, no docstrings, mixed concerns (CLI, DB, filesystem, subprocess). Difficult to test and maintain.",
-      "suggestion": "Add type hints to all functions. Add module and function docstrings. Separate concerns: archive logic, retention policy, CLI entry point.",
-      "impact": "medium",
-      "effort": "medium"
     },
     "attempts": 3,
     "deferred_reason": "failed 3 attempts"
