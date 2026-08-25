@@ -26,7 +26,7 @@ import sys
 import os
 import argparse
 import logging
-from typing import Callable
+from typing import Callable, Optional
 
 DEFAULT_DOC_PREFIX = "search_document: "
 DEFAULT_QUERY_PREFIX = "search_query: "
@@ -85,8 +85,8 @@ class EmbeddingService:
     def __init__(
         self,
         encoder: Callable[[str], list[float]],
-        doc_prefix: str | None = None,
-        query_prefix: str | None = None,
+        doc_prefix: Optional[str] = None,
+        query_prefix: Optional[str] = None,
     ) -> None:
         """
         Initialize the EmbeddingService with an encoder function.
@@ -157,9 +157,9 @@ class EmbeddingService:
 
 def run_verification(
     dry_run: bool = False,
-    doc_prefix: str | None = None,
-    query_prefix: str | None = None,
-    dim: int | None = None,
+    doc_prefix: Optional[str] = None,
+    query_prefix: Optional[str] = None,
+    dim: Optional[int] = None,
 ) -> int:
     """
     Run the CI gate verification for embedding prefix and dimension contract.
