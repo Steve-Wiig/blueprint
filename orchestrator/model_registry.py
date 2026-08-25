@@ -178,17 +178,18 @@ class ModelRegistryClient:
         Returns:
             True if the file's SHA256 matches the expected hash.
             False if the file exists but the hash does not match.
-            None if the file is not found at `file_path`.
+            None if the file is not found at `file_path` (FileNotFoundError).
 
         Raises:
             KeyError: If `adapter_data` does not contain a 'sha256' key.
             PermissionError: If the file exists but cannot be read.
-            OSError: For other I/O related errors during file reading.
+            OSError: For other I/O related errors during file reading (e.g., disk errors).
 
         Note:
             This method reads the file in 4096-byte chunks to handle large
             files efficiently without excessive memory usage.
             This method is thread-safe as it does not access shared state.
+            Only FileNotFoundError is caught and returns None; all other exceptions propagate.
         """
         sha256_hash = hashlib.sha256()
         try:
