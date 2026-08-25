@@ -191,7 +191,7 @@ def _get_index_schema_version() -> str:
     return "11.6.0"
 
 
-def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
+def validate_partition_config(config_path: Path, dry_run: bool = False) -> None:
     """Validate vector partition configuration against schema constraints and sharding rules.
 
     Performs the following validation steps in order:
@@ -209,17 +209,13 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
         dry_run: If True, performs validation without committing changes and prints
             detailed step-by-step output. Defaults to False.
 
-    Returns:
-        int: Exit code indicating validation result:
-            0 (EXIT_SUCCESS) - Validation passed successfully.
+    Raises:
+        RuntimeError: With exit code as argument on validation failure:
             1 (EXIT_VALIDATION_ERROR) - Validation failed (missing partition, version mismatch,
                 shard size exceeded, or indexing disabled).
             2 (EXIT_CONFIG_ERROR) - Config file not found at specified path.
-            3 (EXIT_ENV_ERROR) - Environment variable SLM_ENV not set (handled by main()).
-
-    Raises:
         json.JSONDecodeError: If the config file contains invalid JSON (caught internally,
-            returns 1).
+            raises RuntimeError(EXIT_VALIDATION_ERROR)).
         OSError: If file cannot be read due to permissions (propagates to caller).
     """
     required_partitions = _get_required_partitions()
@@ -239,7 +235,7 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
     if not config_path.is_file():
         if dry_run:
             print("  [1/6] FAILED – file does not exist.")
-        return EXIT_CONFIG_ERROR
+        raise RuntimeError(EXIT_CONFIG_ERROR)
 
     try:
         with config_path.open("r") as f:
@@ -247,7 +243,7 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
     except json.JSONDecodeError:
         if dry_run:
             print("  [2/6] FAILED – invalid JSON.")
-        return EXIT_VALIDATION_ERROR
+        raise RuntimeError(EXIT_VALIDATION_ERROR)
     except OSError:
         if dry_run:
             print("  [1/6] FAILED – unable to read file.")
@@ -262,7 +258,7 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
     if missing:
         if dry_run:
             print(f"  [3/6] FAILED – missing partitions: {', '.join(missing)}")
-        return EXIT_VALIDATION_ERROR
+        raise RuntimeError(EXIT_VALIDATION_ERROR)
     if dry_run:
         print("  [3/6] PASSED")
 
@@ -270,7 +266,7 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
     if data.get("version") != index_schema_version:
         if dry_run:
             print(f"  [4/6] FAILED – version {data.get('version')} does not match expected {index_schema_version}")
-        return EXIT_VALIDATION_ERROR
+        raise RuntimeError(EXIT_VALIDATION_ERROR)
     if dry_run:
         print("  [4/6] PASSED")
 
@@ -280,18 +276,16 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> int:
         if max_shard is None or max_shard > max_shard_size_gb:
             if dry_run:
                 print(f"  [5/6] FAILED – partition '{name}' shard size {max_shard} GB exceeds limit")
-            return EXIT_VALIDATION_ERROR
+            raise RuntimeError(EXIT_VALIDATION_ERROR)
         if not settings.get("indexing_enabled", False):
             if dry_run:
                 print(f"  [6/6] FAILED – indexing disabled for partition '{name}'")
-            return EXIT_VALIDATION_ERROR
+            raise RuntimeError(EXIT_VALIDATION_ERROR)
 
     if dry_run:
         print("  [5/6] PASSED")
         print("  [6/6] PASSED")
         print("DRY-RUN: Validation completed successfully.")
-
-    return EXIT_SUCCESS
 
 
 def _parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
@@ -314,13 +308,17 @@ def _parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
 
 def main(argv: Optional[List[str]] = None) -> int:
     if "SLM_ENV" not in os.environ:
-        print("Error: SLM_ENV environment variable not set.", file=sys.stderr)
-        return EXIT_ENV_ERROR
+        raise RuntimeError(EXIT_ENV_ERROR)
 
     args = _parse_arguments(argv)
 
-    return validate_partition_config(args.config, dry_run=args.dry_run)
+    validate_partition_config(args.config, dry_run=args.dry_run)
+    return EXIT_SUCCESS
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        exit_code = main()
+    except RuntimeError as e:
+        exit_code = e.args[0] if e.args else EXIT_VALIDATION_ERROR
+    sys.exit(exit_code)
