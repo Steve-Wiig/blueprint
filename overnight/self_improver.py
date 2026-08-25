@@ -17,7 +17,7 @@ Directory structure:
       └── tools__embedding_prefix_check.json
   (files deleted after successful OpenRouter processing)
 """
-import sys, json, subprocess, time, argparse
+import sys, json, subprocess, time, argparse, ast
 from pathlib import Path
 from datetime import datetime
 
@@ -65,13 +65,33 @@ def _load_backlog():
 def _save_backlog(items):
     FIX_BACKLOG.write_text(json.dumps(items, indent=2))
 
+MAX_FIX_RETRIES = 3
+DEFERRED_BACKLOG = ROOT / "overnight" / "fix_backlog_deferred.json"
+
+
+def _load_deferred():
+    if DEFERRED_BACKLOG.exists():
+        try:
+            return json.loads(DEFERRED_BACKLOG.read_text())
+        except Exception:
+            pass
+    return []
+
+
+def _save_deferred(items):
+    DEFERRED_BACKLOG.write_text(json.dumps(items, indent=2))
+
+
 def drain_fix_backlog(api_keys, max_fixes=3):
-    """Apply a few backlog fixes per call so budgets recover between them."""
+    """Apply backlog fixes with retry tracking. Fixes that fail MAX_FIX_RETRIES
+    times are moved to a deferred list instead of being retried forever, so we
+    stop burning quota on hopeless fixes (large-file truncation, unfixable tests)."""
     backlog = _load_backlog()
     if not backlog:
         return 0
     done = 0
     remaining = []
+    deferred = _load_deferred()
     for item in backlog:
         if done >= max_fixes:
             remaining.append(item)
@@ -82,10 +102,17 @@ def drain_fix_backlog(api_keys, max_fixes=3):
         if apply_auto_fix(fpath, item["issue"], api_keys):
             done += 1
         else:
-            remaining.append(item)  # keep for a later iteration
+            item["attempts"] = item.get("attempts", 0) + 1
+            if item["attempts"] >= MAX_FIX_RETRIES:
+                item["deferred_reason"] = f"failed {item['attempts']} attempts"
+                deferred.append(item)
+                print(f"       🗃️  Deferred after {item['attempts']} attempts: {item['issue'].get('description', '')[:60]}")
+            else:
+                remaining.append(item)
     _save_backlog(remaining)
+    if deferred:
+        _save_deferred(deferred)
     return done
-
 def get_pending_advisories():
     """List all pending advisory files."""
     if not QUEUE_DIR.exists():
@@ -316,6 +343,14 @@ def apply_auto_fix(file_path, issue, api_keys):
     if len(fix_code) < 0.5 * len(original):
         print(f"       ❌ Fix suspiciously short ({len(fix_code)} vs {len(original)} chars) — rejecting")
         return False
+    # Syntax gate: a fix that isn't valid Python is never safe to write.
+    # Catches thinking-trace/prose corruption even for files no test imports
+    # (the pytest gate can't see those — this is how two files got corrupted).
+    try:
+        ast.parse(fix_code)
+    except SyntaxError as e:
+        print(f"       ❌ Fix is not valid Python ({e.msg}, line {e.lineno}) — rejecting")
+        return False
 
     # Backup exists ONLY during the pytest window; a leftover .orig_backup at
     # next startup is proof of a crash mid-test (handled by main() recovery).
@@ -365,6 +400,39 @@ def discover_files():
     return files
 
 
+def drain_backlog_loop(api_keys, budget, state, fixes_per_pass=5, max_passes=200):
+    """Standalone backlog drain: keep applying fixes until the backlog is empty,
+    or two consecutive passes make no progress (budget exhausted or items unfixable)."""
+    print("=" * 70)
+    print(f"BACKLOG DRAIN MODE ({fixes_per_pass} fixes/pass)")
+    print("=" * 70)
+    total = 0
+    zero_passes = 0
+    for pass_num in range(1, max_passes + 1):
+        backlog_len = len(_load_backlog())
+        if backlog_len == 0:
+            print()
+            print("  ✅ Backlog fully drained!")
+            break
+        print()
+        print(f"  [Pass {pass_num}] {backlog_len} fixes remaining...")
+        fixed = drain_fix_backlog(api_keys, max_fixes=fixes_per_pass)
+        total += fixed
+        state["fixes"] = state.get("fixes", 0) + fixed
+        print(f"  🔧 Pass {pass_num}: {fixed} applied ({total} total)")
+        if fixed == 0:
+            zero_passes += 1
+            if zero_passes >= 2:
+                print("  ⚠️  Two consecutive zero-fix passes — remaining items likely unfixable, stopping")
+                break
+        else:
+            zero_passes = 0
+        time.sleep(15)  # let rate-limit windows recover between passes
+    print()
+    print(f"  📊 Drain complete: {total} fixes applied, {len(_load_backlog())} remain")
+    return total
+
+
 def main():
     # Crash recovery: a killed run may leave a half-applied fix behind
     for bak in sorted(ROOT.rglob("*.orig_backup")):
@@ -378,6 +446,8 @@ def main():
     p.add_argument("--max-iterations", type=int, default=5)
     p.add_argument("--prefill-only", action="store_true", help="Only fill advisory queue with Gemini")
     p.add_argument("--process-only", action="store_true", help="Only process existing advisory queue")
+    p.add_argument("--drain-backlog", action="store_true", help="Only drain fix backlog (no analysis)")
+    p.add_argument("--fixes-per-pass", type=int, default=5, help="Fixes per drain pass (default 5)")
     a = p.parse_args()
 
     keys = load_api_keys()
@@ -392,6 +462,12 @@ def main():
         prefill_advisory_queue(files, keys, budget)
     elif a.process_only:
         process_advisory_queue(keys, budget, state)
+    elif a.drain_backlog:
+        if a.dry_run:
+            n = len(_load_backlog())
+            print(f"[DRY RUN] Backlog has {n} pending fixes; would drain {a.fixes_per_pass}/pass.")
+        else:
+            drain_backlog_loop(keys, budget, state, fixes_per_pass=a.fixes_per_pass)
     else:
         # Full loop: prefill then process, repeat
         for iteration in range(1, a.max_iterations + 1):
