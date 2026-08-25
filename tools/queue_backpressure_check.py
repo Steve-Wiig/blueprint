@@ -63,7 +63,7 @@ def check_backpressure(lab_url: str | None, dry_run: bool = False) -> int:
         backpressure_active = data.get("backpressure_active", False)
 
         # Logic: If depth > threshold, backpressure MUST be active
-        if current_depth > (MAX_QUEUE_DEPTH * BACKPRESSURE_THRESHOLD):
+        if current_depth > int(MAX_QUEUE_DEPTH * BACKPRESSURE_THRESHOLD):
             if not backpressure_active:
                 logger.error("FAIL: Backpressure not triggered at depth %s", current_depth)
                 return ERROR_CODES['API_ERROR']
