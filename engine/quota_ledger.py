@@ -52,6 +52,23 @@ def init_db(db_path: Optional[str] = None) -> None:
                     last_reset_date TEXT
                 )
             ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS quota_audit (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    adapter_id TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    tokens_delta INTEGER NOT NULL,
+                    operation TEXT NOT NULL,
+                    previous_total INTEGER NOT NULL,
+                    new_total INTEGER NOT NULL
+                )
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_quota_audit_adapter_id ON quota_audit(adapter_id)
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_quota_audit_timestamp ON quota_audit(timestamp)
+            ''')
     except sqlite3.Error as e:
         raise QuotaLedgerError(f"Database initialization failed: {e}") from e
 
@@ -104,6 +121,7 @@ def record_usage(adapter_id: str, tokens_used: int, db_path: Optional[str] = Non
         with get_db_connection(db_path) as conn:
             cursor = conn.cursor()
             today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+            timestamp = datetime.now(timezone.utc).isoformat()
 
             cursor.execute(
                 "SELECT tokens_used_today, last_reset_date FROM quota_ledger WHERE adapter_id = ?",
@@ -113,10 +131,15 @@ def record_usage(adapter_id: str, tokens_used: int, db_path: Optional[str] = Non
 
             if row:
                 used, last_reset = row
-                new_used = (used + tokens_used) if last_reset == today else tokens_used
+                previous_total = used if last_reset == today else 0
+                new_used = previous_total + tokens_used
                 cursor.execute(
                     "UPDATE quota_ledger SET tokens_used_today = ?, last_reset_date = ? WHERE adapter_id = ?",
                     (new_used, today, adapter_id)
+                )
+                cursor.execute(
+                    "INSERT INTO quota_audit (adapter_id, timestamp, tokens_delta, operation, previous_total, new_total) VALUES (?, ?, ?, ?, ?, ?)",
+                    (adapter_id, timestamp, tokens_used, 'usage', previous_total, new_used)
                 )
     except sqlite3.Error as e:
         raise QuotaLedgerError(f"Database error during usage recording: {e}") from e
