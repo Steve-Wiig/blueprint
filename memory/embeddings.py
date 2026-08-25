@@ -80,6 +80,26 @@ class EmbeddingService:
         except Exception:
             raise RuntimeError(f"Library code called exit(1)")
 
+    def _encode_batch(self, texts: List[str], prefix: str) -> np.ndarray:
+        """Encode a batch of texts with prefix into embedding vectors.
+
+        Args:
+            texts: List of input texts to encode.
+            prefix: Prefix to apply idempotently to each text.
+
+        Returns:
+            np.ndarray: 2D array of shape (n_texts, 768) with float32 embeddings.
+
+        Raises:
+            RuntimeError: If encoding fails.
+        """
+        try:
+            processed = [self._apply_prefix(text, prefix) for text in texts]
+            embeddings = self.model.encode(processed)
+            return embeddings.astype(np.float32, copy=False)
+        except Exception:
+            raise RuntimeError(f"Library code called exit(1)")
+
     def embed_document(self, text: str) -> np.ndarray:
         """Encode a document text into a 768-dim embedding vector.
 
@@ -128,6 +148,56 @@ class EmbeddingService:
         """
         return self._encode(text, self.PREFIX_QUERY)
 
+    def embed_documents(self, texts: List[str]) -> np.ndarray:
+        """Encode a batch of document texts into 768-dim embedding vectors.
+
+        Applies the document prefix idempotently to each text before encoding.
+        Uses SentenceTransformer's native batch encoding for throughput.
+
+        Args:
+            texts: List of document texts to embed.
+
+        Returns:
+            np.ndarray: 2D array of shape (n_texts, 768) with float32 embeddings.
+
+        Raises:
+            RuntimeError: If encoding fails.
+
+        Example:
+            >>> service = EmbeddingService()
+            >>> vecs = service.embed_documents(["doc 1", "doc 2"])
+            >>> vecs.shape
+            (2, 768)
+            >>> vecs.dtype
+            dtype('float32')
+        """
+        return self._encode_batch(texts, self.PREFIX_DOC)
+
+    def embed_queries(self, texts: List[str]) -> np.ndarray:
+        """Encode a batch of query texts into 768-dim embedding vectors.
+
+        Applies the query prefix idempotently to each text before encoding.
+        Uses SentenceTransformer's native batch encoding for throughput.
+
+        Args:
+            texts: List of query texts to embed.
+
+        Returns:
+            np.ndarray: 2D array of shape (n_texts, 768) with float32 embeddings.
+
+        Raises:
+            RuntimeError: If encoding fails.
+
+        Example:
+            >>> service = EmbeddingService()
+            >>> vecs = service.embed_queries(["query 1", "query 2"])
+            >>> vecs.shape
+            (2, 768)
+            >>> vecs.dtype
+            dtype('float32')
+        """
+        return self._encode_batch(texts, self.PREFIX_QUERY)
+
 
 if __name__ == "__main__":
     # Self-test for deployment validation
@@ -136,3 +206,16 @@ if __name__ == "__main__":
     assert len(test_vec) == 768, 'Dimension mismatch'
     assert isinstance(test_vec, np.ndarray), 'Expected numpy array'
     assert test_vec.dtype == np.float32, 'Expected float32'
+    
+    # Batch encoding tests
+    doc_vecs = service.embed_documents(["doc 1", "doc 2", "doc 3"])
+    assert doc_vecs.shape == (3, 768), 'Batch document shape mismatch'
+    assert doc_vecs.dtype == np.float32, 'Expected float32'
+    
+    query_vecs = service.embed_queries(["query 1", "query 2"])
+    assert query_vecs.shape == (2, 768), 'Batch query shape mismatch'
+    assert query_vecs.dtype == np.float32, 'Expected float32'
+    
+    # Idempotent prefix test for batch
+    prefixed_docs = service.embed_documents(["search_document: already prefixed", "not prefixed"])
+    assert prefixed_docs.shape == (2, 768), 'Idempotent batch shape mismatch'
