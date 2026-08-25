@@ -104,7 +104,7 @@ def get_mock_response(status_code: int) -> MockResponse:
     return MockResponse(status_code)
 
 
-def check_service(service: str, cfg: dict, lab_url: str, dry_run: bool = False) -> bool:
+def check_service(service: str, cfg: dict, lab_url: str, session: requests.Session | None, dry_run: bool = False) -> bool:
     """
     Verify credential permissions for a single service.
 
@@ -119,6 +119,7 @@ def check_service(service: str, cfg: dict, lab_url: str, dry_run: bool = False) 
             - forbidden: Forbidden action endpoint path
             - forbidden_method: HTTP method for forbidden action
         lab_url: Base URL of the lab environment.
+        session: requests.Session for connection reuse, or None for dry-run.
         dry_run: If True, use mock responses instead of real requests.
 
     Returns:
@@ -141,8 +142,8 @@ def check_service(service: str, cfg: dict, lab_url: str, dry_run: bool = False) 
             read_resp = get_mock_response(200)
             forbidden_resp = get_mock_response(403)
         else:
-            read_resp = requests.get(read_url, auth=auth, timeout=10, verify=False)
-            forbidden_resp = requests.request(cfg["forbidden_method"], forbidden_url, auth=auth, timeout=10, verify=False)
+            read_resp = session.get(read_url, auth=auth, timeout=10, verify=False)
+            forbidden_resp = session.request(cfg["forbidden_method"], forbidden_url, auth=auth, timeout=10, verify=False)
 
         if read_resp.status_code not in SUCCESS_CODES:
             logging.error("FAIL: %s read access denied: %s", service, read_resp.status_code)
@@ -193,10 +194,15 @@ def main() -> int:
         logging.error("CONFIG ERROR: LAB_URL is not set")
         return 2
 
+    session = None if args.dry_run else requests.Session()
     all_pass = True
-    for service, cfg in config.items():
-        if not check_service(service, cfg, lab_url, args.dry_run):
-            all_pass = False
+    try:
+        for service, cfg in config.items():
+            if not check_service(service, cfg, lab_url, session, args.dry_run):
+                all_pass = False
+    finally:
+        if session:
+            session.close()
 
     return 0 if all_pass else 1
 
