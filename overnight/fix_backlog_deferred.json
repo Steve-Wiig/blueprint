@@ -1,0 +1,597 @@
+[
+  {
+    "file": "tools/wiki_sanitization_check.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "informational",
+      "line_start": 56,
+      "line_end": 82,
+      "description": "Blueprint AMEND-64 says 'No sys.exit()/exit() in library code \u2014 use raise RuntimeError()' but this is a CLI entry point, not library code - current pattern creates confusing stack traces",
+      "suggestion": "Since this is a CLI tool (has __main__), use sys.exit() directly in main() for clean exits; reserve RuntimeError for actual library functions",
+      "impact": "low",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/intake_wazuh.py",
+    "issue": {
+      "category": "performance",
+      "severity": "medium",
+      "line_start": 62,
+      "line_end": 62,
+      "description": "Entire payload stored as JSON blob in triage_queue.payload column prevents efficient SQL querying on fields like src_ip, dst_ip, rule_id",
+      "suggestion": "Normalize schema: add columns for frequently queried fields (src_ip, dst_ip, rule_id, agent) and keep JSON blob for full payload; create indexes on query columns",
+      "impact": "medium",
+      "effort": "medium"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/queue_manager.py",
+    "issue": {
+      "category": "performance",
+      "severity": "medium",
+      "line_start": 71,
+      "line_end": 86,
+      "description": "reap_stale_jobs lacks index on lease_expires_at for the WHERE clause. Full table scan on processing jobs as queue grows.",
+      "suggestion": "Add CREATE INDEX IF NOT EXISTS idx_triage_queue_lease ON triage_queue (status, lease_expires_at) in _init_schema.",
+      "impact": "medium",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/queue_manager.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "medium",
+      "line_start": 1,
+      "line_end": 98,
+      "description": "No type hints on any method signatures. Reduces IDE support, makes refactoring risky, and obscures expected types (e.g., payload_ref could be str, dict, bytes).",
+      "suggestion": "Add type hints: def enqueue(self, severity: str, payload_ref: str) -> int, def claim_job(self, worker_id: str) -> Optional[int], etc. Use typing.Optional, typing.Literal for severity/status enums.",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/queue_manager.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "medium",
+      "line_start": 12,
+      "line_end": 98,
+      "description": "No docstrings for public methods. Unclear contract: what does enqueue return (0/1)? What exceptions can claim_job raise? What does heartbeat do on missing job?",
+      "suggestion": "Add Google/NumPy style docstrings for each public method documenting params, returns, raises, and side effects.",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/queue_manager.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "medium",
+      "line_start": 1,
+      "line_end": 98,
+      "description": "Missing append-only audit patterns per Section 30. No audit trail for job state transitions (pending->processing->completed/failed). Critical for SOC handoffs and compliance.",
+      "suggestion": "Add audit_log table with (job_id, from_status, to_status, worker_id, timestamp, reason). Insert audit row on every status change in claim_job, heartbeat, reap_stale_jobs, complete_job.",
+      "impact": "medium",
+      "effort": "medium"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/queue_manager.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 12,
+      "line_end": 25,
+      "description": "Magic strings for severity and status scattered across SQL and Python. Typos won't be caught until runtime. No central definition.",
+      "suggestion": "Define class-level enums or constants: class Severity(Enum), class Status(Enum). Use them in CHECK constraints via migration or application-level validation.",
+      "impact": "low",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/queue_manager.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "low",
+      "line_start": 1,
+      "line_end": 3,
+      "description": "datetime imported but not used with timezone.utc per AMEND-63. Code relies on SQLite's CURRENT_TIMESTAMP which uses UTC but application logic should use timezone-aware datetimes if doing any time math in Python.",
+      "suggestion": "If Python datetime used for lease calculations, use datetime.now(timezone.utc). Remove unused datetime import if only SQLite time is used.",
+      "impact": "low",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/quota_ledger.py",
+    "issue": {
+      "description": "RuntimeError messages like 'Library code called exit(2)' are misleading - they're not exit calls but exception raises. Confuses debugging and log analysis.",
+      "category": "maintainability",
+      "severity": "medium",
+      "suggestion": "Define custom exceptions (QuotaExceededError, AdapterNotFoundError, DatabaseError) with meaningful messages; let CLI main() catch and sys.exit() with codes"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/quota_ledger.py",
+    "issue": {
+      "description": "Module-level constant DB_PATH causes module-level side effect (file path resolution) - violates 'No module-level side effects' rule",
+      "category": "blueprint_compliance",
+      "severity": "medium",
+      "suggestion": "Move DB_PATH resolution into functions or make it a parameter; use lazy initialization"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/writeback/so_cases.py",
+    "issue": {
+      "description": "No connection pooling: creates new TCP connection for each API call, inefficient for repeated use",
+      "category": "performance",
+      "severity": "low",
+      "suggestion": "Use requests.Session() for connection reuse if this adapter is called repeatedly in same process"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/writeback/thehive.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "medium",
+      "line_start": 24,
+      "line_end": 27,
+      "description": "No validation of required fields in case_data (title, description, etc.) before sending to API",
+      "suggestion": "Add schema validation (pydantic/jsonschema) for case_data structure before sanitization",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "orchestrator/context_stitcher.py",
+    "issue": {
+      "category": "performance",
+      "severity": "medium",
+      "line_start": 9,
+      "line_end": 9,
+      "description": "Creates new database connection on every function call. No connection pooling causes high latency and connection overhead under load.",
+      "suggestion": "Implement connection pooling using psycopg2.pool.ThreadedConnectionPool or use a singleton pool initialized at module load.",
+      "impact": "high",
+      "effort": "medium"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/dynamic_vram_budget_check.py",
+    "issue": {
+      "description": "argparse defined but not passed to main(); dry-run logic duplicated instead of using parsed args",
+      "category": "maintainability",
+      "severity": "low",
+      "suggestion": "Pass args to main(args) or use parsed args directly in main()"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/embedding_prefix_check.py",
+    "issue": {
+      "category": "performance",
+      "severity": "low",
+      "line_start": 9,
+      "line_end": 12,
+      "description": "Global 'calls' list grows unbounded if script is imported multiple times or used in a loop, causing memory leak",
+      "suggestion": "Move calls list inside main() or clear it at start of main(). Better: use a local closure variable.",
+      "impact": "low",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "orchestrator/context_stitcher.py",
+    "issue": {
+      "category": "performance",
+      "severity": "medium",
+      "line_start": 12,
+      "line_end": 12,
+      "description": "A new PostgreSQL connection is opened on every function call, causing unnecessary latency under load.",
+      "suggestion": "Introduce a connection pool (e.g., `psycopg2.pool.ThreadedConnectionPool`) and reuse connections.",
+      "impact": "medium",
+      "effort": "medium"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/embedding_prefix_check.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "medium",
+      "line_start": 10,
+      "line_end": 14,
+      "description": "The script uses a global list 'calls' to capture encoder inputs, which introduces hidden state and makes the function non-reentrant and difficult to test in parallel.",
+      "suggestion": "Move 'calls' into main or pass a mutable container to fake_encode, or use a local list.",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/queue_backpressure_check.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "medium",
+      "line_start": 10,
+      "line_end": 12,
+      "description": "Hardcoded configuration values for MAX_QUEUE_DEPTH and BACKPRESSURE_THRESHOLD should be defined in environment variables or a configuration file to align with blueprint requirements.",
+      "suggestion": "Define MAX_QUEUE_DEPTH and BACKPRESSURE_THRESHOLD as environment variables.",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/queue_stale_recovery_check.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "medium",
+      "line_start": 44,
+      "line_end": 44,
+      "description": "Use of sys.exit() in library code violates blueprint requirement",
+      "suggestion": "Replace sys.exit(main()) with a raise RuntimeError(main()) or let the caller handle the exit.",
+      "impact": "medium",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/sanitization_entropy_check.py",
+    "issue": {
+      "description": "The entropy threshold (ENTROPY_THRESHOLD = 4.5) is hard-coded, making it difficult to tune for different environments.",
+      "category": "maintainability",
+      "severity": "medium",
+      "suggestion": "Expose the threshold as a command-line argument (--entropy-threshold) with a sensible default, and store the value in a constant that can be overridden via environment variable or config file."
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/enrichment_scheduler.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "medium",
+      "line_start": 71,
+      "line_end": 77,
+      "description": "Quota mutations (`update_quota`) are performed without an audit trail, violating the \"append\u2011only audit patterns\" requirement.",
+      "suggestion": "Insert an audit record into an `audit_log` table after each quota update, e.g., `INSERT INTO audit_log (provider, change, timestamp) VALUES (?, ?, CURRENT_TIMESTAMP);` using the same SQLite connection.",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/hash_chain_sealer.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "medium",
+      "line_start": 24,
+      "line_end": 97,
+      "description": "Function seal_audit_chain is 73 lines and handles connection, locking, querying, hashing, and insertion. Violates single responsibility principle. Hard to test, debug, and maintain.",
+      "suggestion": "Split into: get_last_chain_state(), fetch_pending_batches(), compute_chain_hashes(), insert_chain_links(). Each with clear inputs/outputs. Use dependency injection for database connection.",
+      "impact": "medium",
+      "effort": "medium"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/intake_wazuh.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 22,
+      "line_end": 23,
+      "description": "Hardcoded default paths for DB and log file reduce portability and testability",
+      "suggestion": "Keep env var overrides but consider config file or centralized config module for defaults",
+      "impact": "low",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/ioc_extractor.py",
+    "issue": {
+      "category": "performance",
+      "severity": "medium",
+      "line_start": 60,
+      "line_end": 60,
+      "description": "No connection pooling - new connection per extraction call",
+      "suggestion": "Use psycopg2.pool.ThreadedConnectionPool or external pooler (PgBouncer) for high-throughput scenarios",
+      "impact": "medium",
+      "effort": "medium"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/queue_manager.py",
+    "issue": {
+      "category": "performance",
+      "severity": "medium",
+      "line_start": 109,
+      "line_end": 140,
+      "description": "claim_job uses SELECT then UPDATE (two round trips). Could use single atomic UPDATE ... RETURNING id (SQLite 3.35+) to claim and return in one step.",
+      "suggestion": "Replace SELECT+UPDATE with: UPDATE triage_queue SET status='processing', ... WHERE id = (SELECT id FROM triage_queue WHERE status='pending' ORDER BY ... LIMIT 1) RETURNING id;",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/queue_manager.py",
+    "issue": {
+      "category": "performance",
+      "severity": "medium",
+      "line_start": 154,
+      "line_end": 175,
+      "description": "reap_stale_jobs executes two separate UPDATE statements. Can combine into single statement with CASE expression.",
+      "suggestion": "Use single UPDATE with CASE: SET status = CASE WHEN attempts < ? THEN 'pending' ELSE 'failed' END, ... WHERE status='processing' AND lease_expires_at < CURRENT_TIMESTAMP;",
+      "impact": "low",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/queue_manager.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "medium",
+      "line_start": 30,
+      "line_end": 32,
+      "description": "Hardcoded configuration (lease_interval, max_attempts, emergency_depth) prevents environment-specific tuning without code changes.",
+      "suggestion": "Add parameters to __init__ with defaults: def __init__(self, db_path='soc_triage.db', lease_interval=900, max_attempts=3, emergency_depth=1000):",
+      "impact": "medium",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/queue_manager.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 1,
+      "line_end": 3,
+      "description": "datetime imported but not used with timezone.utc. Code relies on SQLite's CURRENT_TIMESTAMP (local time). Inconsistent with AMEND-63 guidance.",
+      "suggestion": "Remove unused datetime import or use datetime.now(timezone.utc) for Python-side timestamps. Prefer UTC everywhere.",
+      "impact": "low",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/queue_manager.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "low",
+      "line_start": 28,
+      "line_end": 33,
+      "description": "Default db_path='soc_triage.db' creates file on disk. For testing/library use, should default to ':memory:' per AMEND-65 (use real :memory: databases).",
+      "suggestion": "Change default to ':memory:' or require explicit path. Document that file path is for production only.",
+      "impact": "low",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/writeback/pfsense_alias.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "medium",
+      "line_start": 14,
+      "line_end": 14,
+      "description": "Hardcoded DB_PATH prevents use of :memory: databases for testing per AMEND-65",
+      "suggestion": "Accept database path as parameter to init_db() and store_proposal(), default to environment variable",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/writeback/so_cases.py",
+    "issue": {
+      "category": "performance",
+      "severity": "low",
+      "line_start": 61,
+      "line_end": 61,
+      "description": "No connection pooling or session reuse; new TCP/TLS handshake per call",
+      "suggestion": "Use requests.Session() with connection pooling; create session at module level or pass as parameter",
+      "impact": "low",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "memory/retention.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "medium",
+      "line_start": 6,
+      "line_end": 7,
+      "description": "Hardcoded paths ARCHIVE_BASE and CMR_MOUNT at module level. Violates blueprint 'no module-level side effects' and makes testing/deployment difficult.",
+      "suggestion": "Move to configuration file or environment variables. Pass as parameters to functions.",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "memory/retention.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "medium",
+      "line_start": 1,
+      "line_end": 84,
+      "description": "No type hints, no docstrings, mixed concerns (CLI, DB, filesystem, subprocess). Difficult to test and maintain.",
+      "suggestion": "Add type hints to all functions. Add module and function docstrings. Separate concerns: archive logic, retention policy, CLI entry point.",
+      "impact": "medium",
+      "effort": "medium"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "orchestrator/context_stitcher.py",
+    "issue": {
+      "category": "performance",
+      "severity": "medium",
+      "line_start": 23,
+      "line_end": 23,
+      "description": "json.dumps(query_embedding) for vector parameter; inefficient and may cause type mismatch with pgvector",
+      "suggestion": "Register vector adapter: from psycopg2.extras import register_vector; register_vector(conn); then pass list directly: (query_embedding, cutoff_date, top_k)",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/embedding_prefix_check.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "medium",
+      "line_start": 9,
+      "line_end": 9,
+      "description": "Global mutable 'calls' list creates fragile test coupling and prevents parallel execution",
+      "suggestion": "Replace with a callable class or closure that encapsulates call tracking state",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/hash_chain_verify.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 10,
+      "line_end": 15,
+      "description": "compute_row_hash creates new dict allocation for each row - minor performance impact",
+      "suggestion": "Consider using a tuple of sorted items or pre-allocated buffer for high-volume chains",
+      "impact": "low",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/queue_stale_recovery_check.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "medium",
+      "line_start": 59,
+      "line_end": 59,
+      "description": "sys.exit() used in library code; blueprint AMEND-64 requires raise RuntimeError() instead of sys.exit()/exit()",
+      "suggestion": "Replace sys.exit(main()) with: raise RuntimeError(f'Queue recovery check failed with exit code {main()}') or restructure as CLI-only script",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/sanitization_field_policy_check.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "informational",
+      "line_start": 1,
+      "line_end": 72,
+      "description": "No append-only audit logging for policy check results - blueprint Section 30 requires audit patterns for handoffs/corrections",
+      "suggestion": "Add optional --audit-log argument to write JSONL audit records with timestamp, schema path, result, violations found",
+      "impact": "low",
+      "effort": "medium"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/wiki_sanitization_check.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "informational",
+      "line_start": 56,
+      "line_end": 58,
+      "description": "Dry-run success path raises RuntimeError('Library code called exit(0)') instead of returning cleanly. While AMEND-64 permits raise RuntimeError over sys.exit, this pattern prints stack trace on success, polluting CI logs.",
+      "suggestion": "Return exit code from main() and let __main__ block call sys.exit(main()). Or use sys.exit(0) directly in __main__ since this is a CLI entry point, not library code.",
+      "impact": "low",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/wiki_sanitization_check.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "informational",
+      "line_start": 74,
+      "line_end": 74,
+      "description": "File read error raises RuntimeError('Library code called exit(2)') with simulated exit code. Same stack trace issue as dry-run. Not a library - it's a CLI tool.",
+      "suggestion": "Use sys.exit(2) directly in __main__ block after main() returns error code. Or have main() return int exit code.",
+      "impact": "low",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/wiki_sanitization_check.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "informational",
+      "line_start": 82,
+      "line_end": 82,
+      "description": "Final exit raises RuntimeError with simulated sys.exit(). Blueprint AMEND-64 targets library code; this is a CLI script entry point where sys.exit() is appropriate.",
+      "suggestion": "Change main() to return exit_code. In __main__: sys.exit(main()). Remove all raise RuntimeError exit simulations.",
+      "impact": "low",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  }
+]

@@ -13,8 +13,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 QUOTA_FILE = Path(__file__).resolve().parent / "openrouter_quota.json"
-DAILY_LIMIT = 50
-LOCK_HOURS = 24
+DAILY_LIMIT = 1000  # Funded tier (was 50 for free tier)
+LOCK_HOURS = 1  # Funded tier: 1h lock on 429 (was 24h for free tier)
 
 
 def _load():

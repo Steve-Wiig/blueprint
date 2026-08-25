@@ -11,6 +11,9 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from overnight.llm_client import generate_with_critique, load_api_keys, strip_fences
 
 try:
@@ -84,6 +87,15 @@ def main():
     
     tasks = json.loads(tasks_file.read_text())
     open_tasks = [t for t in tasks if t.get("status") == "open"]
+
+    # Normalize: generator expects 'description'; v11.8 schema uses 'prompt_hint'
+    for t in open_tasks:
+        if not t.get("description"):
+            t["description"] = (
+                t.get("prompt_hint")
+                or t.get("contract")
+                or f"Generate {t.get('target', 'document')}"
+            )
     
     print("=" * 70)
     print(f"DOCUMENTATION/CONFIG GENERATION")
@@ -139,7 +151,7 @@ RULES:
             print(f"    Attempt {attempt}/{MAX_ATTEMPTS}...")
             
             api_keys = load_api_keys()
-        response = generate_with_critique(prompt, task["description"], api_keys, model_type="docs")
+            response = generate_with_critique(prompt, task["description"], api_keys, model_type="docs")
             if not response:
                 print(f"    ⚠️  Empty response")
                 time.sleep(RATE_LIMIT_SLEEP)

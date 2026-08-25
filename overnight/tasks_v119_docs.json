@@ -1,0 +1,54 @@
+[
+  {
+    "id": "T-312",
+    "type": "expand_runbook",
+    "target": "docs/operator_manual.md",
+    "contract": "sections/s32_deployment_readiness.md",
+    "prompt_hint": "Write a comprehensive operator manual in Markdown. Cover: system overview, hardware requirements (Section 28), database setup, running intake adapters, monitoring the triage queue, running retention cron, checking hash-chain integrity, troubleshooting common failures. Reference specific scripts and exit codes. Minimum 80 lines. Update for v11.9: include the overnight self-improving pipeline (overnight/self_improver.py, llm_client.py multi-provider fallback and rate-limit management, openrouter_quota.py, fix_backlog.json) where relevant.",
+    "priority": 12,
+    "status": "done"
+  },
+  {
+    "id": "T-313",
+    "type": "expand_runbook",
+    "target": "docs/deployment_runbook.md",
+    "contract": "sections/s32_deployment_readiness.md",
+    "prompt_hint": "Write a step-by-step deployment runbook in Markdown. Cover: prerequisites, VM setup, PostgreSQL with pgvector installation, zstd setup, CMR HDD mount, database schema migration (memory/schema/*.sql), config file placement, service startup order, smoke tests using tools/*_check.py scripts, spike validation (R-001 through R-117). Minimum 60 lines. Update for v11.9: include the overnight self-improving pipeline (overnight/self_improver.py, llm_client.py multi-provider fallback and rate-limit management, openrouter_quota.py, fix_backlog.json) where relevant.",
+    "priority": 13,
+    "status": "done"
+  },
+  {
+    "id": "T-801",
+    "type": "generate_docs",
+    "target": "docs/ARCHITECTURE.md",
+    "prompt_hint": "Generate a comprehensive architecture document for LOCAL-SOC-SLM. Describe: 1) Data flow from Wazuh intake to TheHive writeback, 2) The sanitization pipeline and quarantine mechanism, 3) The triage queue with backpressure and shedding, 4) The hash chain audit trail, 5) The memory/RAG layer. Use mermaid diagrams. Output ONLY valid Markdown. Update for v11.9: include the overnight self-improving pipeline (overnight/self_improver.py, llm_client.py multi-provider fallback and rate-limit management, openrouter_quota.py, fix_backlog.json) where relevant.",
+    "priority": 1,
+    "status": "done"
+  },
+  {
+    "id": "T-802",
+    "type": "generate_docs",
+    "target": "docs/OPERATIONS_RUNBOOK.md",
+    "prompt_hint": "Generate an operations runbook for LOCAL-SOC-SLM. Cover: 1) Starting/stopping services, 2) Checking queue health, 3) Monitoring hash chain integrity, 4) Handling quarantine overflow, 5) Recovering from worker crashes, 6) Rotating API keys. Use step-by-step procedures with exact commands. Output ONLY valid Markdown. Update for v11.9: include the overnight self-improving pipeline (overnight/self_improver.py, llm_client.py multi-provider fallback and rate-limit management, openrouter_quota.py, fix_backlog.json) where relevant.",
+    "priority": 2,
+    "status": "done"
+  },
+  {
+    "id": "T-803",
+    "type": "generate_docs",
+    "target": "docs/LAB_SETUP_GUIDE.md",
+    "prompt_hint": "Generate a detailed lab setup guide for LOCAL-SOC-SLM. Cover: 1) Hardware requirements (RAM, CPU, storage), 2) Docker compose stack (Wazuh, TheHive, Suricata, PostgreSQL+pgvector), 3) Network topology and port mappings, 4) Initial configuration steps, 5) Verification checklist. Include exact docker-compose.yml snippets. Output ONLY valid Markdown. Update for v11.9: include the overnight self-improving pipeline (overnight/self_improver.py, llm_client.py multi-provider fallback and rate-limit management, openrouter_quota.py, fix_backlog.json) where relevant.",
+    "priority": 3,
+    "status": "done"
+  },
+  {
+    "type": "expand_runbook",
+    "target": "docs/OVERNIGHT_PIPELINE.md",
+    "contract": "sections/s32_deployment_readiness.md",
+    "prompt_hint": "Write docs/OVERNIGHT_PIPELINE.md \u2014 full architecture and operations guide for the v11.9 overnight self-improving pipeline. Cover: overnight/self_improver.py (Phase A Gemini pre-fill, Phase B analysis with OpenRouter->Groq fallback, Phase C backlog drain); overnight/llm_client.py (multi-provider fallback chain, token-aware pacing, cooldown tracking, exponential backoff, rate-limit header pre-emption, model curation); overnight/openrouter_quota.py (50 RPD tracking, 24h lock, UTC rollover, atomic writes); disk-backed advisory queue and fix_backlog.json (crash resilience, decoupled analysis/fixing); the apply_auto_fix safety contract (pytest gate, .orig_backup crash recovery, git no-op detection, 120s timeout); cross-model validation (Gemini critique catches hallucinations). Include an operations runbook: launch commands, monitoring one-liners, budget checks, and safety guarantees (test-gated commits only, no network mutations).",
+    "priority": 12,
+    "status": "done",
+    "id": "T-1191",
+    "description": "Write docs/OVERNIGHT_PIPELINE.md \u2014 full architecture and operations guide for the v11.9 overnight self-improving pipeline. Cover: overnight/self_improver.py (Phase A Gemini pre-fill, Phase B analysis with OpenRouter->Groq fallback, Phase C backlog drain); overnight/llm_client.py (multi-provider fallback chain, token-aware pacing, cooldown tracking, exponential backoff, rate-limit header pre-emption, model curation); overnight/openrouter_quota.py (50 RPD tracking, 24h lock, UTC rollover, atomic writes); disk-backed advisory queue and fix_backlog.json (crash resilience, decoupled analysis/fixing); the apply_auto_fix safety contract (pytest gate, .orig_backup crash recovery, git no-op detection, 120s timeout); cross-model validation (Gemini critique catches hallucinations). Include an operations runbook: launch commands, monitoring one-liners, budget checks, and safety guarantees (test-gated commits only, no network mutations)."
+  }
+]

@@ -1,1 +1,1 @@
-{"timestamp": 1787504952.6663961, "models": ["groq/compound", "openai/gpt-oss-120b", "qwen/qwen3.6-27b", "openai/gpt-oss-20b", "groq/compound-mini", "openai/gpt-oss-safeguard-20b"]}
+{"timestamp": 1787574207.4180574, "models": ["openai/gpt-oss-120b", "groq/compound-mini", "groq/compound", "openai/gpt-oss-20b", "qwen/qwen3.6-27b", "openai/gpt-oss-safeguard-20b"]}

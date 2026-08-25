@@ -178,7 +178,7 @@ def _call_openrouter(prompt, api_key, model=None, system_prompt=None, max_tokens
     """Call OpenRouter with dynamic model fallback on rate limits."""
     global _current_model, _calls_since_primary_check
 
-    # Hard 50 RPD limit — skip entirely if exhausted/locked
+    # Hard RPD limit (funded tier: 1000) — skip entirely if exhausted/locked
     from overnight import openrouter_quota
     if not openrouter_quota.is_available():
         print(f"    🔒 OpenRouter locked/exhausted ({openrouter_quota.remaining()} left) — skipping")
@@ -243,7 +243,7 @@ def _call_openrouter(prompt, api_key, model=None, system_prompt=None, max_tokens
                 return content
 
             elif resp.status_code == 429:
-                print(f"    ⚠️  {try_model} rate-limited. Instantly locking OpenRouter for 24h.")
+                print(f"    ⚠️  {try_model} rate-limited. Locking OpenRouter (duration per openrouter_quota.LOCK_HOURS).")
                 openrouter_quota.force_lock(f"429 on {try_model}")
                 break  # STOP trying other OpenRouter models, quota is exhausted!
 
