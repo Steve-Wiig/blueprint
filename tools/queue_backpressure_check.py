@@ -9,19 +9,19 @@ import argparse
 import logging
 import requests
 import json
+from enum import Enum
 
 # Blueprint v11.6.0 Constants (configurable via environment variables)
 MAX_QUEUE_DEPTH = int(os.getenv('MAX_QUEUE_DEPTH', '1000'))
 BACKPRESSURE_THRESHOLD = float(os.getenv('BACKPRESSURE_THRESHOLD', '0.85'))
 QUEUE_API_ENDPOINT = os.getenv('QUEUE_API_ENDPOINT', '/api/v1/queue/status')
 
-ERROR_CODES = {
-    'SUCCESS': 0,
-    'API_ERROR': 1,
-    'CONFIG_ERROR': 2,
-    'TOKEN_MISSING': 3,
-    'API_RESPONSE_ERROR': 4
-}
+class ExitCode(Enum):
+    SUCCESS = 0
+    API_ERROR = 1
+    CONFIG_ERROR = 2
+    TOKEN_MISSING = 3
+    API_RESPONSE_ERROR = 4
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,18 +37,18 @@ def check_backpressure(lab_url: str | None, dry_run: bool = False) -> int:
     """
     if not lab_url:
         logger.error("CONFIG ERROR: LAB_URL not defined")
-        return ERROR_CODES['CONFIG_ERROR']
+        return ExitCode.CONFIG_ERROR.value
 
     if dry_run:
         logger.info("DRY-RUN: Skipping network request. Simulating healthy queue.")
-        return ERROR_CODES['SUCCESS']
+        return ExitCode.SUCCESS.value
 
     try:
         # [LAB-VERIFY] Queue status requires internal service token
         token = os.getenv("QUEUE_SERVICE_TOKEN")
         if not token:
             logger.error("ENV_NOT_AVAILABLE: QUEUE_SERVICE_TOKEN missing")
-            return ERROR_CODES['TOKEN_MISSING']
+            return ExitCode.TOKEN_MISSING.value
 
         headers = {"Authorization": f"Bearer {token}"}
         response = requests.get(f"{lab_url.rstrip('/')}{QUEUE_API_ENDPOINT}", 
@@ -56,7 +56,7 @@ def check_backpressure(lab_url: str | None, dry_run: bool = False) -> int:
         
         if response.status_code != 200:
             logger.error("FAIL: Queue API returned %s", response.status_code)
-            return ERROR_CODES['API_ERROR']
+            return ExitCode.API_ERROR.value
 
         data = response.json()
         current_depth = data.get("depth", 0)
@@ -66,20 +66,20 @@ def check_backpressure(lab_url: str | None, dry_run: bool = False) -> int:
         if current_depth > int(MAX_QUEUE_DEPTH * BACKPRESSURE_THRESHOLD):
             if not backpressure_active:
                 logger.error("FAIL: Backpressure not triggered at depth %s", current_depth)
-                return ERROR_CODES['API_ERROR']
+                return ExitCode.API_ERROR.value
         
         logger.info("PASS: Queue depth %s within operational limits.", current_depth)
-        return ERROR_CODES['SUCCESS']
+        return ExitCode.SUCCESS.value
 
     except requests.RequestException as e:
         logger.error("FAIL: Connection error: %s", e)
-        return ERROR_CODES['API_ERROR']
+        return ExitCode.API_ERROR.value
     except (ValueError, KeyError, TypeError, json.JSONDecodeError) as e:
         logger.error("FAIL: Response parsing error: %s", e)
-        return ERROR_CODES['API_RESPONSE_ERROR']
+        return ExitCode.API_RESPONSE_ERROR.value
     except Exception as e:
         logger.error("FAIL: Unexpected error: %s", e)
-        return ERROR_CODES['API_ERROR']
+        return ExitCode.API_ERROR.value
 
 def main() -> int:
     """Entry point for CI gate. Returns 0 on success, non-zero on failure."""
