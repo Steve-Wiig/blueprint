@@ -98,9 +98,6 @@ def main() -> int:
             EXIT_PASS (0) - PASS: All integrity checks passed
             EXIT_FAIL_INTEGRITY (1) - FAIL: Integrity verification failed
             EXIT_FAIL_JSON (2) - FAIL: Invalid JSON format
-
-    Raises:
-        SystemExit: Exits with the return code from verify_payload().
     """
     ledger_file = os.getenv("LEDGER_PATH", "ledger.json")
     return verify_payload(ledger_file)
