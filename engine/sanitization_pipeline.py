@@ -41,10 +41,46 @@ def _load_analytical_fields() -> set[str]:
     fields = {field.strip() for field in raw.split(',') if field.strip()}
     return fields
 
+def _load_max_quarantine_tokens() -> int:
+    """Load and validate maximum tokens to check for quarantine from environment."""
+    raw = os.getenv('SANITIZER_MAX_QUARANTINE_TOKENS', '100')
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ValueError(f"SANITIZER_MAX_QUARANTINE_TOKENS must be a valid integer, got '{raw}'")
+    if not (1 <= value <= 10000):
+        raise ValueError(f"SANITIZER_MAX_QUARANTINE_TOKENS must be in range [1, 10000], got {value}")
+    return value
+
+def _load_max_quarantine_payload_length() -> int:
+    """Load and validate maximum payload length for quarantine scanning from environment."""
+    raw = os.getenv('SANITIZER_MAX_QUARANTINE_PAYLOAD_LENGTH', '100000')
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ValueError(f"SANITIZER_MAX_QUARANTINE_PAYLOAD_LENGTH must be a valid integer, got '{raw}'")
+    if not (1 <= value <= 10000000):
+        raise ValueError(f"SANITIZER_MAX_QUARANTINE_PAYLOAD_LENGTH must be in range [1, 10000000], got {value}")
+    return value
+
+def _load_diversity_threshold() -> float:
+    """Load and validate character diversity threshold for fast pre-filter from environment."""
+    raw = os.getenv('SANITIZER_DIVERSITY_THRESHOLD', '0.3')
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ValueError(f"SANITIZER_DIVERSITY_THRESHOLD must be a valid float, got '{raw}'")
+    if not (0.0 < value <= 1.0):
+        raise ValueError(f"SANITIZER_DIVERSITY_THRESHOLD must be in range (0.0, 1.0], got {value}")
+    return value
+
 # Module-level constants initialized with validation at import time
 ENTROPY_THRESHOLD: float = _load_entropy_threshold()
 MIN_TOKEN_LENGTH: int = _load_min_token_length()
 ANALYTICAL_FIELDS: set[str] = _load_analytical_fields()
+MAX_QUARANTINE_TOKENS: int = _load_max_quarantine_tokens()
+MAX_QUARANTINE_PAYLOAD_LENGTH: int = _load_max_quarantine_payload_length()
+DIVERSITY_THRESHOLD: float = _load_diversity_threshold()
 
 # Regex patterns for known secret formats
 # Patterns are compiled at module load for performance
@@ -127,6 +163,18 @@ def _check_allowlist(token: str) -> bool:
     """
     return any(p.match(token) for p in ALLOWLIST_PATTERNS_COMPILED.values())
 
+def _quick_diversity_check(token: str) -> bool:
+    """Fast pre-filter: checks if token has sufficient character diversity.
+    
+    Args:
+        token: The token to check.
+        
+    Returns:
+        True if token passes diversity threshold, False otherwise.
+    """
+    unique_chars = len(set(token))
+    return (unique_chars / len(token)) >= DIVERSITY_THRESHOLD
+
 def _should_quarantine(token: str) -> bool:
     """Checks if a token should trigger quarantine (high entropy, not allowlisted).
 
@@ -188,8 +236,25 @@ def apply_quarantine_policy(payload: str, field_path: Optional[str], metadata: D
     is_analytical = field_path in ANALYTICAL_FIELDS
 
     if is_analytical:
+        # Fast pre-filter: skip quarantine scan for very large payloads
+        if len(payload) > MAX_QUARANTINE_PAYLOAD_LENGTH:
+            metadata["sanitization_action"] = "preserve_allowlisted"
+            metadata["quarantine_skipped_reason"] = "payload_too_large"
+            return payload
+        
+        tokens_checked = 0
         for match in TOKEN_PATTERN.finditer(payload):
+            if tokens_checked >= MAX_QUARANTINE_TOKENS:
+                metadata["quarantine_skipped_reason"] = "max_tokens_reached"
+                break
+            
             token = match.group()
+            tokens_checked += 1
+            
+            # Fast pre-filter: check character diversity before expensive entropy calculation
+            if not _quick_diversity_check(token):
+                continue
+                
             if _should_quarantine(token):
                 metadata["sanitization_action"] = "quarantine_ref"
                 metadata["quarantine_reason"] = "high_entropy_analytical_payload"
