@@ -59,7 +59,9 @@ class ModelRegistryClient:
         self._routing_config_path = routing_config_path
         self._routing_config = routing_config
 
-        if (routing_config_path is not None) == (routing_config is not None):
+        if routing_config_path is not None and routing_config is not None:
+            raise ValueError("Exactly one of routing_config_path or routing_config must be provided")
+        if routing_config_path is None and routing_config is None:
             raise ValueError("Exactly one of routing_config_path or routing_config must be provided")
 
     def load_config(self) -> Dict:
