@@ -28,6 +28,8 @@ EXIT_PASS = 0
 EXIT_FAIL_INTEGRITY = 1
 EXIT_FAIL_JSON = 2
 
+SHA256_HEX_LENGTH = 64
+
 
 def verify_payload(ledger_path: str) -> int:
     """Verify the integrity of a payload ledger file.
@@ -78,7 +80,7 @@ def verify_payload(ledger_path: str) -> int:
     computed_hash = hashlib.sha256(payload_content).hexdigest()
     
     # Note: In production, this compares against a signed manifest
-    if len(data.get("integrity_checksum", "")) != 64:
+    if len(data.get("integrity_checksum", "")) != SHA256_HEX_LENGTH:
         print("FAIL: Integrity checksum length mismatch")
         return EXIT_FAIL_INTEGRITY
 
