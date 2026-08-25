@@ -56,21 +56,6 @@
     "issue": {
       "category": "performance",
       "severity": "medium",
-      "line_start": 109,
-      "line_end": 140,
-      "description": "claim_job uses SELECT then UPDATE (two round trips). Could use single atomic UPDATE ... RETURNING id (SQLite 3.35+) to claim and return in one step.",
-      "suggestion": "Replace SELECT+UPDATE with: UPDATE triage_queue SET status='processing', ... WHERE id = (SELECT id FROM triage_queue WHERE status='pending' ORDER BY ... LIMIT 1) RETURNING id;",
-      "impact": "medium",
-      "effort": "small"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/queue_manager.py",
-    "issue": {
-      "category": "performance",
-      "severity": "medium",
       "line_start": 154,
       "line_end": 175,
       "description": "reap_stale_jobs executes two separate UPDATE statements. Can combine into single statement with CASE expression.",

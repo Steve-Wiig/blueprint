@@ -250,27 +250,11 @@ class TriageQueueManager:
         Optional[int]
             The ID of the claimed job, or None if no job is available.
         """
-        # Find the next pending job
-        candidate = self.cursor.execute(
-            """
-            SELECT id FROM triage_queue
-            WHERE status = 'pending'
-            ORDER BY CASE severity
-                WHEN 'critical' THEN 1
-                WHEN 'high' THEN 2
-                WHEN 'medium' THEN 3
-                WHEN 'low' THEN 4
-                ELSE 5 END,
-                created_at ASC
-            LIMIT 1
-            """
-        ).fetchone()
-        if not candidate:
-            logger.debug("No pending jobs available for worker %s", worker_id)
-            return None
-
-        job_id = candidate[0]
-        self.cursor.execute(
+        # Atomic claim: SELECT-then-UPDATE collapsed into one statement
+        # The subquery finds the highest-priority pending job, and the UPDATE
+        # atomically claims it under SQLite's write lock (no race window).
+        # RETURNING id gives us the claimed job without a second query.
+        row = self.cursor.execute(
             """
             UPDATE triage_queue
             SET status = 'processing',
@@ -278,11 +262,29 @@ class TriageQueueManager:
                 attempts = attempts + 1,
                 lease_expires_at = datetime('now', '+15 minutes'),
                 last_modified_by = ?
-            WHERE id = ?
+            WHERE id = (
+                SELECT id FROM triage_queue
+                WHERE status = 'pending'
+                ORDER BY CASE severity
+                    WHEN 'critical' THEN 1
+                    WHEN 'high' THEN 2
+                    WHEN 'medium' THEN 3
+                    WHEN 'low' THEN 4
+                    ELSE 5 END,
+                    created_at ASC
+                LIMIT 1
+            )
+            RETURNING id
             """,
-            (worker_id, job_id),
-        )
+            (worker_id,)
+        ).fetchone()
+
+        if not row:
+            logger.debug("No pending jobs available for worker %s", worker_id)
+            return None
+
         self.conn.commit()
+        job_id = row[0]
         logger.info("Job %d claimed by worker %s", job_id, worker_id)
         return job_id
 
