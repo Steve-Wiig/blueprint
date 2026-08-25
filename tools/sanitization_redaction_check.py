@@ -1,6 +1,6 @@
 import re
 import sys
-from typing import TypedDict, Dict, Pattern
+from typing import TypedDict, Dict, Pattern, Optional
 from enum import IntEnum
 
 
@@ -77,8 +77,85 @@ TEST_PAYLOADS: Dict[str, str] = {
 }
 
 
+class Sanitizer:
+    """Encapsulates secret detection patterns and redaction logic for isolated testing."""
+
+    def __init__(self, patterns: Optional[Dict[str, PatternConfig]] = None):
+        """Initialize sanitizer with custom or default patterns.
+
+        Args:
+            patterns: Optional dict of pattern configurations. If None, uses global PATTERNS.
+        """
+        self._patterns = patterns if patterns is not None else PATTERNS
+        self._compiled_patterns: Dict[str, Pattern[str]] = {
+            k: re.compile(v["pattern"]) for k, v in self._patterns.items()
+        }
+
+    def redact(self, pattern_key: str, text: str) -> str:
+        """Redact sensitive pattern in text, preserving prefix for query/header patterns.
+
+        Args:
+            pattern_key: Key identifying the pattern to redact (must exist in patterns).
+            text: Input text containing potential sensitive data.
+
+        Returns:
+            Text with sensitive portions replaced by "[REDACTED]". For "group" redaction
+            types (auth_header, api_key_query, password_query), the prefix (e.g.,
+            "Authorization: Bearer ", "api_key=", "password=") is preserved.
+
+        Raises:
+            KeyError: If pattern_key is not found in patterns.
+        """
+        pattern = self._compiled_patterns[pattern_key]
+        redaction_type = self._patterns[pattern_key]["redaction_type"]
+        if redaction_type == "group":
+            return pattern.sub(r"\1[REDACTED]", text)
+        return pattern.sub("[REDACTED]", text)
+
+    def run_sanitization_check(self, test_payloads: Optional[Dict[str, str]] = None) -> CheckResult:
+        """Run sanitization verification against known test payloads.
+
+        Validates that all defined patterns:
+        1. Have corresponding test payloads.
+        2. Match their respective test payloads.
+        3. Successfully redact the matched portion (producing "[REDACTED]").
+
+        Args:
+            test_payloads: Optional dict of test payloads. If None, uses global TEST_PAYLOADS.
+
+        Returns:
+            CheckResult enum indicating verification status.
+        """
+        payloads = test_payloads if test_payloads is not None else TEST_PAYLOADS
+        try:
+            if not self._patterns or not payloads:
+                return CheckResult.INTERNAL_ERROR
+
+            for key in self._patterns:
+                payload = payloads.get(key)
+                if not payload:
+                    return CheckResult.PAYLOAD_MISSING
+
+                if not self._compiled_patterns[key].search(payload):
+                    return CheckResult.PATTERN_MISSING
+
+                redacted = self.redact(key, payload)
+                if "[REDACTED]" not in redacted:
+                    return CheckResult.PATTERN_MISSING
+
+            return CheckResult.PASS
+        except MemoryError:
+            return CheckResult.INTERNAL_ERROR
+        except Exception:
+            return CheckResult.PAYLOAD_MISSING
+
+
+# Backward-compatible module-level functions using default sanitizer
+_default_sanitizer = Sanitizer()
+
+
 def redact(pattern_key: str, text: str) -> str:
-    """Redact sensitive pattern in text, preserving prefix for query/header patterns.
+    """Redact sensitive pattern in text using default patterns.
 
     Args:
         pattern_key: Key identifying the pattern to redact (must exist in PATTERNS).
@@ -91,64 +168,17 @@ def redact(pattern_key: str, text: str) -> str:
 
     Raises:
         KeyError: If pattern_key is not found in PATTERNS.
-
-    Example:
-        >>> redact("aws_key", "Key: AKIAIOSFODNN7EXAMPLE")
-        'Key: [REDACTED]'
-        >>> redact("auth_header", "Authorization: Bearer token123")
-        'Authorization: Bearer [REDACTED]'
     """
-    pattern = COMPILED_PATTERNS[pattern_key]
-    redaction_type = PATTERNS[pattern_key]["redaction_type"]
-    if redaction_type == "group":
-        return pattern.sub(r"\1[REDACTED]", text)
-    return pattern.sub("[REDACTED]", text)
+    return _default_sanitizer.redact(pattern_key, text)
 
 
 def run_sanitization_check() -> CheckResult:
-    """Run sanitization verification against known test payloads.
-
-    Validates that all defined patterns:
-    1. Have corresponding test payloads in TEST_PAYLOADS.
-    2. Match their respective test payloads.
-    3. Successfully redact the matched portion (producing "[REDACTED]").
+    """Run sanitization verification against known test payloads using default patterns.
 
     Returns:
-        CheckResult enum indicating verification status:
-        - PASS (0): All patterns validated successfully.
-        - PATTERN_MISSING (1): A pattern failed to match its payload or redact.
-        - PAYLOAD_MISSING (2): A pattern lacks a corresponding test payload.
-        - INTERNAL_ERROR (3): Unexpected error or empty configuration.
-
-    Side Effects:
-        None. Reads global PATTERNS, COMPILED_PATTERNS, and TEST_PAYLOADS.
-
-    Example:
-        >>> result = run_sanitization_check()
-        >>> result == CheckResult.PASS
-        True
+        CheckResult enum indicating verification status.
     """
-    try:
-        if not PATTERNS or not TEST_PAYLOADS:
-            return CheckResult.INTERNAL_ERROR
-
-        for key in PATTERNS:
-            payload = TEST_PAYLOADS.get(key)
-            if not payload:
-                return CheckResult.PAYLOAD_MISSING
-
-            if not COMPILED_PATTERNS[key].search(payload):
-                return CheckResult.PATTERN_MISSING
-
-            redacted = redact(key, payload)
-            if "[REDACTED]" not in redacted:
-                return CheckResult.PATTERN_MISSING
-
-        return CheckResult.PASS
-    except MemoryError:
-        return CheckResult.INTERNAL_ERROR
-    except Exception:
-        return CheckResult.PAYLOAD_MISSING
+    return _default_sanitizer.run_sanitization_check()
 
 
 if __name__ == "__main__":
