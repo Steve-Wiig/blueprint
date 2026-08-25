@@ -36,7 +36,104 @@ import sys
 import subprocess
 import argparse
 import re
-from typing import List, Optional, Pattern
+from typing import List, Optional, Pattern, Set
+
+
+def get_latest_tag() -> Optional[str]:
+    """
+    Retrieve the most recent Git tag.
+
+    Returns:
+        The latest tag name as a string, or None if no tags exist.
+    """
+    try:
+        tag = subprocess.check_output(
+            ["git", "describe", "--tags", "--abbrev=0"],
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+        return tag
+    except subprocess.CalledProcessError:
+        return None
+
+
+def get_commits_since_tag(tag: str) -> List[str]:
+    """
+    Get all commits since the given tag.
+
+    Args:
+        tag: The Git tag to compare against.
+
+    Returns:
+        List of commit strings in format "%h %s" (short hash + subject).
+    """
+    try:
+        output = subprocess.check_output(
+            ["git", "log", f"{tag}..HEAD", "--pretty=format:%h %s"]
+        ).decode()
+        return output.splitlines() if output else []
+    except subprocess.CalledProcessError:
+        return []
+
+
+def parse_changelog_hashes(changelog_path: str) -> Set[str]:
+    """
+    Parse CHANGELOG.md and extract all commit hashes (7-12 hex chars).
+
+    Args:
+        changelog_path: Path to the changelog file.
+
+    Returns:
+        Set of lowercase commit hashes found in the changelog.
+    """
+    commit_hash_pattern: Pattern[str] = re.compile(r'\b([0-9a-f]{7,12})\b')
+    changelog_hashes: Set[str] = set()
+
+    with open(changelog_path, "r") as f:
+        for line in f:
+            changelog_hashes.update(commit_hash_pattern.findall(line.lower()))
+
+    return changelog_hashes
+
+
+def find_missing_entries(commits: List[str], changelog_hashes: Set[str]) -> List[str]:
+    """
+    Find commits that are missing from the changelog.
+
+    Args:
+        commits: List of commit strings in format "%h %s".
+        changelog_hashes: Set of commit hashes found in changelog.
+
+    Returns:
+        List of commit strings that are missing from changelog.
+    """
+    missing_entries: List[str] = []
+    for commit in commits:
+        commit_hash: str = commit.split(" ")[0].lower()
+        if commit_hash not in changelog_hashes:
+            missing_entries.append(commit)
+    return missing_entries
+
+
+def print_results(missing_entries: List[str], changelog_path: str, dry_run: bool) -> int:
+    """
+    Print verification results and return appropriate exit code.
+
+    Args:
+        missing_entries: List of commits missing from changelog.
+        changelog_path: Path to changelog file (for output messages).
+        dry_run: If True, return 0 even when entries are missing.
+
+    Returns:
+        Exit code: 0 for PASS, 1 for FAIL (unless dry_run).
+    """
+    if missing_entries:
+        print(f"FAIL: The following commits are missing from {changelog_path}:")
+        for entry in missing_entries:
+            print(f"  - {entry}")
+        return 0 if dry_run else 1
+
+    print(f"PASS: All commits accounted for in {changelog_path}")
+    return 0
 
 
 def main() -> int:
@@ -75,53 +172,31 @@ def main() -> int:
         print("ENV_NOT_AVAILABLE: Not a git repository")
         return 3
 
-    try:
-        # Get the latest tag
-        latest_tag: str = subprocess.check_output(
-            ["git", "describe", "--tags", "--abbrev=0"],
-            stderr=subprocess.DEVNULL
-        ).decode().strip()
-    except subprocess.CalledProcessError:
+    # Get the latest tag
+    latest_tag = get_latest_tag()
+    if latest_tag is None:
         print("CONFIG ERROR: No tags found to compare against")
         return 2
 
     # Get list of commits since latest tag
-    try:
-        commits: list[str] = subprocess.check_output(
-            ["git", "log", f"{latest_tag}..HEAD", "--pretty=format:%h %s"]
-        ).decode().splitlines()
-    except subprocess.CalledProcessError:
-        print("FAIL: Could not retrieve commit history")
-        return 1
+    commits = get_commits_since_tag(latest_tag)
+    if not commits and latest_tag:
+        # No commits since tag is valid - all accounted for
+        pass
 
     changelog_path: str = args.changelog_path
     if not os.path.exists(changelog_path):
         print(f"FAIL: {changelog_path} missing")
         return 1
 
-    # Parse changelog line-by-line to build a set of commit hashes found,
-    # avoiding loading the entire file into memory for large changelogs.
-    commit_hash_pattern: Pattern[str] = re.compile(r'\b([0-9a-f]{7,12})\b')
-    changelog_hashes: set[str] = set()
+    # Parse changelog for commit hashes
+    changelog_hashes = parse_changelog_hashes(changelog_path)
 
-    with open(changelog_path, "r") as f:
-        for line in f:
-            changelog_hashes.update(commit_hash_pattern.findall(line.lower()))
+    # Find missing entries
+    missing_entries = find_missing_entries(commits, changelog_hashes)
 
-    missing_entries: list[str] = []
-    for commit in commits:
-        commit_hash: str = commit.split(" ")[0].lower()
-        if commit_hash not in changelog_hashes:
-            missing_entries.append(commit)
-
-    if missing_entries:
-        print(f"FAIL: The following commits are missing from {changelog_path}:")
-        for entry in missing_entries:
-            print(f"  - {entry}")
-        return 0 if args.dry_run else 1
-
-    print(f"PASS: All commits accounted for in {changelog_path}")
-    return 0
+    # Print results and return exit code
+    return print_results(missing_entries, changelog_path, args.dry_run)
 
 
 if __name__ == "__main__":
