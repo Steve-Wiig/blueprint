@@ -3,6 +3,7 @@ import psycopg2
 import sys
 from datetime import datetime, timezone, timedelta
 from typing import TypedDict
+from xml.sax.saxutils import escape
 
 
 # Module-level connection cache for connection pooling/reuse
@@ -69,7 +70,7 @@ def stitch_memory_context(query_embedding: list[float], top_k: int = 5, max_age_
         cur.execute(query, (query_embedding, cutoff_date, top_k))
         results = cur.fetchall()
 
-        context_blocks = [f"<case_id={r[0]} dist={r[2]:.4f}>{r[1]}</case_id>" for r in results]
+        context_blocks = [f"<case_id={r[0]} dist={r[2]:.4f}>{escape(r[1])}</case_id>" for r in results]
         case_refs = [r[0] for r in results]
             
         formatted_context = f"<memory_context>\n{''.join(context_blocks)}\n</memory_context>"
