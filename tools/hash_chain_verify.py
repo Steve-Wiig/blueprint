@@ -48,20 +48,14 @@ def verify_chain(chain_data: list[dict]) -> bool:
         
     return True
 
-def main() -> int:
+def main(chain_file: str) -> int:
     """Verify hash chain from file. Returns 0 on success, 1 on verification failure, 2 on config error, 3 on file not found."""
-    # Expecting path to JSON chain file as argument
-    if len(sys.argv) < 2:
-        print("CONFIG ERROR: Missing chain file path")
-        return 2
-        
-    file_path = sys.argv[1]
-    if not os.path.exists(file_path):
+    if not os.path.exists(chain_file):
         print("FAIL: Chain file not found")
         return 3
         
     try:
-        with open(file_path, 'r') as f:
+        with open(chain_file, 'r') as f:
             chain = json.load(f)
             
         if verify_chain(chain):
@@ -80,7 +74,11 @@ def main() -> int:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Hash Chain Verifier")
     parser.add_argument("--dry-run", action="store_true", help="Run with mock chain data")
+    parser.add_argument('chain_file', nargs='?', default=None, help='Path to chain JSON file (required unless --dry-run)')
     args = parser.parse_args()
+
+    if not args.dry_run and not args.chain_file:
+        parser.error('chain_file required')
 
     if args.dry_run:
         # Build mock entry using the ACTUAL compute_row_hash function
@@ -105,5 +103,4 @@ if __name__ == "__main__":
         print("FAIL: dry-run mock chain failed")
         sys.exit(1)
 
-    print("PASS: hash-chain verifier skeleton loaded")
-    sys.exit(0)
+    sys.exit(main(args.chain_file))
