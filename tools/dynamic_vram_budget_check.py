@@ -7,6 +7,10 @@ import subprocess
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 
+EXIT_PASS = 0
+EXIT_FAIL = 1
+EXIT_CONFIG_ERROR = 2
+
 """Default fraction of total GPU memory to use as VRAM budget (90%).
 Leaves 10% headroom for system/other processes."""
 DEFAULT_VRAM_BUDGET_RATIO = 0.9
@@ -87,7 +91,7 @@ def check_vram_budget() -> VramCheckResult:
             used_mb=0,
             budget_mb=0,
             message="FAIL: GPU unavailable or nvidia-smi failed",
-            exit_code=1
+            exit_code=EXIT_FAIL
         )
 
     try:
@@ -112,7 +116,7 @@ def check_vram_budget() -> VramCheckResult:
                     used_mb=used_mb,
                     budget_mb=0,
                     message="CONFIG ERROR: VRAM_BUDGET_MB must be a positive integer",
-                    exit_code=2
+                    exit_code=EXIT_CONFIG_ERROR
                 )
         else:
             budget_mb = int(total_mb * DEFAULT_VRAM_BUDGET_RATIO)
@@ -123,7 +127,7 @@ def check_vram_budget() -> VramCheckResult:
             used_mb=0,
             budget_mb=0,
             message="CONFIG ERROR: Failed to parse or validate GPU memory metrics",
-            exit_code=2
+            exit_code=EXIT_CONFIG_ERROR
         )
 
     if used_mb > budget_mb:
@@ -132,7 +136,7 @@ def check_vram_budget() -> VramCheckResult:
             used_mb=used_mb,
             budget_mb=budget_mb,
             message=f"FAIL: VRAM usage {used_mb}MB exceeds budget {budget_mb}MB",
-            exit_code=1
+            exit_code=EXIT_FAIL
         )
 
     return VramCheckResult(
@@ -140,7 +144,7 @@ def check_vram_budget() -> VramCheckResult:
         used_mb=used_mb,
         budget_mb=budget_mb,
         message=f"PASS: VRAM usage {used_mb}MB within budget {budget_mb}MB",
-        exit_code=0
+        exit_code=EXIT_PASS
     )
 
 
@@ -149,7 +153,7 @@ def main() -> int:
     CLI entry point for VRAM budget check.
 
     Returns:
-        int: Exit code (0=PASS, 1=FAIL, 2=CONFIG ERROR).
+        int: Exit code (EXIT_PASS=0, EXIT_FAIL=1, EXIT_CONFIG_ERROR=2).
     """
     result = check_vram_budget()
     print(result.message)
@@ -163,6 +167,6 @@ if __name__ == "__main__":
 
     if args.dry_run:
         print("PASS: dry-run successful (nvidia-smi mocked)")
-        sys.exit(0)
+        sys.exit(EXIT_PASS)
 
     sys.exit(main())
