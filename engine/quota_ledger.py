@@ -37,7 +37,6 @@ def init_db(db_path: Optional[str] = None) -> None:
                     last_reset_date TEXT
                 )
             ''')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_last_reset ON quota_ledger(last_reset_date)')
     except sqlite3.Error:
         raise RuntimeError("Library code called exit(2)")
 
