@@ -39,6 +39,12 @@ import re
 from typing import List, Optional, Pattern, Set
 
 
+EXIT_PASS = 0
+EXIT_FAIL = 1
+EXIT_CONFIG_ERROR = 2
+EXIT_ENV_ERROR = 3
+
+
 def get_latest_tag() -> Optional[str]:
     """
     Retrieve the most recent Git tag.
@@ -130,10 +136,10 @@ def print_results(missing_entries: List[str], changelog_path: str, dry_run: bool
         print(f"FAIL: The following commits are missing from {changelog_path}:")
         for entry in missing_entries:
             print(f"  - {entry}")
-        return 0 if dry_run else 1
+        return EXIT_PASS if dry_run else EXIT_FAIL
 
     print(f"PASS: All commits accounted for in {changelog_path}")
-    return 0
+    return EXIT_PASS
 
 
 def main() -> int:
@@ -170,13 +176,13 @@ def main() -> int:
     # Ensure we are in a git repository
     if not os.path.exists(".git"):
         print("ENV_NOT_AVAILABLE: Not a git repository")
-        return 3
+        return EXIT_ENV_ERROR
 
     # Get the latest tag
     latest_tag = get_latest_tag()
     if latest_tag is None:
         print("CONFIG ERROR: No tags found to compare against")
-        return 2
+        return EXIT_CONFIG_ERROR
 
     # Get list of commits since latest tag
     commits = get_commits_since_tag(latest_tag)
@@ -187,7 +193,7 @@ def main() -> int:
     changelog_path: str = args.changelog_path
     if not os.path.exists(changelog_path):
         print(f"FAIL: {changelog_path} missing")
-        return 1
+        return EXIT_FAIL
 
     # Parse changelog for commit hashes
     changelog_hashes = parse_changelog_hashes(changelog_path)
