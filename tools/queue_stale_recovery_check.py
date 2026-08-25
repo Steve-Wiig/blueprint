@@ -12,6 +12,7 @@ from typing import Literal
 DEFAULT_STALE_THRESHOLD_SECONDS = 300
 DEFAULT_REQUIRED_RECOVERY_LOG_PATTERN = "RECOVERY_INITIATED_STALE_MSG"
 DEFAULT_MANIFEST_FILENAME = "recovery_manifest.log"
+MAX_MANIFEST_SIZE_BYTES = 10 * 1024 * 1024
 
 ExitCode = Literal[0, 1, 2, 3, 4, 5]
 
@@ -56,6 +57,12 @@ def check_queue_recovery(dry_run: bool = False, config: dict | None = None) -> E
     # Simulate recovery check logic
     try:
         manifest_path = os.path.join(queue_path, config["manifest_filename"])
+        if not os.path.exists(manifest_path):
+            print("FAIL: Recovery manifest missing.")
+            return 1
+        if os.path.getsize(manifest_path) > MAX_MANIFEST_SIZE_BYTES:
+            print(f"FAIL: Recovery manifest exceeds maximum size of {MAX_MANIFEST_SIZE_BYTES} bytes.")
+            return 1
         with open(manifest_path, "r") as f:
             if any(config["required_recovery_log_pattern"] in line for line in f):
                 print("PASS: Stale recovery logic verified.")
