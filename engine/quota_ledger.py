@@ -3,11 +3,18 @@
 import sqlite3
 import argparse
 import sys
+import os
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Generator, Optional
 
-DB_PATH = "quota_ledger.db"
+
+def _get_default_db_path() -> str:
+    """Get default database path from environment variable or fallback."""
+    return os.environ.get("QUOTA_LEDGER_DB_PATH", "quota_ledger.db")
+
+
+DB_PATH = _get_default_db_path()
 
 
 class QuotaLedgerError(Exception):
@@ -156,21 +163,24 @@ def main() -> int:
             2 = no operation specified (usage error)
     """
     parser = argparse.ArgumentParser(description="SLM Quota Ledger Manager")
+    parser.add_argument("--db-path", default=DB_PATH, help="Path to SQLite database (default: quota_ledger.db or QUOTA_LEDGER_DB_PATH env var)")
     parser.add_argument("--init", action="store_true")
     parser.add_argument("--check", nargs=2, metavar=('ID', 'TOKENS'))
     parser.add_argument("--record", nargs=2, metavar=('ID', 'TOKENS'))
     args = parser.parse_args()
 
+    db_path = args.db_path
+
     if args.init:
-        init_db()
+        init_db(db_path)
         return 0
     elif args.check:
-        if check_quota(args.check[0], int(args.check[1])):
+        if check_quota(args.check[0], int(args.check[1]), db_path):
             return 0
         else:
             return 1
     elif args.record:
-        record_usage(args.record[0], int(args.record[1]))
+        record_usage(args.record[0], int(args.record[1]), db_path)
         return 0
     else:
         return 2
