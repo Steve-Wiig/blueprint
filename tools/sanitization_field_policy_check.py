@@ -5,7 +5,7 @@ import sys
 import json
 import argparse
 import os
-from typing import Any, List, Optional, Set
+from typing import Any, List, Optional, Set, Tuple
 
 try:
     import jsonschema
@@ -134,7 +134,7 @@ def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = Non
             print(f"FAIL: {err}")
         return EXIT_META_SCHEMA_ERROR
 
-    def format_path(components: List[str]) -> str:
+    def format_path(components: Tuple[str, ...]) -> str:
         """Format path components into dot/bracket notation string."""
         if not components:
             return ""
@@ -160,19 +160,19 @@ def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = Non
             List[str]: List of dot/bracket-notation paths to forbidden fields found.
                 Empty list if no forbidden fields detected.
         """
-        stack = [(obj, [])]
+        stack: List[Tuple[Any, Tuple[str, ...]]] = [(obj, ())]
         found = []
         while stack:
             current_obj, path_components = stack.pop()
             if isinstance(current_obj, dict):
                 for k, v in current_obj.items():
-                    new_path = path_components + [k]
+                    new_path = path_components + (k,)
                     if k in forbidden_fields:
                         found.append(format_path(new_path))
                     stack.append((v, new_path))
             elif isinstance(current_obj, list):
                 for i, item in enumerate(current_obj):
-                    new_path = path_components + [f"[{i}]"]
+                    new_path = path_components + (f"[{i}]",)
                     stack.append((item, new_path))
         return found
 
