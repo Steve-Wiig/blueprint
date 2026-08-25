@@ -82,7 +82,14 @@ def main() -> Union[str, int]:
         case_id = call_thehive_api(args.url, args.api_key, sanitized_data)
         log_handoff(log_path, case_id, args.mode)
         return case_id
-    except requests.exceptions.RequestException:
+    except requests.exceptions.RequestException as e:
+        error_logger = logging.getLogger("thehive_writeback.handoff.error")
+        error_logger.setLevel(logging.ERROR)
+        if not error_logger.handlers:
+            handler = logging.StreamHandler(sys.stderr)
+            handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+            error_logger.addHandler(handler)
+        error_logger.exception("TheHive API request failed for URL %s with payload %s", args.url, sanitized_data)
         return 3
     except RuntimeError:
         return 1
