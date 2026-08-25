@@ -1,10 +1,3 @@
-"""Wazuh Proposal Adapter.
-
-LOCAL-SOC-SLM Blueprint v11.6.0 - Wazuh Proposal Adapter
-Appendix Q.3: Writeback Isolation Layer
-
-"""
-
 import argparse
 import sqlite3
 import sys
@@ -46,6 +39,12 @@ class ProposalDirectoryError(ProposalError):
         super().__init__(message, 3)
 
 
+class ProposalApprovalError(ProposalError):
+    """Raised when approval validation fails."""
+    def __init__(self, message: str = "Approval validation failed"):
+        super().__init__(message, 4)
+
+
 class ProposalSuccess(ProposalError):
     """Raised on successful proposal submission."""
     def __init__(self, message: str = "Proposal stored successfully"):
@@ -82,6 +81,14 @@ def init_db() -> None:
                           ON audit_log(proposal_id)''')
         cursor.execute('''CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp
                           ON audit_log(changed_at)''')
+        
+        # Approval tokens table for approval-gated mutations (Section 24 compliance)
+        cursor.execute('''CREATE TABLE IF NOT EXISTS approval_tokens
+                          (id INTEGER PRIMARY KEY, token_hash TEXT UNIQUE,
+                           description TEXT, created_at TIMESTAMP,
+                           expires_at TIMESTAMP, is_active INTEGER DEFAULT 1)''')
+        cursor.execute('''CREATE INDEX IF NOT EXISTS idx_approval_tokens_hash
+                          ON approval_tokens(token_hash)''')
         
         # Trigger on INSERT to proposals
         cursor.execute('''CREATE TRIGGER IF NOT EXISTS audit_proposals_insert
@@ -123,15 +130,42 @@ def check_approval_gate(key: str) -> bool:
     return not key.startswith("wazuh-internal-")
 
 
+def validate_approval_token(token: str) -> bool:
+    """Validates an approval token against the approval_tokens table.
+
+    Args:
+        token: The approval token to validate.
+
+    Returns:
+        True if token is valid and active, False otherwise.
+    """
+    import hashlib
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT 1 FROM approval_tokens WHERE token_hash = ? AND is_active = 1 AND (expires_at IS NULL OR expires_at > datetime('now'))",
+            (token_hash,)
+        )
+        result = cursor.fetchone()
+        conn.close()
+        return result is not None
+    except sqlite3.Error:
+        return False
+
+
 def parse_args() -> argparse.Namespace:
     """Parses command line arguments.
 
     Returns:
-        Parsed arguments namespace with key and value attributes.
+        Parsed arguments namespace with key, value, and approval_token attributes.
     """
     parser = argparse.ArgumentParser(description="Wazuh CDB Proposal Adapter")
     parser.add_argument("--key", required=True, help="CDB Key")
     parser.add_argument("--value", required=True, help="CDB Value")
+    parser.add_argument("--approval-token", required=False, help="Approval token for gated mutation (Section 24)")
     return parser.parse_args()
 
 
@@ -152,16 +186,25 @@ def validate_proposal(key: str) -> None:
         raise ProposalRejectedError(f"Key '{key}' is reserved for internal Wazuh use")
 
 
-def store_proposal(key: str, value: str) -> None:
-    """Stores the proposal in the database.
+def store_proposal(key: str, value: str, approval_token: str | None = None) -> None:
+    """Stores the proposal in the database after approval validation.
 
     Args:
         key: The CDB key.
         value: The CDB value.
+        approval_token: Optional approval token for gated mutation.
 
     Raises:
+        ProposalApprovalError: If approval token is missing or invalid.
         ProposalStorageError: If database operations fail.
     """
+    # Approval-gated mutation: require valid approval token (Section 24)
+    if approval_token is None:
+        raise ProposalApprovalError("Approval token required for proposal submission (Section 24: Approval-gated mutations)")
+    
+    if not validate_approval_token(approval_token):
+        raise ProposalApprovalError("Invalid or expired approval token")
+    
     try:
         init_db()
         conn = sqlite3.connect(DB_PATH)
@@ -184,7 +227,7 @@ def main() -> NoReturn:
     """
     args = parse_args()
     validate_proposal(args.key)
-    store_proposal(args.key, args.value)
+    store_proposal(args.key, args.value, args.approval_token)
     raise ProposalSuccess("Proposal stored successfully")
 
 
