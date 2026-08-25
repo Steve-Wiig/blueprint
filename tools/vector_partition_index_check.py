@@ -78,11 +78,6 @@ EXIT_VALIDATION_ERROR: int = 1
 EXIT_CONFIG_ERROR: int = 2
 EXIT_ENV_ERROR: int = 3
 
-# Backward compatibility aliases
-EXIT_VALIDATION_FAILED: int = EXIT_VALIDATION_ERROR
-EXIT_CONFIG_NOT_FOUND: int = EXIT_CONFIG_ERROR
-EXIT_ENV_NOT_SET: int = EXIT_ENV_ERROR
-
 
 class PartitionSettings(TypedDict):
     max_shard_gb: int
@@ -330,24 +325,25 @@ def _parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Perform validation without committing changes and print detailed output",
+        help="Perform validation without committing changes with verbose step-by-step output",
     )
     return parser.parse_args(argv)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    if "SLM_ENV" not in os.environ:
-        raise RuntimeError(EXIT_ENV_ERROR)
-
     args = _parse_arguments(argv)
 
-    validate_partition_config(args.config, dry_run=args.dry_run)
+    if not os.environ.get("SLM_ENV"):
+        print("Error: SLM_ENV environment variable is not set.", file=sys.stderr)
+        return EXIT_ENV_ERROR
+
+    try:
+        validate_partition_config(args.config, args.dry_run)
+    except RuntimeError as e:
+        return int(e.args[0]) if e.args else EXIT_VALIDATION_ERROR
+
     return EXIT_SUCCESS
 
 
 if __name__ == "__main__":
-    try:
-        exit_code = main()
-    except RuntimeError as e:
-        exit_code = e.args[0] if e.args else EXIT_VALIDATION_ERROR
-    sys.exit(exit_code)
+    sys.exit(main())
