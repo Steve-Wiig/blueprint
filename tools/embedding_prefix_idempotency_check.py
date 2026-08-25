@@ -169,5 +169,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     exit_code = main(dry_run=args.dry_run)
-    if exit_code != 0:
-        raise RuntimeError(f"CI check failed with exit code {exit_code}")
+    sys.exit(exit_code)
