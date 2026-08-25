@@ -45,21 +45,6 @@
     "deferred_reason": "failed 3 attempts"
   },
   {
-    "file": "tools/hash_chain_verify.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 10,
-      "line_end": 15,
-      "description": "compute_row_hash creates new dict allocation for each row - minor performance impact",
-      "suggestion": "Consider using a tuple of sorted items or pre-allocated buffer for high-volume chains",
-      "impact": "low",
-      "effort": "small"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
     "file": "tools/sanitization_field_policy_check.py",
     "issue": {
       "category": "blueprint_compliance",
