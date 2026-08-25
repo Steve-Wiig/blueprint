@@ -110,6 +110,7 @@ class ModelRegistryClient:
         if self._conn is None:
             self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self._conn.row_factory = sqlite3.Row
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_adapter_id ON model_registry(adapter_id)")
         return self._conn
 
     def get_adapter(self, task_type: str) -> Dict[str, Any]:
