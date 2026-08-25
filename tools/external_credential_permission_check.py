@@ -5,6 +5,7 @@ import json
 import logging
 from dataclasses import dataclass
 from typing import Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 try:
     import requests
@@ -181,6 +182,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--config", help="Path to config JSON file")
+    parser.add_argument("--workers", type=int, default=None, help="Maximum number of parallel workers (default: number of services)")
     args = parser.parse_args()
 
     try:
@@ -194,12 +196,25 @@ def main() -> int:
         logging.error("CONFIG ERROR: LAB_URL is not set")
         return 2
 
+    max_workers = args.workers or int(os.getenv("MAX_WORKERS", str(len(config))))
+    max_workers = max(1, min(max_workers, len(config)))
+
     session = None if args.dry_run else requests.Session()
     all_pass = True
     try:
-        for service, cfg in config.items():
-            if not check_service(service, cfg, lab_url, session, args.dry_run):
-                all_pass = False
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_service = {
+                executor.submit(check_service, service, cfg, lab_url, session, args.dry_run): service
+                for service, cfg in config.items()
+            }
+            for future in as_completed(future_to_service):
+                service = future_to_service[future]
+                try:
+                    if not future.result():
+                        all_pass = False
+                except Exception as exc:
+                    logging.error("FAIL: %s check raised exception: %s", service, exc)
+                    all_pass = False
     finally:
         if session:
             session.close()
