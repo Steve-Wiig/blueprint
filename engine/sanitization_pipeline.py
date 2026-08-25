@@ -137,6 +137,17 @@ def _should_quarantine(token: str) -> bool:
     """
     return calculate_entropy(token) > ENTROPY_THRESHOLD and not _check_allowlist(token)
 
+def reload_allowlist() -> None:
+    """Reloads and recompiles allowlist patterns from ALLOWLIST_PATTERNS.
+
+    Call this function after modifying ALLOWLIST_PATTERNS at runtime
+    to keep ALLOWLIST_PATTERNS_COMPILED in sync.
+    """
+    global ALLOWLIST_PATTERNS_COMPILED
+    ALLOWLIST_PATTERNS_COMPILED = {
+        k: re.compile(v) for k, v in ALLOWLIST_PATTERNS.items()
+    }
+
 def redact_regex_patterns(payload: str, metadata: Dict[str, Any]) -> str:
     """Redacts sensitive patterns using combined regex in single pass.
 
