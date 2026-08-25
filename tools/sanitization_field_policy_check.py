@@ -90,6 +90,58 @@ def validate_meta_schema(data: Any) -> List[str]:
         return [f"Meta-schema validation error: {str(e)}"]
 
 
+def format_path(components: Tuple[str, ...]) -> str:
+    """Format path components into dot/bracket notation string.
+
+    Args:
+        components: Tuple of path components (keys and list indices).
+
+    Returns:
+        Formatted path string using dot notation for keys and bracket notation for indices.
+        Returns empty string if components is empty.
+    """
+    if not components:
+        return ""
+    result = components[0]
+    for comp in components[1:]:
+        if comp.startswith('['):
+            result += comp
+        else:
+            result += '.' + comp
+    return result
+
+
+def find_forbidden(obj: Any, forbidden_fields: Set[str]) -> List[str]:
+    """Recursively search for forbidden field names in a JSON schema object.
+
+    Uses an iterative stack-based approach to traverse nested dictionaries and lists,
+    collecting the full path to any forbidden field names found.
+
+    Args:
+        obj: The JSON schema object (dict, list, or primitive) to search.
+        forbidden_fields: Set of field names to check against.
+
+    Returns:
+        List[str]: List of dot/bracket-notation paths to forbidden fields found.
+            Empty list if no forbidden fields detected.
+    """
+    stack: List[Tuple[Any, Tuple[str, ...]]] = [(obj, ())]
+    found = []
+    while stack:
+        current_obj, path_components = stack.pop()
+        if isinstance(current_obj, dict):
+            for k, v in current_obj.items():
+                new_path = path_components + (k,)
+                if k in forbidden_fields:
+                    found.append(format_path(new_path))
+                stack.append((v, new_path))
+        elif isinstance(current_obj, list):
+            for i, item in enumerate(current_obj):
+                new_path = path_components + (f"[{i}]",)
+                stack.append((item, new_path))
+    return found
+
+
 def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = None) -> int:
     """Validate schema file for forbidden fields and meta-schema compliance.
 
@@ -134,49 +186,7 @@ def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = Non
             print(f"FAIL: {err}")
         return EXIT_META_SCHEMA_ERROR
 
-    def format_path(components: Tuple[str, ...]) -> str:
-        """Format path components into dot/bracket notation string."""
-        if not components:
-            return ""
-        result = components[0]
-        for comp in components[1:]:
-            if comp.startswith('['):
-                result += comp
-            else:
-                result += '.' + comp
-        return result
-
-    # Iterative check for forbidden keys in nested schema definitions using a stack
-    def find_forbidden(obj: Any) -> List[str]:
-        """Recursively search for forbidden field names in a JSON schema object.
-
-        Uses an iterative stack-based approach to traverse nested dictionaries and lists,
-        collecting the full path to any forbidden field names found.
-
-        Args:
-            obj: The JSON schema object (dict, list, or primitive) to search.
-
-        Returns:
-            List[str]: List of dot/bracket-notation paths to forbidden fields found.
-                Empty list if no forbidden fields detected.
-        """
-        stack: List[Tuple[Any, Tuple[str, ...]]] = [(obj, ())]
-        found = []
-        while stack:
-            current_obj, path_components = stack.pop()
-            if isinstance(current_obj, dict):
-                for k, v in current_obj.items():
-                    new_path = path_components + (k,)
-                    if k in forbidden_fields:
-                        found.append(format_path(new_path))
-                    stack.append((v, new_path))
-            elif isinstance(current_obj, list):
-                for i, item in enumerate(current_obj):
-                    new_path = path_components + (f"[{i}]",)
-                    stack.append((item, new_path))
-        return found
-
-    found = find_forbidden(data)
+    found = find_forbidden(data, forbidden_fields)
     if found:
         print(f"FAIL: Forbidden fields detected in schema: {', '.join(found)}")
         return EXIT_VIOLATION
