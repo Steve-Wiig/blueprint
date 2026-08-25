@@ -60,6 +60,26 @@ class EmbeddingService:
             return text
         return f"{prefix}{text}"
 
+    def _encode(self, text: str, prefix: str) -> np.ndarray:
+        """Encode text with prefix into a 768-dim embedding vector.
+
+        Args:
+            text: Input text to encode.
+            prefix: Prefix to apply idempotently.
+
+        Returns:
+            np.ndarray: 768-dimensional float32 embedding vector.
+
+        Raises:
+            RuntimeError: If encoding fails.
+        """
+        try:
+            processed = self._apply_prefix(text, prefix)
+            embedding = self.model.encode(processed)
+            return embedding.astype(np.float32, copy=False)
+        except Exception:
+            raise RuntimeError(f"Library code called exit(1)")
+
     def embed_document(self, text: str) -> np.ndarray:
         """Encode a document text into a 768-dim embedding vector.
 
@@ -82,12 +102,7 @@ class EmbeddingService:
             >>> vec.dtype
             dtype('float32')
         """
-        try:
-            processed = self._apply_prefix(text, self.PREFIX_DOC)
-            embedding = self.model.encode(processed)
-            return embedding.astype(np.float32, copy=False)
-        except Exception:
-            raise RuntimeError(f"Library code called exit(1)")
+        return self._encode(text, self.PREFIX_DOC)
 
     def embed_query(self, text: str) -> np.ndarray:
         """Encode a query text into a 768-dim embedding vector.
@@ -111,12 +126,7 @@ class EmbeddingService:
             >>> vec.dtype
             dtype('float32')
         """
-        try:
-            processed = self._apply_prefix(text, self.PREFIX_QUERY)
-            embedding = self.model.encode(processed)
-            return embedding.astype(np.float32, copy=False)
-        except Exception:
-            raise RuntimeError(f"Library code called exit(1)")
+        return self._encode(text, self.PREFIX_QUERY)
 
 
 if __name__ == "__main__":
