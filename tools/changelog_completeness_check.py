@@ -25,9 +25,10 @@ Side effects:
     - Returns exit code for CI integration
 
 Usage:
-    python verify_changelog.py [--dry-run]
+    python verify_changelog.py [--dry-run] [--changelog-path PATH]
 
     --dry-run: Validate logic without failing (returns 0 even if missing entries)
+    --changelog-path: Path to changelog file (default: CHANGELOG.md)
 """
 
 import os
@@ -49,6 +50,7 @@ def main() -> int:
         None (uses sys.argv via argparse):
             --dry-run (bool): If set, returns 0 even when commits are missing.
                               Useful for testing CI logic without blocking pipelines.
+            --changelog-path (str): Path to changelog file (default: CHANGELOG.md)
 
     Returns:
         int: Exit code indicating verification result:
@@ -65,6 +67,7 @@ def main() -> int:
     """
     parser = argparse.ArgumentParser(description="Verify CHANGELOG completeness")
     parser.add_argument("--dry-run", action="store_true", help="Validate logic without failing")
+    parser.add_argument("--changelog-path", default="CHANGELOG.md", help="Path to changelog file (default: CHANGELOG.md)")
     args: argparse.Namespace = parser.parse_args()
 
     # Ensure we are in a git repository
@@ -91,8 +94,9 @@ def main() -> int:
         print("FAIL: Could not retrieve commit history")
         return 1
 
-    if not os.path.exists("CHANGELOG.md"):
-        print("FAIL: CHANGELOG.md missing")
+    changelog_path: str = args.changelog_path
+    if not os.path.exists(changelog_path):
+        print(f"FAIL: {changelog_path} missing")
         return 1
 
     # Parse changelog line-by-line to build a set of commit hashes found,
@@ -100,7 +104,7 @@ def main() -> int:
     commit_hash_pattern: Pattern[str] = re.compile(r'\b([0-9a-f]{7,12})\b')
     changelog_hashes: set[str] = set()
 
-    with open("CHANGELOG.md", "r") as f:
+    with open(changelog_path, "r") as f:
         for line in f:
             changelog_hashes.update(commit_hash_pattern.findall(line.lower()))
 
@@ -111,12 +115,12 @@ def main() -> int:
             missing_entries.append(commit)
 
     if missing_entries:
-        print(f"FAIL: The following commits are missing from CHANGELOG.md:")
+        print(f"FAIL: The following commits are missing from {changelog_path}:")
         for entry in missing_entries:
             print(f"  - {entry}")
         return 0 if args.dry_run else 1
 
-    print("PASS: All commits accounted for in CHANGELOG.md")
+    print(f"PASS: All commits accounted for in {changelog_path}")
     return 0
 
 
