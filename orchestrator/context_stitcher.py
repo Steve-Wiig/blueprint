@@ -2,6 +2,7 @@
 import psycopg2
 import sys
 from datetime import datetime, timezone, timedelta
+from typing import TypedDict
 
 
 # Module-level connection cache for connection pooling/reuse
@@ -25,7 +26,15 @@ class StitcherError(Exception):
     pass
 
 
-def stitch_memory_context(query_embedding: list[float], top_k: int = 5, max_age_days: int = 30) -> tuple[str, dict]:
+class MemoryMetadata(TypedDict):
+    """Type definition for memory retrieval metadata."""
+    memory_retrieval_timestamp: str
+    retrieved_case_ids: list[str]
+    top_k_requested: int
+    max_age_days: int
+
+
+def stitch_memory_context(query_embedding: list[float], top_k: int = 5, max_age_days: int = 30) -> tuple[str, MemoryMetadata]:
     """
     Queries case_embeddings for semantic recall and formats for SLM injection.
 
@@ -37,7 +46,7 @@ def stitch_memory_context(query_embedding: list[float], top_k: int = 5, max_age_
     Returns:
         A tuple containing:
         - formatted_context (str): XML-formatted string with retrieved case summaries and distances.
-        - metadata (dict): Dictionary with retrieval metadata including timestamp, case IDs, and parameters.
+        - metadata (MemoryMetadata): Dictionary with retrieval metadata including timestamp, case IDs, and parameters.
 
     Raises:
         DatabaseError: If a psycopg2 database error occurs during query execution or connection.
@@ -64,7 +73,7 @@ def stitch_memory_context(query_embedding: list[float], top_k: int = 5, max_age_
         case_refs = [r[0] for r in results]
             
         formatted_context = f"<memory_context>\n{''.join(context_blocks)}\n</memory_context>"
-        metadata = {
+        metadata: MemoryMetadata = {
             "memory_retrieval_timestamp": datetime.now(timezone.utc).isoformat(),
             "retrieved_case_ids": case_refs,
             "top_k_requested": top_k,
