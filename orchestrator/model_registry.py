@@ -159,9 +159,7 @@ class ModelRegistryClient:
                 raise InvalidStatusError(f"Invalid adapter status: {row['status']} for adapter: {adapter_id}")
 
             return {"adapter_id": row['adapter_id'], "sha256": row['adapter_sha256'], "status": row['status']}
-        except (AdapterNotFoundError, InvalidStatusError):
-            raise
-        except Exception as e:
+        except sqlite3.Error as e:
             raise DatabaseError(f"Database error retrieving adapter {adapter_id}: {e}")
 
     def verify_integrity(self, adapter_data: Dict, file_path: str) -> Optional[bool]:
