@@ -24,6 +24,37 @@ MOCK_USER = "mock_user"
 MOCK_TOKEN = "mock_token"
 
 
+def sanitize_token(token: str | None) -> str:
+    """Mask a token for safe logging.
+
+    Args:
+        token: The token string to sanitize.
+
+    Returns:
+        Masked token showing only first 4 characters, or '****' if too short/None.
+    """
+    if not token:
+        return "****"
+    if len(token) <= 4:
+        return "****"
+    return token[:4] + "****"
+
+
+def sanitize_auth(auth: tuple[str, str] | None) -> tuple[str, str]:
+    """Sanitize auth tuple for logging.
+
+    Args:
+        auth: Tuple of (username, token).
+
+    Returns:
+        Tuple with sanitized token.
+    """
+    if not auth:
+        return ("****", "****")
+    user, token = auth
+    return (user, sanitize_token(token))
+
+
 def validate_config(config: dict) -> None:
     """
     Validate the configuration schema.
@@ -131,7 +162,7 @@ def check_service(service: str, cfg: dict, lab_url: str, session: requests.Sessi
     token = os.getenv(cfg["token_env"], MOCK_TOKEN) if dry_run else os.getenv(cfg["token_env"])
 
     if not user or not token:
-        logging.error("CONFIG ERROR: missing credentials for %s", service)
+        logging.error("CONFIG ERROR: missing credentials for %s (user=%s, token=%s)", service, user, sanitize_token(token))
         return False
 
     auth = (user, token)
@@ -147,15 +178,15 @@ def check_service(service: str, cfg: dict, lab_url: str, session: requests.Sessi
             forbidden_resp = session.request(cfg["forbidden_method"], forbidden_url, auth=auth, timeout=10, verify=False)
 
         if read_resp.status_code not in SUCCESS_CODES:
-            logging.error("FAIL: %s read access denied: %s", service, read_resp.status_code)
+            logging.error("FAIL: %s read access denied: %s (auth=%s)", service, read_resp.status_code, sanitize_auth(auth))
             return False
 
         if forbidden_resp.status_code not in DENIED_CODES:
-            logging.error("FAIL: %s forbidden action was not denied: %s", service, forbidden_resp.status_code)
+            logging.error("FAIL: %s forbidden action was not denied: %s (auth=%s)", service, forbidden_resp.status_code, sanitize_auth(auth))
             return False
 
     except Exception as exc:
-        logging.error("FAIL: %s request failed: %s", service, exc)
+        logging.error("FAIL: %s request failed: %s (auth=%s)", service, exc, sanitize_auth(auth))
         return False
 
     logging.info("PASS: %s credential permissions verified", service)
