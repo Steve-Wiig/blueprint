@@ -58,11 +58,6 @@ PATTERNS: Dict[str, PatternConfig] = {
     },  # Password in query string parameter
 }
 
-# Pre-compiled regex patterns for performance.
-COMPILED_PATTERNS: Dict[str, Pattern[str]] = {
-    k: re.compile(v["pattern"]) for k, v in PATTERNS.items()
-}
-
 # Test payloads for validating each pattern.
 # Each key corresponds to a pattern in PATTERNS and contains a sample string
 # that should match the pattern and be redacted correctly.
