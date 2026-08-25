@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 CI Gate: External Credential Permission Proof
 
@@ -26,6 +25,8 @@ DEFAULT_CONFIG_PATH: str = os.path.join(os.path.dirname(__file__), "config.json"
 
 REQUIRED_KEYS = {"user_env", "token_env", "read", "forbidden", "forbidden_method"}
 VALID_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+SUCCESS_CODES = {200, 201}
+DENIED_CODES = {401, 403}
 
 
 def validate_config(config: dict) -> None:
@@ -149,11 +150,11 @@ def check_service(service: str, cfg: dict, lab_url: str, dry_run: bool = False) 
             read_resp = requests.get(read_url, auth=auth, timeout=10, verify=False)
             forbidden_resp = requests.request(cfg["forbidden_method"], forbidden_url, auth=auth, timeout=10, verify=False)
 
-        if read_resp.status_code not in (200, 201):
+        if read_resp.status_code not in SUCCESS_CODES:
             print(f"FAIL: {service} read access denied: {read_resp.status_code}")
             return False
 
-        if forbidden_resp.status_code not in (401, 403):
+        if forbidden_resp.status_code not in DENIED_CODES:
             print(f"FAIL: {service} forbidden action was not denied: {forbidden_resp.status_code}")
             return False
 
