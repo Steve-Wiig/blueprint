@@ -6,7 +6,6 @@ interact with an SLM endpoint, and manage job states and heartbeats.
 """
 import sqlite3
 import time
-import sys
 import argparse
 import requests
 import json
@@ -214,6 +213,6 @@ if __name__ == "__main__":
     try:
         run_worker(config)
     except KeyboardInterrupt:
-        sys.exit(0)
+        pass
     except Exception:
-        sys.exit(1)
+        raise RuntimeError('Worker failed')
