@@ -62,9 +62,8 @@ PATTERNS: dict[str, str] = {
     "PASSWORD_PARAM": r"(password=[a-zA-Z0-9!@#$%^&*()_+]{8,64})"
 }
 
-COMPILED_PATTERNS: dict[str, Pattern[str]] = {
-    name: re.compile(pattern, re.IGNORECASE) for name, pattern in PATTERNS.items()
-}
+_COMBINED_PATTERN: str = '|'.join(f'(?P<{name}>{pattern})' for name, pattern in PATTERNS.items())
+COMPILED_COMBINED: Pattern[str] = re.compile(_COMBINED_PATTERN, re.IGNORECASE)
 
 DRY_RUN_PAYLOADS: list[str] = [
     "AKIAIOSFODNN7EXAMPLE",
@@ -108,11 +107,11 @@ def scan_text(text: str) -> list[tuple[str, str]]:
         raise TypeError(f"Expected str, got {type(text).__name__}")
 
     found: list[tuple[str, str]] = []
-    for name, compiled_pattern in COMPILED_PATTERNS.items():
-        matches = compiled_pattern.findall(text)
-        for match in matches:
-            if match not in ALLOWLIST:
-                found.append((name, match))
+    for match in COMPILED_COMBINED.finditer(text):
+        pattern_name = match.lastgroup
+        matched_value = match.group(pattern_name)
+        if matched_value not in ALLOWLIST:
+            found.append((pattern_name, matched_value))
     return found
 
 
