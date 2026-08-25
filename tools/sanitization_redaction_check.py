@@ -102,7 +102,9 @@ class Sanitizer:
         Raises:
             KeyError: If pattern_key is not found in patterns.
         """
-        pattern = self._compiled_patterns[pattern_key]
+        pattern = self._compiled_patterns.get(pattern_key)
+        if not pattern:
+            raise KeyError(pattern_key)
         redaction_type = self._patterns[pattern_key]["redaction_type"]
         if redaction_type == "group":
             return pattern.sub(r"\1[REDACTED]", text)
