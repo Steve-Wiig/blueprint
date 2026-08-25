@@ -1,3 +1,4 @@
+"""Sanitization pattern verification for SOC automation. Validates secret detection regexes against known payloads."""
 import re
 import sys
 from typing import TypedDict, Dict, Pattern, Optional
