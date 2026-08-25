@@ -65,6 +65,12 @@ import json
 from pathlib import Path
 from typing import Dict, Any, List, Optional, TypedDict
 
+DEFAULTS: Dict[str, Any] = {
+    "required_partitions": ["alerts", "threat_intel", "audit_logs"],
+    "max_shard_size_gb": 16,
+    "index_schema_version": "11.6.0",
+}
+
 _DEFAULTS_CACHE: Optional[Dict[str, Any]] = None
 
 EXIT_SUCCESS: int = 0
@@ -86,6 +92,12 @@ class PartitionSettings(TypedDict):
 class PartitionConfig(TypedDict):
     version: str
     partitions: Dict[str, PartitionSettings]
+
+
+def reset_defaults_cache() -> None:
+    """Reset the defaults cache for testing purposes."""
+    global _DEFAULTS_CACHE
+    _DEFAULTS_CACHE = None
 
 
 def _load_defaults_config() -> Dict[str, Any]:
@@ -119,13 +131,16 @@ def _load_defaults_config() -> Dict[str, Any]:
     return _DEFAULTS_CACHE
 
 
-def _get_required_partitions() -> List[str]:
+def _get_required_partitions(defaults: Optional[Dict[str, Any]] = None) -> List[str]:
     """
     Get list of required partition names from environment or defaults.
 
     Checks SLM_REQUIRED_PARTITIONS environment variable first (comma-separated),
     then falls back to 'required_partitions' key in defaults config, finally
     returns hardcoded default list.
+
+    Args:
+        defaults: Optional defaults dictionary. If not provided, loads from cache.
 
     Returns:
         List[str]: List of required partition names (e.g., ['alerts', 'threat_intel', 'audit_logs']).
@@ -134,20 +149,24 @@ def _get_required_partitions() -> List[str]:
     if env_val:
         return [p.strip() for p in env_val.split(",") if p.strip()]
 
-    defaults = _load_defaults_config()
+    if defaults is None:
+        defaults = _load_defaults_config()
     if "required_partitions" in defaults:
         return defaults["required_partitions"]
 
-    return ["alerts", "threat_intel", "audit_logs"]
+    return DEFAULTS["required_partitions"]
 
 
-def _get_max_shard_size_gb() -> int:
+def _get_max_shard_size_gb(defaults: Optional[Dict[str, Any]] = None) -> int:
     """
     Get maximum shard size in GB from environment or defaults.
 
     Checks SLM_MAX_SHARD_SIZE_GB environment variable first, then falls back
     to 'max_shard_size_gb' key in defaults config, finally returns hardcoded
     default of 16 GB.
+
+    Args:
+        defaults: Optional defaults dictionary. If not provided, loads from cache.
 
     Returns:
         int: Maximum allowed shard size in gigabytes.
@@ -159,23 +178,27 @@ def _get_max_shard_size_gb() -> int:
         except ValueError:
             pass
 
-    defaults = _load_defaults_config()
+    if defaults is None:
+        defaults = _load_defaults_config()
     if "max_shard_size_gb" in defaults:
         try:
             return int(defaults["max_shard_size_gb"])
         except (ValueError, TypeError):
             pass
 
-    return 16
+    return DEFAULTS["max_shard_size_gb"]
 
 
-def _get_index_schema_version() -> str:
+def _get_index_schema_version(defaults: Optional[Dict[str, Any]] = None) -> str:
     """
     Get expected index schema version from environment or defaults.
 
     Checks SLM_INDEX_SCHEMA_VERSION environment variable first, then falls back
     to 'index_schema_version' key in defaults config, finally returns hardcoded
     default of '11.6.0'.
+
+    Args:
+        defaults: Optional defaults dictionary. If not provided, loads from cache.
 
     Returns:
         str: Expected schema version string.
@@ -184,14 +207,19 @@ def _get_index_schema_version() -> str:
     if env_val:
         return env_val
 
-    defaults = _load_defaults_config()
+    if defaults is None:
+        defaults = _load_defaults_config()
     if "index_schema_version" in defaults:
         return str(defaults["index_schema_version"])
 
-    return "11.6.0"
+    return DEFAULTS["index_schema_version"]
 
 
-def validate_partition_config(config_path: Path, dry_run: bool = False) -> None:
+def validate_partition_config(
+    config_path: Path,
+    dry_run: bool = False,
+    defaults: Optional[Dict[str, Any]] = None,
+) -> None:
     """Validate vector partition configuration against schema constraints and sharding rules.
 
     Performs the following validation steps in order:
@@ -208,6 +236,7 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> None:
         config_path: Path to the partition configuration JSON file.
         dry_run: If True, performs validation without committing changes and prints
             detailed step-by-step output. Defaults to False.
+        defaults: Optional defaults dictionary for testing. If not provided, loads from cache.
 
     Raises:
         RuntimeError: With exit code as argument on validation failure:
@@ -218,9 +247,9 @@ def validate_partition_config(config_path: Path, dry_run: bool = False) -> None:
             raises RuntimeError(EXIT_VALIDATION_ERROR)).
         OSError: If file cannot be read due to permissions (propagates to caller).
     """
-    required_partitions = _get_required_partitions()
-    max_shard_size_gb = _get_max_shard_size_gb()
-    index_schema_version = _get_index_schema_version()
+    required_partitions = _get_required_partitions(defaults)
+    max_shard_size_gb = _get_max_shard_size_gb(defaults)
+    index_schema_version = _get_index_schema_version(defaults)
 
     config_path_str = str(config_path)
     if dry_run:
