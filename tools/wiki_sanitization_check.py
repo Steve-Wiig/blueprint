@@ -152,7 +152,7 @@ def run_dry_run() -> bool:
     return True
 
 
-def main() -> None:
+def main() -> int:
     """
     Main entry point for credential scanning CLI.
 
@@ -163,12 +163,11 @@ def main() -> None:
         --dry-run: Run self-test with built-in payloads and exit.
         files: Zero or more file paths to scan.
 
-    Raises:
-        RuntimeError: Always raised with exit code encoded in message.
-            Exit codes:
-                0 = success/no violations found
-                1 = violations found in scanned files
-                2 = file read error
+    Returns:
+        int: Process exit code.
+            0 = success/no violations found
+            1 = violations found in scanned files
+            2 = file read error
 
     Example:
         $ python credential_sanitizer.py --dry-run
@@ -192,7 +191,7 @@ Examples:
 
     if args.dry_run:
         success = run_dry_run()
-        raise RuntimeError("Library code called exit(0)" if success else "Library code called exit(1)")
+        return 0 if success else 1
 
     exit_code = 0
     for file_path in args.files:
@@ -204,10 +203,10 @@ Examples:
                 exit_code = 1
         except (OSError, UnicodeDecodeError) as e:
             print(f"CONFIG ERROR: Could not read {file_path}: {e}")
-            raise RuntimeError("Library code called exit(2)")
+            return 2
             
-    raise RuntimeError(f"Library code called sys.exit({exit_code})")
+    return exit_code
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

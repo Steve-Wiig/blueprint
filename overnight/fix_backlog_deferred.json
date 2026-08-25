@@ -1,20 +1,5 @@
 [
   {
-    "file": "tools/wiki_sanitization_check.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "informational",
-      "line_start": 56,
-      "line_end": 82,
-      "description": "Blueprint AMEND-64 says 'No sys.exit()/exit() in library code \u2014 use raise RuntimeError()' but this is a CLI entry point, not library code - current pattern creates confusing stack traces",
-      "suggestion": "Since this is a CLI tool (has __main__), use sys.exit() directly in main() for clean exits; reserve RuntimeError for actual library functions",
-      "impact": "low",
-      "effort": "trivial"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
     "file": "engine/intake_wazuh.py",
     "issue": {
       "category": "performance",
@@ -545,51 +530,6 @@
       "suggestion": "Add optional --audit-log argument to write JSONL audit records with timestamp, schema path, result, violations found",
       "impact": "low",
       "effort": "medium"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "tools/wiki_sanitization_check.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "informational",
-      "line_start": 56,
-      "line_end": 58,
-      "description": "Dry-run success path raises RuntimeError('Library code called exit(0)') instead of returning cleanly. While AMEND-64 permits raise RuntimeError over sys.exit, this pattern prints stack trace on success, polluting CI logs.",
-      "suggestion": "Return exit code from main() and let __main__ block call sys.exit(main()). Or use sys.exit(0) directly in __main__ since this is a CLI entry point, not library code.",
-      "impact": "low",
-      "effort": "trivial"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "tools/wiki_sanitization_check.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "informational",
-      "line_start": 74,
-      "line_end": 74,
-      "description": "File read error raises RuntimeError('Library code called exit(2)') with simulated exit code. Same stack trace issue as dry-run. Not a library - it's a CLI tool.",
-      "suggestion": "Use sys.exit(2) directly in __main__ block after main() returns error code. Or have main() return int exit code.",
-      "impact": "low",
-      "effort": "trivial"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "tools/wiki_sanitization_check.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "informational",
-      "line_start": 82,
-      "line_end": 82,
-      "description": "Final exit raises RuntimeError with simulated sys.exit(). Blueprint AMEND-64 targets library code; this is a CLI script entry point where sys.exit() is appropriate.",
-      "suggestion": "Change main() to return exit_code. In __main__: sys.exit(main()). Remove all raise RuntimeError exit simulations.",
-      "impact": "low",
-      "effort": "trivial"
     },
     "attempts": 3,
     "deferred_reason": "failed 3 attempts"

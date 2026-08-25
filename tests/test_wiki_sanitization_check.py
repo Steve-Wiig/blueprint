@@ -24,13 +24,13 @@ def test_scan_text_no_findings():
 
 def test_cli_dry_run():
     tool_path = Path(__file__).parent.parent / "tools" / "wiki_sanitization_check.py"
-    # The tool raises RuntimeError("Library code called sys.exit(0)") on success
+    # The tool now returns exit code 0 on success
     result = subprocess.run(
         [sys.executable, str(tool_path), "--dry-run"],
         capture_output=True,
         text=True
     )
-    assert result.returncode != 0
+    assert result.returncode == 0
     assert "PASS: Dry-run successful." in result.stdout
 
 def test_cli_file_not_found(tmp_path):
@@ -42,8 +42,8 @@ def test_cli_file_not_found(tmp_path):
         capture_output=True,
         text=True
     )
-    # Should trigger the exception handling for file reading
-    assert result.returncode != 0
+    # Should return exit code 2 for file read error
+    assert result.returncode == 2
     assert "CONFIG ERROR" in result.stdout
 
 def test_cli_file_violation(tmp_path):
@@ -56,6 +56,6 @@ def test_cli_file_violation(tmp_path):
         capture_output=True,
         text=True
     )
-    # Should exit with code 1 (via RuntimeError)
-    assert result.returncode != 0
+    # Should exit with code 1 for violations found
+    assert result.returncode == 1
     assert "FAIL: Found PASSWORD_PARAM" in result.stdout
