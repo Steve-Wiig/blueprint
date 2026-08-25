@@ -1,24 +1,15 @@
-"""
-CI Gate: External Credential Permission Proof
-
-This module verifies that external service credentials have the correct
-permissions - read access allowed, write/restart access denied.
-
-It loads service configuration from a JSON file and tests each service's
-credentials against a lab environment URL.
-"""
-
 import os
 import sys
 import argparse
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 try:
     import requests
 except ImportError:
-    print("FAIL: requests library is not installed")
+    logging.error("FAIL: requests library is not installed")
     raise RuntimeError("Library code called exit(2)")
 
 DEFAULT_CONFIG_PATH: str = os.path.join(os.path.dirname(__file__), "config.json")
@@ -138,7 +129,7 @@ def check_service(service: str, cfg: dict, lab_url: str, dry_run: bool = False) 
     token = os.getenv(cfg["token_env"], MOCK_TOKEN) if dry_run else os.getenv(cfg["token_env"])
 
     if not user or not token:
-        print(f"CONFIG ERROR: missing credentials for {service}")
+        logging.error("CONFIG ERROR: missing credentials for %s", service)
         return False
 
     auth = (user, token)
@@ -154,18 +145,18 @@ def check_service(service: str, cfg: dict, lab_url: str, dry_run: bool = False) 
             forbidden_resp = requests.request(cfg["forbidden_method"], forbidden_url, auth=auth, timeout=10, verify=False)
 
         if read_resp.status_code not in SUCCESS_CODES:
-            print(f"FAIL: {service} read access denied: {read_resp.status_code}")
+            logging.error("FAIL: %s read access denied: %s", service, read_resp.status_code)
             return False
 
         if forbidden_resp.status_code not in DENIED_CODES:
-            print(f"FAIL: {service} forbidden action was not denied: {forbidden_resp.status_code}")
+            logging.error("FAIL: %s forbidden action was not denied: %s", service, forbidden_resp.status_code)
             return False
 
     except Exception as exc:
-        print(f"FAIL: {service} request failed: {exc}")
+        logging.error("FAIL: %s request failed: %s", service, exc)
         return False
 
-    print(f"PASS: {service} credential permissions verified")
+    logging.info("PASS: %s credential permissions verified", service)
     return True
 
 
@@ -180,6 +171,12 @@ def main() -> int:
         0 if all services pass permission checks, 1 if any fail,
         2 if configuration error (missing LAB_URL or config error).
     """
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s: %(message)s",
+        stream=sys.stderr
+    )
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--config", help="Path to config JSON file")
@@ -188,12 +185,12 @@ def main() -> int:
     try:
         config = load_config(args.config)
     except RuntimeError as exc:
-        print(exc)
+        logging.error("%s", exc)
         return 2
 
     lab_url = os.getenv("LAB_URL", "http://localhost:8080" if args.dry_run else "")
     if not lab_url:
-        print("CONFIG ERROR: LAB_URL is not set")
+        logging.error("CONFIG ERROR: LAB_URL is not set")
         return 2
 
     all_pass = True
