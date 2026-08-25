@@ -113,14 +113,14 @@ def run_retention(db_url: str, retention_days: int = None) -> None:
         cutoff = datetime.datetime.now(timezone.utc) - datetime.timedelta(days=retention_days)
         
         with conn.cursor() as cur:
-            cutoff_str = cutoff.strftime('%Y_%m_%d')
+            cutoff_date = cutoff.date()
             cur.execute("""
                 SELECT relname FROM pg_class 
                 WHERE relname LIKE 'iocs_%' 
                 AND relkind = 'r'
                 AND relnamespace = 'public'::regnamespace
-                AND SUBSTRING(relname FROM 6 FOR 10) < %s;
-            """, (cutoff_str,))
+                AND to_date(substring(relname from 6), 'YYYY_MM_DD') < %s;
+            """, (cutoff_date,))
             partitions = [row[0] for row in cur.fetchall()]
             
             for part in partitions:
