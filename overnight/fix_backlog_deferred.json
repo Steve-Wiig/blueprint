@@ -1,31 +1,5 @@
 [
   {
-    "file": "engine/writeback/thehive.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 24,
-      "line_end": 27,
-      "description": "No validation of required fields in case_data (title, description, etc.) before sending to API",
-      "suggestion": "Add schema validation (pydantic/jsonschema) for case_data structure before sanitization",
-      "impact": "medium",
-      "effort": "small"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "tools/dynamic_vram_budget_check.py",
-    "issue": {
-      "description": "argparse defined but not passed to main(); dry-run logic duplicated instead of using parsed args",
-      "category": "maintainability",
-      "severity": "low",
-      "suggestion": "Pass args to main(args) or use parsed args directly in main()"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
     "file": "engine/hash_chain_sealer.py",
     "issue": {
       "category": "maintainability",
@@ -66,21 +40,6 @@
       "suggestion": "Change default to ':memory:' or require explicit path. Document that file path is for production only.",
       "impact": "low",
       "effort": "trivial"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "orchestrator/context_stitcher.py",
-    "issue": {
-      "category": "performance",
-      "severity": "medium",
-      "line_start": 23,
-      "line_end": 23,
-      "description": "json.dumps(query_embedding) for vector parameter; inefficient and may cause type mismatch with pgvector",
-      "suggestion": "Register vector adapter: from psycopg2.extras import register_vector; register_vector(conn); then pass list directly: (query_embedding, cutoff_date, top_k)",
-      "impact": "medium",
-      "effort": "small"
     },
     "attempts": 3,
     "deferred_reason": "failed 3 attempts"

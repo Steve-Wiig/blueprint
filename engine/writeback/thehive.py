@@ -15,11 +15,14 @@ import argparse
 import os
 import requests
 import json
+import sys
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 from engine.sanitization_pipeline import sanitize_payload
+
+REQUIRED_CASE_FIELDS = {'title', 'description'}
 
 
 _logger: Optional[logging.Logger] = None
@@ -133,22 +136,12 @@ def log_handoff(log_path: Path, case_id: str, mode: str) -> None:
     _logger.info(f"{now.isoformat()}|REF:{case_id}|STATUS:SUCCESS|MODE:{mode}")
 
 
-def main() -> None:
+def main() -> int:
     """Orchestrate the case writeback process.
 
-    Args:
-        None: Arguments are parsed from command line via parse_args().
-
     Returns:
-        None: This function raises RuntimeError to indicate exit code;
-            does not return normally.
-
-    Raises:
-        RuntimeError: With message indicating the exit code that would have been used:
-            - "Library code called exit(0)" on success
-            - "Library code called exit(1)" on API error or missing case ID
-            - "Library code called exit(2)" on JSON decode error
-            - "Library code called exit(3)" on request exception
+        int: Exit code (0=success, 1=validation/API error, 2=JSON decode error, 3=request exception)
+    """
 
     Example:
         >>> import argparse
@@ -162,17 +155,23 @@ def main() -> None:
     try:
         raw_data: Any = json.loads(args.case_data)
     except json.JSONDecodeError:
-        raise RuntimeError(f"Library code called exit(2)")
+        return 2
+
+    # Validate required fields
+    missing = REQUIRED_CASE_FIELDS - set(raw_data.keys())
+    if missing:
+        print(f"Missing required fields: {missing}", file=sys.stderr)
+        return 1
 
     sanitized_data = build_payload(raw_data, args.mode)
 
     try:
         case_id = call_thehive_api(args.url, args.api_key, sanitized_data)
         log_handoff(log_path, case_id, args.mode)
-        raise RuntimeError(f"Library code called exit(0)")
+        return 0
     except requests.exceptions.RequestException:
-        raise RuntimeError(f"Library code called exit(3)")
+        return 3
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
