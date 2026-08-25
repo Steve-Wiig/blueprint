@@ -11,11 +11,10 @@ from engine.sanitization_pipeline import sanitize_payload
 
 REQUIRED_CASE_FIELDS = {'title', 'description'}
 
-_logger: Optional[logging.Logger] = None
-
 
 def _setup_logger(log_path: Path) -> logging.Logger:
-    logger = logging.getLogger("thehive_writeback.handoff")
+    logger_name = f"thehive_writeback.handoff.{log_path}"
+    logger = logging.getLogger(logger_name)
     logger.setLevel(logging.INFO)
     logger.propagate = False
     logger.handlers.clear()
@@ -62,11 +61,9 @@ def call_thehive_api(url: str, api_key: str, payload: Any) -> str:
 
 
 def log_handoff(log_path: Path, case_id: str, mode: str) -> None:
-    global _logger
-    if _logger is None:
-        _logger = _setup_logger(log_path)
+    logger = _setup_logger(log_path)
     now = datetime.now(timezone.utc)
-    _logger.info(f"{now.isoformat()}|REF:{case_id}|STATUS:SUCCESS|MODE:{mode}")
+    logger.info(f"{now.isoformat()}|REF:{case_id}|STATUS:SUCCESS|MODE:{mode}")
 
 
 def main() -> Union[str, int]:
