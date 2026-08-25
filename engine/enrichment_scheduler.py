@@ -1,14 +1,8 @@
-"""
-Enrichment job processor.
-
-This module is designed to be executed as a standalone script, not imported as a library.
-The public API is restricted to the `main` function via __all__.
-"""
-
 import argparse
 import hashlib
 import json
 import logging
+import signal
 import sqlite3
 import warnings
 from abc import ABC, abstractmethod
@@ -388,107 +382,121 @@ def _write_audit_log(
         ioc_hash: SHA256 hash of the IOC.
         quota_cost: Quota cost for this job.
         status: Job status (COMPLETED or FAILED).
-        processed_at: Timestamp of processing.
-        error_message: Error message if failed, None otherwise.
+        processed_at: Timestamp when the job was processed.
+        error_message: Error message if job failed, None otherwise.
     """
     pg_cur.execute(
-        "INSERT INTO enrichment_audit_log (job_id, provider, ioc_hash, quota_cost, status, timestamp, error_message) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+        """
+        INSERT INTO enrichment_audit_log (job_id, provider, ioc_hash, quota_cost, status, processed_at, error_message)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """,
         (job_id, provider_name, ioc_hash, quota_cost, status, processed_at, error_message)
     )
 
 
-def _update_job_status(
-    pg_cur: psycopg2.extensions.cursor,
-    job_id: int,
-    status: str,
-    result_json: Optional[str]
-) -> None:
-    """Update the job status in the database.
+_shutdown_requested = False
 
-    Args:
-        pg_cur: PostgreSQL cursor.
-        job_id: The job ID.
-        status: New job status.
-        result_json: Enrichment result JSON if completed, None otherwise.
-    """
-    if result_json is not None:
-        pg_cur.execute(
-            "UPDATE enrichment_jobs SET status = %s, result = %s WHERE id = %s",
-            (status, result_json, job_id)
-        )
-    else:
-        pg_cur.execute(
-            "UPDATE enrichment_jobs SET status = %s WHERE id = %s",
-            (status, job_id)
-        )
+
+def _signal_handler(signum: int, frame: Any) -> None:
+    """Signal handler for graceful shutdown."""
+    global _shutdown_requested
+    logger.info("Received signal %s, initiating graceful shutdown...", signum)
+    _shutdown_requested = True
+
+
+def _setup_signal_handlers() -> None:
+    """Register signal handlers for SIGTERM and SIGINT."""
+    signal.signal(signal.SIGTERM, _signal_handler)
+    signal.signal(signal.SIGINT, _signal_handler)
 
 
 def process_jobs(
     pg_conn: psycopg2.extensions.connection,
     sq_conn: sqlite3.Connection,
-    provider: Optional[EnrichmentProvider] = None
+    provider: EnrichmentProvider,
+    batch_size: int = 100,
+    poll_interval: float = 5.0
 ) -> None:
-    """Fetches pending enrichment jobs in batches and processes them if quota is available.
-
-    Each job attempt (success or failure) is recorded in an append-only audit log with
-    job_id, provider, ioc_hash, quota_cost, status, timestamp, and error_message.
+    """Process enrichment jobs in batches until shutdown is requested.
 
     Args:
-        pg_conn: The PostgreSQL database connection.
-        sq_conn: The SQLite database connection.
-        provider: An optional EnrichmentProvider instance. Defaults to MockEnrichmentProvider.
+        pg_conn: PostgreSQL database connection.
+        sq_conn: SQLite database connection.
+        provider: Enrichment provider instance.
+        batch_size: Number of jobs to fetch per batch.
+        poll_interval: Seconds to wait between batches when no jobs are available.
     """
-    if provider is None:
-        provider = MockEnrichmentProvider()
+    global _shutdown_requested
+    _shutdown_requested = False
 
-    BATCH_SIZE = 1000
+    _setup_signal_handlers()
+
     last_id = 0
     quota_cache: Dict[str, int] = {}
     cost_cache: Dict[str, int] = {}
 
     sq_cur = sq_conn.cursor()
-    try:
-        while True:
-            jobs = _fetch_job_batch(pg_conn, last_id, BATCH_SIZE)
-            if not jobs:
-                break
+    pg_cur = pg_conn.cursor()
 
-            providers_in_batch = {provider_name for _, _, provider_name in jobs}
+    try:
+        while not _shutdown_requested:
+            batch = _fetch_job_batch(pg_conn, last_id, batch_size)
+
+            if not batch:
+                logger.debug("No pending jobs, sleeping for %.1f seconds", poll_interval)
+                import time
+                time.sleep(poll_interval)
+                continue
+
+            providers_in_batch = {job[2] for job in batch}
             _check_batch_quota(sq_conn, sq_cur, providers_in_batch, quota_cache, cost_cache)
 
-            pg_cur = pg_conn.cursor()
-            try:
-                for job_id, ioc, provider_name in jobs:
-                    last_id = job_id
-                    quota = quota_cache.get(provider_name, 0)
-                    cost = cost_cache.get(provider_name, 1)
+            for job_id, ioc_value, provider_name in batch:
+                if _shutdown_requested:
+                    logger.info("Shutdown requested, stopping job processing")
+                    break
 
-                    ioc_hash = hashlib.sha256(ioc.encode()).hexdigest()
-                    processed_at = datetime.now(timezone.utc)
+                ioc_hash = hashlib.sha256(ioc_value.encode()).hexdigest()
+                quota = quota_cache.get(provider_name, 0)
+                cost = cost_cache.get(provider_name, 1)
 
-                    status, error_message, result_json = _process_single_job(
-                        provider, ioc, provider_name, quota, cost
+                status, error_message, result_json = _process_single_job(
+                    provider, ioc_value, provider_name, quota, cost
+                )
+
+                processed_at = datetime.now(timezone.utc)
+
+                if status == JobStatus.COMPLETED.value:
+                    pg_cur.execute(
+                        "UPDATE enrichment_jobs SET status = %s, result = %s, processed_at = %s WHERE id = %s",
+                        (status, result_json, processed_at, job_id)
+                    )
+                    update_quota(sq_conn, provider_name, cost, sq_cur)
+                    quota_cache[provider_name] -= cost
+                else:
+                    pg_cur.execute(
+                        "UPDATE enrichment_jobs SET status = %s, error_message = %s, processed_at = %s WHERE id = %s",
+                        (status, error_message, processed_at, job_id)
                     )
 
-                    _write_audit_log(
-                        pg_cur, job_id, provider_name, ioc_hash, cost,
-                        status, processed_at, error_message
-                    )
-
-                    _update_job_status(pg_cur, job_id, status, result_json)
-
-                    if status == JobStatus.COMPLETED.value:
-                        update_quota(sq_conn, provider_name, cost, sq_cur)
-                        quota_cache[provider_name] = quota - cost
+                _write_audit_log(
+                    pg_cur, job_id, provider_name, ioc_hash, cost, status, processed_at, error_message
+                )
 
                 pg_conn.commit()
-            except Exception:
-                pg_conn.rollback()
-                raise
-            finally:
-                pg_cur.close()
+                sq_conn.commit()
+
+                last_id = job_id
+
+    except Exception as e:
+        logger.exception("Error in job processing loop")
+        pg_conn.rollback()
+        sq_conn.rollback()
+        raise
     finally:
         sq_cur.close()
+        pg_cur.close()
+        logger.info("Job processing stopped gracefully")
 
 
 def main() -> None:
@@ -496,14 +504,22 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Process enrichment jobs")
     parser.add_argument("--pg-dsn", required=True, help="PostgreSQL DSN")
     parser.add_argument("--sqlite-path", required=True, help="SQLite database path")
+    parser.add_argument("--batch-size", type=int, default=100, help="Batch size for job processing")
+    parser.add_argument("--poll-interval", type=float, default=5.0, help="Poll interval in seconds")
     parser.add_argument("--log-level", default="INFO", help="Logging level")
+
     args = parser.parse_args()
 
-    logging.basicConfig(level=args.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=getattr(logging, args.log_level.upper()),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
 
     pg_conn, sq_conn = get_db_connections(args.pg_dsn, args.sqlite_path)
+
     try:
-        process_jobs(pg_conn, sq_conn)
+        provider = MockEnrichmentProvider()
+        process_jobs(pg_conn, sq_conn, provider, args.batch_size, args.poll_interval)
     finally:
         pg_conn.close()
         sq_conn.close()
