@@ -76,6 +76,13 @@ DRY_RUN_PAYLOADS: list[str] = [
 ]
 
 
+class ScanExit(RuntimeError):
+    """Exception raised to signal scan completion with an exit code."""
+    def __init__(self, exit_code: int, message: str = "") -> None:
+        super().__init__(message or f"scan completed with exit code {exit_code}")
+        self.exit_code = exit_code
+
+
 def scan_text(text: str) -> list[tuple[str, str]]:
     """
     Scan text for credential patterns.
@@ -151,7 +158,7 @@ def run_dry_run() -> bool:
     return True
 
 
-def main() -> int:
+def main() -> None:
     """
     Main entry point for credential scanning CLI.
 
@@ -162,11 +169,11 @@ def main() -> int:
         --dry-run: Run self-test with built-in payloads and exit.
         files: Zero or more file paths to scan.
 
-    Returns:
-        int: Process exit code.
-            0 = success/no violations found
-            1 = violations found in scanned files
-            2 = file read error
+    Raises:
+        ScanExit: Always raised with exit code indicating scan result.
+            exit_code 0 = success/no violations found
+            exit_code 1 = violations found in scanned files or dry-run failed
+            exit_code 2 = file read error
 
     Example:
         $ python credential_sanitizer.py --dry-run
@@ -190,7 +197,7 @@ Examples:
 
     if args.dry_run:
         success = run_dry_run()
-        return 0 if success else 1
+        raise ScanExit(0 if success else 1)
 
     exit_code = 0
     for file_path in args.files:
@@ -202,10 +209,13 @@ Examples:
                 exit_code = 1
         except (OSError, UnicodeDecodeError) as e:
             print(f"CONFIG ERROR: Could not read {file_path}: {e}")
-            return 2
+            raise ScanExit(2)
             
-    return exit_code
+    raise ScanExit(exit_code)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        main()
+    except ScanExit as e:
+        sys.exit(e.exit_code)
