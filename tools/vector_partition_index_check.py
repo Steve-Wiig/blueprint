@@ -278,7 +278,7 @@ def validate_partition_config(
         print("  [2/6] PASSED")
 
     # Required partitions
-    missing = set(required_partitions) - set(data.get("partitions", {}).keys())
+    missing = [p for p in required_partitions if p not in data.get("partitions", {})]
     if missing:
         if dry_run:
             print(f"  [3/6] FAILED – missing partitions: {', '.join(missing)}")
@@ -334,7 +334,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = _parse_arguments(argv)
 
     if not os.environ.get("SLM_ENV"):
-        print("Error: SLM_ENV environment variable is not set.", file=sys.stderr)
+        print("ERROR: SLM_ENV environment variable not set", file=sys.stderr)
         return EXIT_ENV_ERROR
 
     try:
