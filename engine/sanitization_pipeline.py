@@ -34,9 +34,17 @@ def _load_min_token_length() -> int:
         raise ValueError(f"SANITIZER_MIN_TOKEN_LENGTH must be in range [1, 1000], got {value}")
     return value
 
+def _load_analytical_fields() -> set[str]:
+    """Load analytical fields from environment variable."""
+    default_fields = "process.args,process.command_line,powershell.encoded_command,script.block,bash.command,shell.args,file.contents"
+    raw = os.getenv('SANITIZER_ANALYTICAL_FIELDS', default_fields)
+    fields = {field.strip() for field in raw.split(',') if field.strip()}
+    return fields
+
 # Module-level constants initialized with validation at import time
 ENTROPY_THRESHOLD: float = _load_entropy_threshold()
 MIN_TOKEN_LENGTH: int = _load_min_token_length()
+ANALYTICAL_FIELDS: set[str] = _load_analytical_fields()
 
 # Regex patterns for known secret formats
 # Patterns are compiled at module load for performance
@@ -79,13 +87,6 @@ ALLOWLIST_PATTERNS: Dict[str, str] = {
 
 ALLOWLIST_PATTERNS_COMPILED: AllowlistPatternDict = {
     k: re.compile(v) for k, v in ALLOWLIST_PATTERNS.items()
-}
-
-# Field paths that trigger quarantine instead of inline redaction
-# These fields contain analytical payloads where redaction would destroy forensic value
-ANALYTICAL_FIELDS: set[str] = {
-    "process.args", "process.command_line", "powershell.encoded_command",
-    "script.block", "bash.command", "shell.args", "file.contents"
 }
 
 # Pre-compiled token pattern for entropy analysis (uses configurable MIN_TOKEN_LENGTH)
@@ -147,6 +148,15 @@ def reload_allowlist() -> None:
     ALLOWLIST_PATTERNS_COMPILED = {
         k: re.compile(v) for k, v in ALLOWLIST_PATTERNS.items()
     }
+
+def reload_analytical_fields() -> None:
+    """Reloads analytical fields from environment variable.
+
+    Call this function after modifying SANITIZER_ANALYTICAL_FIELDS at runtime
+    to keep ANALYTICAL_FIELDS in sync.
+    """
+    global ANALYTICAL_FIELDS
+    ANALYTICAL_FIELDS = _load_analytical_fields()
 
 def redact_regex_patterns(payload: str, metadata: Dict[str, Any]) -> str:
     """Redacts sensitive patterns using combined regex in single pass.
