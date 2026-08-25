@@ -2,6 +2,7 @@
 
 import sqlite3
 import argparse
+import sys
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Generator, Optional
@@ -145,8 +146,15 @@ def record_usage(adapter_id: str, tokens_used: int, db_path: Optional[str] = Non
         raise QuotaLedgerError(f"Database error during usage recording: {e}") from e
 
 
-def main() -> None:
-    """Parses command line arguments and executes the requested quota management operation."""
+def main() -> int:
+    """Parses command line arguments and executes the requested quota management operation.
+
+    Returns:
+        int: Process exit code.
+            0 = success (init completed / check passed / usage recorded)
+            1 = check failed (quota exceeded or adapter not found)
+            2 = no operation specified (usage error)
+    """
     parser = argparse.ArgumentParser(description="SLM Quota Ledger Manager")
     parser.add_argument("--init", action="store_true")
     parser.add_argument("--check", nargs=2, metavar=('ID', 'TOKENS'))
@@ -155,18 +163,18 @@ def main() -> None:
 
     if args.init:
         init_db()
-        raise RuntimeError("Library code called exit(0)")
+        return 0
     elif args.check:
         if check_quota(args.check[0], int(args.check[1])):
-            raise RuntimeError("Library code called exit(0)")
+            return 0
         else:
-            raise RuntimeError("Library code called exit(1)")
+            return 1
     elif args.record:
         record_usage(args.record[0], int(args.record[1]))
-        raise RuntimeError("Library code called exit(0)")
+        return 0
     else:
-        raise RuntimeError("Library code called exit(2)")
+        return 2
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

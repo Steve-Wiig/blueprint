@@ -105,28 +105,6 @@
     "deferred_reason": "failed 3 attempts"
   },
   {
-    "file": "engine/quota_ledger.py",
-    "issue": {
-      "description": "RuntimeError messages like 'Library code called exit(2)' are misleading - they're not exit calls but exception raises. Confuses debugging and log analysis.",
-      "category": "maintainability",
-      "severity": "medium",
-      "suggestion": "Define custom exceptions (QuotaExceededError, AdapterNotFoundError, DatabaseError) with meaningful messages; let CLI main() catch and sys.exit() with codes"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/quota_ledger.py",
-    "issue": {
-      "description": "Module-level constant DB_PATH causes module-level side effect (file path resolution) - violates 'No module-level side effects' rule",
-      "category": "blueprint_compliance",
-      "severity": "medium",
-      "suggestion": "Move DB_PATH resolution into functions or make it a parameter; use lazy initialization"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
     "file": "engine/writeback/so_cases.py",
     "issue": {
       "description": "No connection pooling: creates new TCP connection for each API call, inefficient for repeated use",

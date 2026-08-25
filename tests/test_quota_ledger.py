@@ -51,9 +51,9 @@ def test_record_usage_updates_db(setup_db):
 def test_main_cli_init():
     import subprocess
     script_path = Path(__file__).parent.parent / "engine" / "quota_ledger.py"
-    # We expect RuntimeError from the mock-exit logic in main()
-    with pytest.raises(subprocess.CalledProcessError):
-        subprocess.run([sys.executable, str(script_path), "--init"], check=True)
+    # --init now exits cleanly with code 0 (no more RuntimeError)
+    result = subprocess.run([sys.executable, str(script_path), "--init"], capture_output=True, text=True)
+    assert result.returncode == 0
 
 def test_main_cli_check_fail():
     import subprocess
