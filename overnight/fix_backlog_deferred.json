@@ -179,21 +179,6 @@
     "deferred_reason": "failed 3 attempts"
   },
   {
-    "file": "tools/embedding_prefix_check.py",
-    "issue": {
-      "category": "performance",
-      "severity": "low",
-      "line_start": 9,
-      "line_end": 12,
-      "description": "Global 'calls' list grows unbounded if script is imported multiple times or used in a loop, causing memory leak",
-      "suggestion": "Move calls list inside main() or clear it at start of main(). Better: use a local closure variable.",
-      "impact": "low",
-      "effort": "trivial"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
     "file": "orchestrator/context_stitcher.py",
     "issue": {
       "category": "performance",
@@ -204,21 +189,6 @@
       "suggestion": "Introduce a connection pool (e.g., `psycopg2.pool.ThreadedConnectionPool`) and reuse connections.",
       "impact": "medium",
       "effort": "medium"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "tools/embedding_prefix_check.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 10,
-      "line_end": 14,
-      "description": "The script uses a global list 'calls' to capture encoder inputs, which introduces hidden state and makes the function non-reentrant and difficult to test in parallel.",
-      "suggestion": "Move 'calls' into main or pass a mutable container to fake_encode, or use a local list.",
-      "impact": "medium",
-      "effort": "small"
     },
     "attempts": 3,
     "deferred_reason": "failed 3 attempts"
@@ -453,21 +423,6 @@
       "line_end": 23,
       "description": "json.dumps(query_embedding) for vector parameter; inefficient and may cause type mismatch with pgvector",
       "suggestion": "Register vector adapter: from psycopg2.extras import register_vector; register_vector(conn); then pass list directly: (query_embedding, cutoff_date, top_k)",
-      "impact": "medium",
-      "effort": "small"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "tools/embedding_prefix_check.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 9,
-      "line_end": 9,
-      "description": "Global mutable 'calls' list creates fragile test coupling and prevents parallel execution",
-      "suggestion": "Replace with a callable class or closure that encapsulates call tracking state",
       "impact": "medium",
       "effort": "small"
     },
