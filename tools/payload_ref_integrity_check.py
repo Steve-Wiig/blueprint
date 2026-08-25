@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # CI Gate: Payload Reference Integrity Check
 import sys
-import argparse
 import hashlib
 import json
 import os
@@ -107,8 +106,4 @@ def main() -> int:
     return verify_payload(ledger_file)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="CI Check Tool")
-    parser.add_argument("--dry-run", action="store_true", help="Run with test/mock data")
-    args = parser.parse_args()
-    
     sys.exit(main())
