@@ -41,7 +41,7 @@ DEFAULT_STRESS_ITERATIONS = 10
 MIN_LOCK_ACQUISITION_MS = 5
 MIN_IO_LATENCY_MS = 1
 MAX_IO_LATENCY_MS = 10
-LOCK_ACQUISITION_MULTIPLIER = 2
+MAX_LOCK_ACQUISITION_MULTIPLIER = 2
 
 
 class HashChainLedger:
@@ -81,7 +81,7 @@ class HashChainLedger:
         """
         with self.lock:
             # Simulate lock acquisition overhead
-            time.sleep(random.uniform(MIN_LOCK_ACQUISITION_MS / 1000, MIN_LOCK_ACQUISITION_MS * LOCK_ACQUISITION_MULTIPLIER / 1000))
+            time.sleep(random.uniform(MIN_LOCK_ACQUISITION_MS / 1000, MIN_LOCK_ACQUISITION_MS * MAX_LOCK_ACQUISITION_MULTIPLIER / 1000))
             # Simulate I/O latency for ledger write
             time.sleep(random.uniform(MIN_IO_LATENCY_MS / 1000, MAX_IO_LATENCY_MS / 1000))
             self.chain.append(hash_val)
