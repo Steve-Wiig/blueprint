@@ -33,8 +33,8 @@ DEFAULT_FORBIDDEN_FIELDS = {
 }
 
 # MAX_SCHEMA_SIZE limits the file size for standard JSON parsing to avoid OOM on large schemas.
-# Files exceeding this threshold (100MB) will trigger a warning recommending ijson for streaming parsing.
-MAX_SCHEMA_SIZE = 100 * 1024 * 1024  # 100 MB
+# Files exceeding this threshold (100 MiB) will trigger a warning recommending ijson for streaming parsing.
+MAX_SCHEMA_SIZE = 100 * 1024 * 1024  # 100 MiB
 
 
 def load_forbidden_fields(policy_file: Optional[str] = None, env_var: str = "FORBIDDEN_FIELDS") -> Set[str]:
@@ -159,7 +159,7 @@ def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = Non
 
     Side Effects:
         Prints error messages to stdout for failures.
-        Prints warning if schema file exceeds MAX_SCHEMA_SIZE (100MB).
+        Prints warning if schema file exceeds MAX_SCHEMA_SIZE (100MiB).
     """
     if forbidden_fields is None:
         forbidden_fields = load_forbidden_fields()
@@ -170,8 +170,8 @@ def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = Non
 
     try:
         if os.path.getsize(schema_path) > MAX_SCHEMA_SIZE:
-            print(f"WARNING: Schema file is {os.path.getsize(schema_path) // (1024*1024)}MB, "
-                  "exceeding the recommended 100MB limit. "
+            print(f"WARNING: Schema file is {os.path.getsize(schema_path) // (1024*1024)}MiB, "
+                  "exceeding the recommended 100 MiB limit. "
                   "This may cause OOM with standard JSON parsing. "
                   "Consider using ijson for iterative parsing.")
         with open(schema_path, 'r') as f:
