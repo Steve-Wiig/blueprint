@@ -314,28 +314,25 @@ def store_proposal(key: str, value: str, approval_token: str | None = None) -> N
         conn.commit()
         
         # Also queue for batch audit logging if enabled (triggers handle compliance)
-        if _batch_mode_enabled and proposal_id is not None:
+        if _batch_mode_enabled:
             _queue_audit_entry(proposal_id, 'INSERT', None, 'PENDING', token_hash)
-    except ProposalError:
-        raise
-    except Exception as e:
+        
+    except sqlite3.Error as e:
         raise ProposalStorageError(f"Failed to store proposal: {e}")
 
 
-def main() -> NoReturn:
-    """Orchestrates the proposal writeback process.
-
-    Raises:
-        ProposalError: On any failure or success (with appropriate exit_code).
-    """
+def main() -> None:
+    """Main entry point for the proposal adapter."""
     args = parse_args()
-    validate_proposal(args.key)
-    store_proposal(args.key, args.value, args.approval_token)
-    raise ProposalSuccess("Proposal stored successfully")
+    
+    try:
+        validate_proposal(args.key)
+        store_proposal(args.key, args.value, args.approval_token)
+        print("Proposal stored successfully", file=sys.stdout)
+    except ProposalError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(e.exit_code)
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except ProposalError as e:
-        raise RuntimeError(e.exit_code) from e
+    main()
