@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-# CI Gate: Embedding Prefix Idempotency Check
+"""
+CI Gate: Embedding Prefix Idempotency Check
+
+This module validates that embedding prefixes are applied idempotently,
+ensuring that text already prefixed does not receive a duplicate prefix.
+It loads prefixes from a JSON config file, environment variables, or defaults,
+and optionally validates against a running embedding service.
+"""
 import sys
 import argparse
 import json
@@ -8,9 +15,9 @@ from pathlib import Path
 from typing import Dict, Optional
 
 
-CONFIG_PATH = Path(__file__).parent.parent / "config" / "embedding_prefixes.json"
-ENV_DOC_PREFIX = "EMBEDDING_DOC_PREFIX"
-ENV_QUERY_PREFIX = "EMBEDDING_QUERY_PREFIX"
+CONFIG_PATH: Path = Path(__file__).parent.parent / "config" / "embedding_prefixes.json"
+ENV_DOC_PREFIX: str = "EMBEDDING_DOC_PREFIX"
+ENV_QUERY_PREFIX: str = "EMBEDDING_QUERY_PREFIX"
 
 
 def load_prefixes_from_config() -> Dict[str, str]:
