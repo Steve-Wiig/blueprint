@@ -2,13 +2,63 @@ import json
 import sqlite3
 import os
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable, TypeVar, Generator
 from datetime import datetime, timezone
+from contextlib import contextmanager
 
 DB_PATH = os.getenv('SOC_DB_PATH', '/var/lib/soc/triage_queue.db')
 LOG_PATH = os.getenv('SOC_LOG_PATH', '/var/log/soc/intake.log')
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar('T')
+
+
+@contextmanager
+def get_connection() -> Generator[sqlite3.Connection, None, None]:
+    """Context manager for database connections with automatic cleanup."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+@contextmanager
+def transaction(conn: sqlite3.Connection) -> Generator[sqlite3.Cursor, None, None]:
+    """Context manager for database transactions with automatic commit/rollback."""
+    cursor = conn.cursor()
+    try:
+        yield cursor
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def execute_with_connection(func: Callable[..., T]) -> Callable[..., T]:
+    """Decorator that provides a connection and handles errors."""
+    def wrapper(*args: Any, **kwargs: Any) -> T:
+        try:
+            with get_connection() as conn:
+                return func(conn, *args, **kwargs)
+        except Exception as e:
+            logger.error(f"{func.__name__} error: {e}")
+            raise RuntimeError("Library code called exit(2)")
+    return wrapper
+
+
+def execute_in_transaction(func: Callable[..., T]) -> Callable[..., T]:
+    """Decorator that provides a connection with transaction handling."""
+    def wrapper(*args: Any, **kwargs: Any) -> T:
+        try:
+            with get_connection() as conn:
+                with transaction(conn) as cursor:
+                    return func(cursor, *args, **kwargs)
+        except Exception as e:
+            logger.error(f"{func.__name__} error: {e}")
+            raise RuntimeError("Library code called exit(2)")
+    return wrapper
 
 
 def init_db() -> None:
@@ -18,41 +68,38 @@ def init_db() -> None:
         RuntimeError: If database initialization fails.
     """
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS triage_queue (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                payload TEXT,
-                severity TEXT,
-                status TEXT DEFAULT 'pending',
-                attempts INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                lease_expires_at TIMESTAMP,
-                last_heartbeat_at TIMESTAMP,
-                failure_reason TEXT
-            )
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS audit_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_id INTEGER NOT NULL,
-                old_status TEXT,
-                new_status TEXT NOT NULL,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                actor TEXT
-            )
-            """
-        )
-        conn.commit()
+        with get_connection() as conn:
+            with transaction(conn) as cursor:
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS triage_queue (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        payload TEXT,
+                        severity TEXT,
+                        status TEXT DEFAULT 'pending',
+                        attempts INTEGER DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        lease_expires_at TIMESTAMP,
+                        last_heartbeat_at TIMESTAMP,
+                        failure_reason TEXT
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        event_id INTEGER NOT NULL,
+                        old_status TEXT,
+                        new_status TEXT NOT NULL,
+                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        actor TEXT
+                    )
+                    """
+                )
     except Exception as e:
         logger.error(f"Database initialization error: {e}")
         raise RuntimeError("Library code called exit(2)")
-    finally:
-        conn.close()
 
 
 def _log_audit(event_id: int, old_status: Optional[str], new_status: str, actor: str = "system") -> None:
@@ -65,17 +112,14 @@ def _log_audit(event_id: int, old_status: Optional[str], new_status: str, actor:
         actor: The actor performing the change.
     """
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO audit_log (event_id, old_status, new_status, actor) VALUES (?, ?, ?, ?)",
-            (event_id, old_status, new_status, actor),
-        )
-        conn.commit()
+        with get_connection() as conn:
+            with transaction(conn) as cursor:
+                cursor.execute(
+                    "INSERT INTO audit_log (event_id, old_status, new_status, actor) VALUES (?, ?, ?, ?)",
+                    (event_id, old_status, new_status, actor),
+                )
     except Exception as e:
         logger.error(f"Audit log error: {e}")
-    finally:
-        conn.close()
 
 
 def sanitize_event(event: Dict[str, Any]) -> Dict[str, Any]:
@@ -123,7 +167,8 @@ def sanitize_event(event: Dict[str, Any]) -> Dict[str, Any]:
     return sanitized
 
 
-def enqueue_event(event: Dict[str, Any]) -> None:
+@execute_in_transaction
+def enqueue_event(cursor: sqlite3.Cursor, event: Dict[str, Any]) -> None:
     """Inserts a single sanitized event into the triage_queue table.
 
     Args:
@@ -132,21 +177,12 @@ def enqueue_event(event: Dict[str, Any]) -> None:
     Raises:
         RuntimeError: If the database operation fails.
     """
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO triage_queue (payload, severity) VALUES (?, ?)",
-            (json.dumps(event), event["severity"]),
-        )
-        event_id = cursor.lastrowid
-        conn.commit()
-        _log_audit(event_id, None, "pending", "enqueue")
-    except Exception as e:
-        logger.error(f"Enqueue event error: {e}")
-        raise RuntimeError("Library code called exit(2)")
-    finally:
-        conn.close()
+    cursor.execute(
+        "INSERT INTO triage_queue (payload, severity) VALUES (?, ?)",
+        (json.dumps(event), event["severity"]),
+    )
+    event_id = cursor.lastrowid
+    _log_audit(event_id, None, "pending", "enqueue")
 
 
 def process_eve_file(filepath: str) -> int:
@@ -186,22 +222,20 @@ def process_eve_file(filepath: str) -> int:
         return 0
 
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.executemany(
-            "INSERT INTO triage_queue (payload, severity) VALUES (?, ?)",
-            rows,
-        )
-        conn.commit()
+        with get_connection() as conn:
+            with transaction(conn) as cursor:
+                cursor.executemany(
+                    "INSERT INTO triage_queue (payload, severity) VALUES (?, ?)",
+                    rows,
+                )
         return len(rows)
     except Exception as e:
         logger.error(f"Bulk insert error: {e}")
         raise RuntimeError("Library code called exit(2)")
-    finally:
-        conn.close()
 
 
-def get_pending_events(limit: int = 100) -> List[Dict[str, Any]]:
+@execute_with_connection
+def get_pending_events(conn: sqlite3.Connection, limit: int = 100) -> List[Dict[str, Any]]:
     """Retrieves pending events from the triage_queue.
 
     Args:
@@ -210,24 +244,18 @@ def get_pending_events(limit: int = 100) -> List[Dict[str, Any]]:
     Returns:
         A list of event dictionaries with id, payload, severity, and attempts.
     """
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, payload, severity, attempts FROM triage_queue WHERE status = 'pending' LIMIT ?",
-            (limit,),
-        )
-        rows = cursor.fetchall()
-        return [dict(row) for row in rows]
-    except Exception as e:
-        logger.error(f"Get pending events error: {e}")
-        raise RuntimeError("Library code called exit(2)")
-    finally:
-        conn.close()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, payload, severity, attempts FROM triage_queue WHERE status = 'pending' LIMIT ?",
+        (limit,),
+    )
+    rows = cursor.fetchall()
+    return [dict(row) for row in rows]
 
 
-def lease_event(event_id: int, ttl_seconds: int = 300) -> bool:
+@execute_in_transaction
+def lease_event(cursor: sqlite3.Cursor, event_id: int, ttl_seconds: int = 300) -> bool:
     """Attempts to lease a pending event for processing.
 
     Args:
@@ -237,38 +265,30 @@ def lease_event(event_id: int, ttl_seconds: int = 300) -> bool:
     Returns:
         True if the lease was acquired, False otherwise.
     """
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT status FROM triage_queue WHERE id = ?",
-            (event_id,),
-        )
-        row = cursor.fetchone()
-        old_status = row[0] if row else None
-        
-        cursor.execute(
-            """
-            UPDATE triage_queue
-            SET status = 'processing',
-                lease_expires_at = datetime('now', ?),
-                last_heartbeat_at = datetime('now')
-            WHERE id = ? AND status = 'pending'
-            """,
-            (f"+{ttl_seconds} seconds", event_id),
-        )
-        conn.commit()
-        if cursor.rowcount > 0:
-            _log_audit(event_id, old_status, "processing", "lease")
-        return cursor.rowcount > 0
-    except Exception as e:
-        logger.error(f"Lease event error: {e}")
-        raise RuntimeError("Library code called exit(2)")
-    finally:
-        conn.close()
+    cursor.execute(
+        "SELECT status FROM triage_queue WHERE id = ?",
+        (event_id,),
+    )
+    row = cursor.fetchone()
+    old_status = row[0] if row else None
+    
+    cursor.execute(
+        """
+        UPDATE triage_queue
+        SET status = 'processing',
+            lease_expires_at = datetime('now', ?),
+            last_heartbeat_at = datetime('now')
+        WHERE id = ? AND status = 'pending'
+        """,
+        (f"+{ttl_seconds} seconds", event_id),
+    )
+    if cursor.rowcount > 0:
+        _log_audit(event_id, old_status, "processing", "lease")
+    return cursor.rowcount > 0
 
 
-def heartbeat_event(event_id: int, ttl_seconds: int = 300) -> bool:
+@execute_in_transaction
+def heartbeat_event(cursor: sqlite3.Cursor, event_id: int, ttl_seconds: int = 300) -> bool:
     """Extends the lease on a processing event.
 
     Args:
@@ -278,28 +298,20 @@ def heartbeat_event(event_id: int, ttl_seconds: int = 300) -> bool:
     Returns:
         True if the heartbeat was successful, False otherwise.
     """
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            UPDATE triage_queue
-            SET lease_expires_at = datetime('now', ?),
-                last_heartbeat_at = datetime('now')
-            WHERE id = ? AND status = 'processing'
-            """,
-            (f"+{ttl_seconds} seconds", event_id),
-        )
-        conn.commit()
-        return cursor.rowcount > 0
-    except Exception as e:
-        logger.error(f"Heartbeat event error: {e}")
-        raise RuntimeError("Library code called exit(2)")
-    finally:
-        conn.close()
+    cursor.execute(
+        """
+        UPDATE triage_queue
+        SET lease_expires_at = datetime('now', ?),
+            last_heartbeat_at = datetime('now')
+        WHERE id = ? AND status = 'processing'
+        """,
+        (f"+{ttl_seconds} seconds", event_id),
+    )
+    return cursor.rowcount > 0
 
 
-def complete_event(event_id: int) -> bool:
+@execute_in_transaction
+def complete_event(cursor: sqlite3.Cursor, event_id: int) -> bool:
     """Marks an event as completed.
 
     Args:
@@ -308,32 +320,24 @@ def complete_event(event_id: int) -> bool:
     Returns:
         True if the event was marked complete, False otherwise.
     """
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT status FROM triage_queue WHERE id = ?",
-            (event_id,),
-        )
-        row = cursor.fetchone()
-        old_status = row[0] if row else None
-        
-        cursor.execute(
-            "UPDATE triage_queue SET status = 'completed' WHERE id = ? AND status = 'processing'",
-            (event_id,),
-        )
-        conn.commit()
-        if cursor.rowcount > 0:
-            _log_audit(event_id, old_status, "completed", "complete")
-        return cursor.rowcount > 0
-    except Exception as e:
-        logger.error(f"Complete event error: {e}")
-        raise RuntimeError("Library code called exit(2)")
-    finally:
-        conn.close()
+    cursor.execute(
+        "SELECT status FROM triage_queue WHERE id = ?",
+        (event_id,),
+    )
+    row = cursor.fetchone()
+    old_status = row[0] if row else None
+    
+    cursor.execute(
+        "UPDATE triage_queue SET status = 'completed' WHERE id = ? AND status = 'processing'",
+        (event_id,),
+    )
+    if cursor.rowcount > 0:
+        _log_audit(event_id, old_status, "completed", "complete")
+    return cursor.rowcount > 0
 
 
-def fail_event(event_id: int, reason: str) -> bool:
+@execute_in_transaction
+def fail_event(cursor: sqlite3.Cursor, event_id: int, reason: str) -> bool:
     """Marks an event as failed with a reason.
 
     Args:
@@ -343,38 +347,30 @@ def fail_event(event_id: int, reason: str) -> bool:
     Returns:
         True if the event was marked failed, False otherwise.
     """
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT status FROM triage_queue WHERE id = ?",
-            (event_id,),
-        )
-        row = cursor.fetchone()
-        old_status = row[0] if row else None
-        
-        cursor.execute(
-            """
-            UPDATE triage_queue
-            SET status = 'failed',
-                failure_reason = ?,
-                attempts = attempts + 1
-            WHERE id = ?
-            """,
-            (reason, event_id),
-        )
-        conn.commit()
-        if cursor.rowcount > 0:
-            _log_audit(event_id, old_status, "failed", "fail")
-        return cursor.rowcount > 0
-    except Exception as e:
-        logger.error(f"Fail event error: {e}")
-        raise RuntimeError("Library code called exit(2)")
-    finally:
-        conn.close()
+    cursor.execute(
+        "SELECT status FROM triage_queue WHERE id = ?",
+        (event_id,),
+    )
+    row = cursor.fetchone()
+    old_status = row[0] if row else None
+    
+    cursor.execute(
+        """
+        UPDATE triage_queue
+        SET status = 'failed',
+            failure_reason = ?,
+            attempts = attempts + 1
+        WHERE id = ?
+        """,
+        (reason, event_id),
+    )
+    if cursor.rowcount > 0:
+        _log_audit(event_id, old_status, "failed", "fail")
+    return cursor.rowcount > 0
 
 
-def requeue_stale_events(threshold_seconds: int = 300) -> int:
+@execute_in_transaction
+def requeue_stale_events(cursor: sqlite3.Cursor, threshold_seconds: int = 300) -> int:
     """Requeues events with expired leases back to pending status.
 
     Args:
@@ -383,32 +379,22 @@ def requeue_stale_events(threshold_seconds: int = 300) -> int:
     Returns:
         The number of events requeued.
     """
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id FROM triage_queue WHERE status = 'processing' AND lease_expires_at < datetime('now', ?)",
-            (f"-{threshold_seconds} seconds",),
-        )
-        event_ids = [row[0] for row in cursor.fetchall()]
-        
-        cursor.execute(
-            """
-            UPDATE triage_queue
-            SET status = 'pending',
-                lease_expires_at = NULL,
-                last_heartbeat_at = NULL
-            WHERE status = 'processing'
-              AND lease_expires_at < datetime('now', ?)
-            """,
-            (f"-{threshold_seconds} seconds",),
-        )
-        conn.commit()
-        for event_id in event_ids:
-            _log_audit(event_id, "processing", "pending", "requeue_stale")
-        return cursor.rowcount
-    except Exception as e:
-        logger.error(f"Requeue stale events error: {e}")
-        raise RuntimeError("Library code called exit(2)")
-    finally:
-        conn.close()
+    cursor.execute(
+        "SELECT id FROM triage_queue WHERE status = 'processing' AND lease_expires_at < datetime('now', ?)",
+        (f"-{threshold_seconds} seconds",),
+    )
+    event_ids = [row[0] for row in cursor.fetchall()]
+    
+    cursor.execute(
+        """
+        UPDATE triage_queue
+        SET status = 'pending',
+            lease_expires_at = NULL,
+            last_heartbeat_at = NULL
+        WHERE status = 'processing' AND lease_expires_at < datetime('now', ?)
+        """,
+        (f"-{threshold_seconds} seconds",),
+    )
+    for event_id in event_ids:
+        _log_audit(event_id, "processing", "pending", "requeue_stale")
+    return len(event_ids)
