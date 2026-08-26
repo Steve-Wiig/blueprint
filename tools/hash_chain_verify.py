@@ -93,6 +93,17 @@ def verify_chain(chain_data: list[dict[str, Any]]) -> bool:
         
     return True
 
+def load_mock_chain() -> list[dict[str, Any]]:
+    """Load mock chain from mock_chain.json in the same directory as this script."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    mock_path = os.path.join(script_dir, "mock_chain.json")
+    
+    if not os.path.exists(mock_path):
+        raise FileNotFoundError(f"mock_chain.json not found at {mock_path}")
+    
+    with open(mock_path, 'r') as f:
+        return json.load(f)
+
 def main(chain_file: str) -> int:
     """Verify hash chain from file. Returns 0 on success, 1 on verification failure, 2 on config error, 3 on file not found."""
     if not os.path.exists(chain_file):
@@ -137,7 +148,7 @@ def main(chain_file: str) -> int:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Hash Chain Verifier")
-    parser.add_argument("--dry-run", action="store_true", help="Run with mock chain data")
+    parser.add_argument("--dry-run", action="store_true", help="Run with mock chain data from mock_chain.json")
     parser.add_argument('chain_file', nargs='?', default=None, help='Path to chain JSON file (required unless --dry-run)')
     args = parser.parse_args()
 
@@ -145,22 +156,17 @@ if __name__ == "__main__":
         parser.error('chain_file required')
 
     if args.dry_run:
-        # Build mock entry using the ACTUAL compute_row_hash function
-        # compute_row_hash takes a single dict and excludes the "hash" key
-        mock_entry = {
-            "chain_seq": 0,
-            "previous_hash": "0" * 64,
-            "canonical_payload": {"test": "data"}
-        }
-        # Compute the hash using the real function
-        computed = compute_row_hash(mock_entry)
-        # Add the hash field (compute_row_hash excludes it from hashing)
-        mock_entry["hash"] = computed
+        try:
+            chain_data = load_mock_chain()
+        except FileNotFoundError as e:
+            print(f"FAIL: {e}")
+            raise SystemExit(1)
+        except json.JSONDecodeError:
+            print("FAIL: Invalid JSON in mock_chain.json")
+            raise SystemExit(1)
 
-        chain_data = [mock_entry]
         result = verify_chain(chain_data)
 
-        # verify_chain returns bool in this implementation
         if result:
             print("PASS: dry-run successful (mock chain verified)")
             raise SystemExit(0)
