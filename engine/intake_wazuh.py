@@ -14,6 +14,8 @@ logging.basicConfig(filename=LOG_FILE, level=logging.INFO)
 
 STATUS_PENDING = 'pending'
 
+ALLOWED_PAYLOAD_KEYS = {'agent', 'rule_id', 'description', 'src_ip', 'dst_ip'}
+
 _connection: sqlite3.Connection | None = None
 
 def _get_connection() -> sqlite3.Connection:
@@ -63,8 +65,7 @@ def _audit_log(conn: sqlite3.Connection, event_type: str, alert_id: str, details
 
 def sanitize_payload(data: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
     try:
-        allowed_keys = {'agent', 'rule_id', 'description', 'src_ip', 'dst_ip'}
-        sanitized_payload = {k: data.get(k) for k in allowed_keys if k in data}
+        sanitized_payload = {k: data.get(k) for k in ALLOWED_PAYLOAD_KEYS if k in data}
         
         raw_level = int(data.get("rule", {}).get("level", 3))
         severity = max(0, min(5, raw_level))
