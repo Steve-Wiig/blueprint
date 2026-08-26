@@ -74,18 +74,23 @@ def parse_mem_value(val_str: str) -> int:
         return 0
 
 
-def check_vram_budget() -> VramCheckResult:
+def check_vram_budget(gpu_data: Optional[ET.Element] = None) -> VramCheckResult:
     """
     Check GPU VRAM usage against a budget.
 
     Reads VRAM_BUDGET_MB environment variable (optional, positive integer MiB).
     If not set, defaults to 90% of total GPU memory.
 
+    Args:
+        gpu_data: Optional pre-fetched GPU XML data. If None, calls get_gpu_info().
+
     Returns:
         VramCheckResult: Object containing check outcome, memory values,
                          human-readable message, and suggested exit code.
     """
-    gpu_data = get_gpu_info()
+    if gpu_data is None:
+        gpu_data = get_gpu_info()
+
     if gpu_data is None:
         return VramCheckResult(
             success=False,
@@ -149,19 +154,41 @@ def check_vram_budget() -> VramCheckResult:
     )
 
 
+def create_mock_gpu_xml(total_mb: int = 16384, used_mb: int = 8192) -> ET.Element:
+    """
+    Create mock nvidia-smi XML output for dry-run testing.
+
+    Args:
+        total_mb: Total GPU memory in MiB.
+        used_mb: Used GPU memory in MiB.
+
+    Returns:
+        ET.Element: Mock XML root element simulating nvidia-smi -q -x output.
+    """
+    root = ET.Element('nvidia_smi_log')
+    gpu = ET.SubElement(root, 'gpu')
+    fb_memory = ET.SubElement(gpu, 'fb_memory_usage')
+    ET.SubElement(fb_memory, 'total').text = f"{total_mb} MiB"
+    ET.SubElement(fb_memory, 'used').text = f"{used_mb} MiB"
+    ET.SubElement(fb_memory, 'free').text = f"{total_mb - used_mb} MiB"
+    return root
+
+
 def main(dry_run: bool = False) -> int:
     """
     CLI entry point for VRAM budget check.
 
     Args:
-        dry_run: If True, mock nvidia-smi and return success.
+        dry_run: If True, mock nvidia-smi and run full validation logic.
 
     Returns:
         int: Exit code (EXIT_PASS=0, EXIT_FAIL=1, EXIT_CONFIG_ERROR=2).
     """
     if dry_run:
-        print("PASS: dry-run successful (nvidia-smi mocked)")
-        return EXIT_PASS
+        mock_gpu_data = create_mock_gpu_xml(total_mb=16384, used_mb=8192)
+        result = check_vram_budget(gpu_data=mock_gpu_data)
+        print(f"DRY-RUN: {result.message}")
+        return result.exit_code
 
     result = check_vram_budget()
     print(result.message)
@@ -170,7 +197,7 @@ def main(dry_run: bool = False) -> int:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dynamic VRAM Budget Check")
-    parser.add_argument("--dry-run", action="store_true", help="Mock nvidia-smi and pass")
+    parser.add_argument("--dry-run", action="store_true", help="Mock nvidia-smi and run full validation")
     args = parser.parse_args()
 
     sys.exit(main(dry_run=args.dry_run))
