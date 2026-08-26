@@ -53,14 +53,18 @@ def get_db(db_path: str) -> sqlite3.Connection:
         priority_column_added = False
         if 'priority' not in columns:
             cursor.execute("ALTER TABLE triage_queue ADD COLUMN priority INTEGER DEFAULT ?", (DEFAULT_PRIORITY,))
-            # Populate priority for existing rows based on severity
-            for severity, priority in SEVERITY_PRIORITY.items():
-                cursor.execute(
-                    "UPDATE triage_queue SET priority = ? WHERE severity = ? AND (priority IS NULL OR priority = ?)",
-                    (priority, severity, DEFAULT_PRIORITY)
-                )
-            # Set default for any remaining NULL/unknown severities
-            cursor.execute("UPDATE triage_queue SET priority = ? WHERE priority IS NULL", (DEFAULT_PRIORITY,))
+            # Populate priority for existing rows based on severity using single CASE statement
+            cursor.execute("""
+                UPDATE triage_queue 
+                SET priority = CASE severity 
+                    WHEN 'critical' THEN 1 
+                    WHEN 'high' THEN 2 
+                    WHEN 'medium' THEN 3 
+                    WHEN 'low' THEN 4 
+                    ELSE 5 
+                END 
+                WHERE priority IS NULL OR priority = ?
+            """, (DEFAULT_PRIORITY,))
             priority_column_added = True
         
         # Create claim index using priority if it doesn't exist
