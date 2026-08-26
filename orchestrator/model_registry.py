@@ -269,17 +269,3 @@ class ModelRegistryClient:
             False to propagate any exception that occurred.
         """
         self.close()
-
-if __name__ == "__main__":
-    import sys
-    client = ModelRegistryClient("orchestration.db", routing_config_path="routing.json")
-    client.initialize_schema()
-    adapter = client.get_adapter("triage_analysis")
-    
-    if adapter['status'] == 'retired':
-        raise RuntimeError("Adapter retired")
-        
-    if not client.verify_integrity(adapter, f"models/{adapter['adapter_id']}.bin"):
-        raise RuntimeError("Integrity check failed")
-        
-    sys.exit(0)
