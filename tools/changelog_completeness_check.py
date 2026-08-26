@@ -53,6 +53,9 @@ def get_latest_tag() -> Optional[str]:
 
     Returns:
         The latest tag name as a string, or None if no tags exist.
+
+    Raises:
+        FileNotFoundError: If git executable is not found.
     """
     try:
         tag = subprocess.check_output(
@@ -197,7 +200,12 @@ def main() -> int:
         return EXIT_ENV_ERROR
 
     # Get the latest tag
-    latest_tag = get_latest_tag()
+    try:
+        latest_tag = get_latest_tag()
+    except FileNotFoundError:
+        print("ENV_NOT_AVAILABLE: git command not found")
+        return EXIT_ENV_ERROR
+
     if latest_tag is None:
         print("CONFIG ERROR: No tags found to compare against")
         return EXIT_CONFIG_ERROR
