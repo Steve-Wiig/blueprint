@@ -167,7 +167,6 @@ def main() -> int:
         0 if validation passes, 1 if race conditions are detected, 2 if
         configuration errors prevent testing.
     """
-    now = datetime.now(timezone.utc)
     ledger_path = get_ledger_path()
     parser = argparse.ArgumentParser(description="Hash Chain Concurrency Validator")
     parser.add_argument(
