@@ -1,11 +1,7 @@
-"""Security Onion Case Writeback Adapter.
-
-LOCAL-SOC-SLM Blueprint v11.6.0 - Appendix Q.4
-"""
-
 import argparse
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, Callable
 
@@ -17,6 +13,8 @@ _HTTP_SESSION = requests.Session()
 
 DRAFT_CASE_ID = 'DRAFT_ID_000'
 DEFAULT_LEDGER_PATH = 'handoffs_ledger.log'
+DEFAULT_TIMEOUT = 10
+ENV_TIMEOUT = 'SO_API_TIMEOUT'
 
 
 def configure_logging() -> None:
@@ -51,13 +49,14 @@ def create_case_draft(sanitized: Dict[str, str]) -> str:
     return DRAFT_CASE_ID
 
 
-def create_case_live(api_url: str, api_key: str, sanitized: Dict[str, str]) -> str:
+def create_case_live(api_url: str, api_key: str, sanitized: Dict[str, str], timeout: int = DEFAULT_TIMEOUT) -> str:
     """Creates a case via the Security Onion API.
 
     Args:
         api_url: The base URL of the API.
         api_key: The authorization token.
         sanitized: The sanitized payload.
+        timeout: Request timeout in seconds.
 
     Returns:
         The ID of the created case.
@@ -67,7 +66,7 @@ def create_case_live(api_url: str, api_key: str, sanitized: Dict[str, str]) -> s
     """
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     try:
-        response = _HTTP_SESSION.post(f"{api_url}/api/cases", json=sanitized, headers=headers, timeout=10)
+        response = _HTTP_SESSION.post(f"{api_url}/api/cases", json=sanitized, headers=headers, timeout=timeout)
         response.raise_for_status()
         case_id = response.json().get("id")
         return case_id
@@ -86,11 +85,11 @@ def _get_case_creator(draft_mode: bool) -> Callable[..., str]:
         A callable that creates a case.
     """
     if draft_mode:
-        return lambda sanitized: create_case_draft(sanitized)
-    return lambda api_url, api_key, sanitized: create_case_live(api_url, api_key, sanitized)
+        return lambda sanitized, timeout=None: create_case_draft(sanitized)
+    return lambda api_url, api_key, sanitized, timeout=DEFAULT_TIMEOUT: create_case_live(api_url, api_key, sanitized, timeout)
 
 
-def create_case(api_url: str, api_key: str, payload: Dict[str, Any], draft_mode: bool) -> str:
+def create_case(api_url: str, api_key: str, payload: Dict[str, Any], draft_mode: bool, timeout: int = DEFAULT_TIMEOUT) -> str:
     """Creates a case via the Security Onion API (backward compatible).
 
     Args:
@@ -98,6 +97,7 @@ def create_case(api_url: str, api_key: str, payload: Dict[str, Any], draft_mode:
         api_key: The authorization token.
         payload: The case data to submit.
         draft_mode: If True, skips API call and returns a mock ID.
+        timeout: Request timeout in seconds.
 
     Returns:
         The ID of the created case or a draft identifier.
@@ -110,7 +110,7 @@ def create_case(api_url: str, api_key: str, payload: Dict[str, Any], draft_mode:
     
     if draft_mode:
         return creator(sanitized)
-    return creator(api_url, api_key, sanitized)
+    return creator(api_url, api_key, sanitized, timeout)
 
 
 def write_to_ledger(payload_ref: str, case_id: str) -> None:
@@ -139,6 +139,7 @@ def main() -> None:
     parser.add_argument("--key", required=True)
     parser.add_argument("--payload", required=True, help="JSON string of case data")
     parser.add_argument("--draft", action="store_true")
+    parser.add_argument("--timeout", type=int, default=int(os.environ.get(ENV_TIMEOUT, DEFAULT_TIMEOUT)), help=f"API timeout in seconds (default: {DEFAULT_TIMEOUT}, env: {ENV_TIMEOUT})")
     
     args = parser.parse_args()
 
@@ -147,7 +148,7 @@ def main() -> None:
     except json.JSONDecodeError:
         raise RuntimeError(f"Library code called exit(2)")
 
-    case_id = create_case(args.url, args.key, data, args.draft)
+    case_id = create_case(args.url, args.key, data, args.draft, args.timeout)
     
     if not args.draft:
         write_to_ledger(data.get("ref", "N/A"), case_id)
