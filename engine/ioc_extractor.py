@@ -53,6 +53,93 @@ def _extract_alert_id(alert_json: Dict[str, Any]) -> str:
     return "unknown"
 
 
+def extract_iocs_from_text(text: str) -> Dict[IOCType, set]:
+    """
+    Extract IOCs from text using regex patterns.
+
+    Args:
+        text: Text to search for IOCs.
+
+    Returns:
+        Dictionary mapping IOCType to set of matched values.
+    """
+    matches_by_type: Dict[IOCType, set] = {ioc_type: set() for ioc_type in IOCType}
+    for match in _COMBINED_RE.finditer(text):
+        group_name = match.lastgroup
+        if group_name:
+            ioc_type = _GROUP_TO_IOC[group_name]
+            value = match.group(group_name)
+            matches_by_type[ioc_type].add(value)
+    return matches_by_type
+
+
+def deduplicate_iocs(matches_by_type: Dict[IOCType, set]) -> List[Tuple[str, str, str, datetime]]:
+    """
+    Deduplicate IOCs and prepare for persistence.
+
+    Args:
+        matches_by_type: Dictionary mapping IOCType to set of matched values.
+
+    Returns:
+        List of tuples (value, type, enrichment_status, first_seen).
+    """
+    seen = datetime.now(timezone.utc)
+    extracted: List[Tuple[str, str, str, datetime]] = []
+    for ioc_type, matches in matches_by_type.items():
+        for match in matches:
+            extracted.append((match, ioc_type.value, "pending", seen))
+    return extracted
+
+
+def persist_iocs(extracted: List[Tuple[str, str, str, datetime]]) -> None:
+    """
+    Persist IOCs to PostgreSQL with audit trail.
+
+    Args:
+        extracted: List of tuples (value, type, enrichment_status, first_seen).
+
+    Raises:
+        RuntimeError: If database operations fail.
+    """
+    if not extracted:
+        return
+
+    conn = _get_pg_conn()
+    cur = conn.cursor()
+
+    query = """
+        WITH ins AS (
+            INSERT INTO iocs (value, type, enrichment_status, first_seen)
+            VALUES %s
+            ON CONFLICT (value) DO UPDATE SET last_seen = EXCLUDED.first_seen
+            RETURNING value, type, first_seen
+        )
+        INSERT INTO ioc_audit (value, type, action, timestamp)
+        SELECT value, type, 'insert', first_seen FROM ins;
+    """
+    execute_values(cur, query, extracted)
+
+    conn.commit()
+    cur.close()
+
+
+def audit_iocs(alert_id: str, ioc_count: int, timestamp: datetime) -> None:
+    """
+    Log IOC extraction audit information.
+
+    Args:
+        alert_id: Alert identifier.
+        ioc_count: Number of IOCs extracted.
+        timestamp: Extraction timestamp.
+    """
+    logger.info(
+        "IOC extraction audit: alert_id=%s ioc_count=%s timestamp=%s",
+        alert_id,
+        ioc_count,
+        timestamp.isoformat(),
+    )
+
+
 def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
     """
     Extracts IOCs from sanitized alert payloads and persists to PostgreSQL.
@@ -69,53 +156,20 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
         RuntimeError: If extraction or database operations fail.
     """
     try:
-        matches_by_type: Dict[IOCType, set] = {ioc_type: set() for ioc_type in IOCType}
-
         serialized = json.dumps(sanitized_alert_json, ensure_ascii=False)
-        for match in _COMBINED_RE.finditer(serialized):
-            group_name = match.lastgroup
-            if group_name:
-                ioc_type = _GROUP_TO_IOC[group_name]
-                value = match.group(group_name)
-                matches_by_type[ioc_type].add(value)
-
-        extracted: List[Tuple[str, str, str, datetime]] = []
-        seen = datetime.now(timezone.utc)
-        for ioc_type, matches in matches_by_type.items():
-            for match in matches:
-                extracted.append((match, ioc_type.value, "pending", seen))
+        matches_by_type = extract_iocs_from_text(serialized)
+        extracted = deduplicate_iocs(matches_by_type)
 
         if not extracted:
             return 0
 
         alert_id = _extract_alert_id(sanitized_alert_json)
         ioc_count = len(extracted)
+        seen = datetime.now(timezone.utc)
 
-        conn = _get_pg_conn()
-        cur = conn.cursor()
+        persist_iocs(extracted)
+        audit_iocs(alert_id, ioc_count, seen)
 
-        query = """
-            WITH ins AS (
-                INSERT INTO iocs (value, type, enrichment_status, first_seen)
-                VALUES %s
-                ON CONFLICT (value) DO UPDATE SET last_seen = EXCLUDED.first_seen
-                RETURNING value, type, first_seen
-            )
-            INSERT INTO ioc_audit (value, type, action, timestamp)
-            SELECT value, type, 'insert', first_seen FROM ins;
-        """
-        execute_values(cur, query, extracted)
-
-        conn.commit()
-        cur.close()
-        # Connection stays open for reuse (function-level cache)
-
-        logger.info(
-            "IOC extraction audit: alert_id=%s ioc_count=%s timestamp=%s",
-            alert_id,
-            ioc_count,
-            seen.isoformat(),
-        )
         return 0
 
     except psycopg2.Error as e:
