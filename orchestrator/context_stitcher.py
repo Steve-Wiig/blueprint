@@ -10,6 +10,7 @@ from xml.sax.saxutils import escape
 
 _PG_POOL_MINCONN = 1
 _PG_POOL_MAXCONN = 10
+MAX_TOP_K = 100
 
 
 def configure_connection(
@@ -149,6 +150,7 @@ def stitch_memory_context(
         DatabaseError: If a psycopg2 database error occurs during query execution or connection.
         StitcherError: If an unexpected error occurs during memory context stitching.
     """
+    top_k = min(top_k, MAX_TOP_K)
     use_pool = conn is None
     if use_pool:
         conn = _get_pg_conn(pool)
