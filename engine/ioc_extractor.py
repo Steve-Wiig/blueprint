@@ -3,7 +3,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import psycopg2
 from psycopg2.extras import execute_values
@@ -48,25 +48,6 @@ _GROUP_TO_IOC = {
 }
 
 
-def _iter_strings(obj: Any) -> Iterable[str]:
-    """Recursively yield every string value found in a nested structure.
-
-    Args:
-        obj: The object to traverse (dict, list, or str).
-
-    Yields:
-        str: Each string value encountered during traversal.
-    """
-    if isinstance(obj, dict):
-        for value in obj.values():
-            yield from _iter_strings(value)
-    elif isinstance(obj, list):
-        for item in obj:
-            yield from _iter_strings(item)
-    elif isinstance(obj, str):
-        yield obj
-
-
 def _extract_alert_id(alert_json: Dict[str, Any]) -> str:
     """Extract alert ID from sanitized alert JSON using common field names."""
     for key in ("alert_id", "alertId", "id", "alert_id_str"):
@@ -93,13 +74,13 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
     try:
         matches_by_type: Dict[IOCType, set] = {ioc_type: set() for ioc_type in IOCType}
 
-        for text in _iter_strings(sanitized_alert_json):
-            for match in _COMBINED_RE.finditer(text):
-                group_name = match.lastgroup
-                if group_name:
-                    ioc_type = _GROUP_TO_IOC[group_name]
-                    value = match.group(group_name)
-                    matches_by_type[ioc_type].add(value)
+        serialized = json.dumps(sanitized_alert_json, ensure_ascii=False)
+        for match in _COMBINED_RE.finditer(serialized):
+            group_name = match.lastgroup
+            if group_name:
+                ioc_type = _GROUP_TO_IOC[group_name]
+                value = match.group(group_name)
+                matches_by_type[ioc_type].add(value)
 
         extracted: List[Tuple[str, str, str, datetime]] = []
         seen = datetime.now(timezone.utc)
