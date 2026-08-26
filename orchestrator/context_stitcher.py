@@ -1,6 +1,7 @@
 """Memory context stitcher for SOC orchestrator. Retrieves semantically similar cases for SLM injection."""
 import psycopg2
 import sys
+import hashlib
 from datetime import datetime, timezone, timedelta
 from typing import TypedDict, Optional
 from xml.sax.saxutils import escape
@@ -52,6 +53,46 @@ class MemoryMetadata(TypedDict):
     max_age_days: int
 
 
+def _compute_query_hash(query_embedding: list[float]) -> str:
+    """Compute a deterministic SHA256 hash of the query embedding for audit logging."""
+    # Use a stable string representation of the embedding
+    embedding_str = ",".join(f"{x:.8f}" for x in query_embedding)
+    return hashlib.sha256(embedding_str.encode()).hexdigest()
+
+
+def _log_audit(
+    conn: psycopg2.extensions.connection,
+    retrieval_timestamp: datetime,
+    query_hash: str,
+    case_ids: list[str],
+    top_k: int,
+    max_age_days: int
+) -> None:
+    """Insert an audit log entry for the memory retrieval operation."""
+    cur = None
+    try:
+        cur = conn.cursor()
+        audit_query = """
+            INSERT INTO memory_retrieval_audit (retrieval_timestamp, query_hash, case_ids, top_k, max_age_days)
+            VALUES (%s, %s, %s, %s, %s);
+        """
+        cur.execute(audit_query, (retrieval_timestamp, query_hash, case_ids, top_k, max_age_days))
+        conn.commit()
+    except psycopg2.Error:
+        # Audit logging failure should not break the main operation
+        # Rollback any partial transaction and ignore
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    except Exception:
+        # Ignore any other unexpected errors in audit logging
+        pass
+    finally:
+        if cur is not None:
+            cur.close()
+
+
 def stitch_memory_context(
     query_embedding: list[float],
     top_k: int = 5,
@@ -101,12 +142,17 @@ def stitch_memory_context(
         case_refs = [r[0] for r in results]
             
         formatted_context = f"<memory_context>\n{''.join(context_blocks)}\n</memory_context>"
+        retrieval_timestamp = datetime.now(timezone.utc)
         metadata: MemoryMetadata = {
-            "memory_retrieval_timestamp": datetime.now(timezone.utc).isoformat(),
+            "memory_retrieval_timestamp": retrieval_timestamp.isoformat(),
             "retrieved_case_ids": case_refs,
             "top_k_requested": top_k,
             "max_age_days": max_age_days
         }
+
+        # Audit logging after successful retrieval
+        query_hash = _compute_query_hash(query_embedding)
+        _log_audit(conn, retrieval_timestamp, query_hash, case_refs, top_k, max_age_days)
         
         return formatted_context, metadata
 
