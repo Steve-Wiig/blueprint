@@ -4,7 +4,8 @@ import sys
 import hashlib
 import json
 import os
-from urllib.parse import urlparse
+from urllib.parse import urlparse, ParseResult
+from typing import Any
 
 # O.7 Payload Integrity Contract
 # Verifies canonical URI schemes, SHA256 integrity, and 8 required ledger keys.
@@ -55,27 +56,27 @@ def verify_payload(ledger_path: str) -> int:
 
     try:
         with open(ledger_path, 'r') as f:
-            data = json.load(f)
+            data: dict[str, Any] = json.load(f)
     except json.JSONDecodeError:
         print("FAIL: Invalid JSON format")
         return EXIT_FAIL_JSON
 
     # 1. Verify 8 required ledger keys
-    missing = REQUIRED_KEYS - set(data.keys())
+    missing: set[str] = REQUIRED_KEYS - set(data.keys())
     if missing:
         print(f"FAIL: Missing ledger keys: {missing}")
         return EXIT_FAIL_INTEGRITY
 
     # 2. Verify Canonical URI schemes (origin_node)
-    parsed_uri = urlparse(data.get("origin_node", ""))
+    parsed_uri: ParseResult = urlparse(data.get("origin_node", ""))
     if parsed_uri.scheme not in ALLOWED_SCHEMES:
         print(f"FAIL: Invalid URI scheme: {parsed_uri.scheme}")
         return EXIT_FAIL_INTEGRITY
 
     # 3. Verify SHA256 Integrity
     # Reconstruct payload for hash verification
-    payload_content = json.dumps(data.get("payload_hash")).encode('utf-8')
-    computed_hash = hashlib.sha256(payload_content).hexdigest()
+    payload_content: bytes = json.dumps(data.get("payload_hash")).encode('utf-8')
+    computed_hash: str = hashlib.sha256(payload_content).hexdigest()
     
     # Note: Full manifest verification occurs in separate pipeline stage
     if len(data.get("integrity_checksum", "")) != SHA256_HEX_LENGTH:
