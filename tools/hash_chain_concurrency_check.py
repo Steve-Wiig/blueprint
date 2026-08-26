@@ -179,9 +179,7 @@ def main() -> int:
         "--threads",
         type=int,
         default=DEFAULT_MAX_CONCURRENT_THREADS,
-        help="Number of concurrent threads for stress test (default: {})".format(
-            DEFAULT_MAX_CONCURRENT_THREADS
-        ),
+        help=f"Number of concurrent threads for stress test (default: {DEFAULT_MAX_CONCURRENT_THREADS})",
     )
     args = parser.parse_args()
 
