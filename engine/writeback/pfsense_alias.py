@@ -22,71 +22,85 @@ AUDIT_ACTOR = 'pfsense_alias_adapter'
 TABLE_ALIAS_PROPOSALS = 'alias_proposals'
 TABLE_AUDIT_LOG = 'audit_log'
 
+
+def create_tables(cursor: sqlite3.Cursor) -> None:
+    """Creates the alias_proposals and audit_log tables."""
+    cursor.execute(f'''CREATE TABLE IF NOT EXISTS {TABLE_ALIAS_PROPOSALS}
+                      (id INTEGER PRIMARY KEY, alias_name TEXT, ip_address TEXT, 
+                       status TEXT, created_at TIMESTAMP)''')
+    cursor.execute(f'''CREATE TABLE IF NOT EXISTS {TABLE_AUDIT_LOG}
+                      (id INTEGER PRIMARY KEY, operation_type TEXT, old_values TEXT, 
+                       new_values TEXT, actor TEXT, timestamp TIMESTAMP)''')
+
+
+def create_indexes(cursor: sqlite3.Cursor) -> None:
+    """Creates indexes on alias_proposals and audit_log tables."""
+    cursor.execute(f'''CREATE INDEX IF NOT EXISTS idx_{TABLE_ALIAS_PROPOSALS}_alias_name 
+                      ON {TABLE_ALIAS_PROPOSALS}(alias_name)''')
+    cursor.execute(f'''CREATE INDEX IF NOT EXISTS idx_{TABLE_ALIAS_PROPOSALS}_ip_address 
+                      ON {TABLE_ALIAS_PROPOSALS}(ip_address)''')
+    cursor.execute(f'''CREATE INDEX IF NOT EXISTS idx_{TABLE_ALIAS_PROPOSALS}_status 
+                      ON {TABLE_ALIAS_PROPOSALS}(status)''')
+    cursor.execute(f'''CREATE INDEX IF NOT EXISTS idx_{TABLE_AUDIT_LOG}_operation_type 
+                      ON {TABLE_AUDIT_LOG}(operation_type)''')
+    cursor.execute(f'''CREATE INDEX IF NOT EXISTS idx_{TABLE_AUDIT_LOG}_timestamp 
+                      ON {TABLE_AUDIT_LOG}(timestamp)''')
+
+
+def create_triggers(cursor: sqlite3.Cursor) -> None:
+    """Creates audit triggers for alias_proposals table."""
+    cursor.execute(f'''
+        CREATE TRIGGER IF NOT EXISTS audit_{TABLE_ALIAS_PROPOSALS}_insert
+        AFTER INSERT ON {TABLE_ALIAS_PROPOSALS}
+        BEGIN
+            INSERT INTO {TABLE_AUDIT_LOG} (operation_type, old_values, new_values, actor, timestamp)
+            VALUES ('INSERT', NULL, 
+                    json_object('id', NEW.id, 'alias_name', NEW.alias_name, 'ip_address', NEW.ip_address, 'status', NEW.status, 'created_at', NEW.created_at),
+                    '{AUDIT_ACTOR}', datetime('now'));
+        END;
+    ''')
+    
+    cursor.execute(f'''
+        CREATE TRIGGER IF NOT EXISTS audit_{TABLE_ALIAS_PROPOSALS}_update
+        AFTER UPDATE ON {TABLE_ALIAS_PROPOSALS}
+        BEGIN
+            INSERT INTO {TABLE_AUDIT_LOG} (operation_type, old_values, new_values, actor, timestamp)
+            VALUES ('UPDATE',
+                    json_object('id', OLD.id, 'alias_name', OLD.alias_name, 'ip_address', OLD.ip_address, 'status', OLD.status, 'created_at', OLD.created_at),
+                    json_object('id', NEW.id, 'alias_name', NEW.alias_name, 'ip_address', NEW.ip_address, 'status', NEW.status, 'created_at', NEW.created_at),
+                    '{AUDIT_ACTOR}', datetime('now'));
+        END;
+    ''')
+    
+    cursor.execute(f'''
+        CREATE TRIGGER IF NOT EXISTS audit_{TABLE_ALIAS_PROPOSALS}_delete
+        AFTER DELETE ON {TABLE_ALIAS_PROPOSALS}
+        BEGIN
+            INSERT INTO {TABLE_AUDIT_LOG} (operation_type, old_values, new_values, actor, timestamp)
+            VALUES ('DELETE',
+                    json_object('id', OLD.id, 'alias_name', OLD.alias_name, 'ip_address', OLD.ip_address, 'status', OLD.status, 'created_at', OLD.created_at),
+                    NULL,
+                    '{AUDIT_ACTOR}', datetime('now'));
+        END;
+    ''')
+
+
 def init_db() -> None:
-    """Initializes the SQLite database and creates the alias_proposals table if it does not exist.
+    """Initializes the SQLite database and creates tables, indexes, and triggers.
 
     Raises RuntimeError if a database error occurs.
     """
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute(f'''CREATE TABLE IF NOT EXISTS {TABLE_ALIAS_PROPOSALS}
-                          (id INTEGER PRIMARY KEY, alias_name TEXT, ip_address TEXT, 
-                           status TEXT, created_at TIMESTAMP)''')
-        cursor.execute(f'''CREATE INDEX IF NOT EXISTS idx_{TABLE_ALIAS_PROPOSALS}_alias_name 
-                          ON {TABLE_ALIAS_PROPOSALS}(alias_name)''')
-        cursor.execute(f'''CREATE INDEX IF NOT EXISTS idx_{TABLE_ALIAS_PROPOSALS}_ip_address 
-                          ON {TABLE_ALIAS_PROPOSALS}(ip_address)''')
-        cursor.execute(f'''CREATE INDEX IF NOT EXISTS idx_{TABLE_ALIAS_PROPOSALS}_status 
-                          ON {TABLE_ALIAS_PROPOSALS}(status)''')
-        
-        cursor.execute(f'''CREATE TABLE IF NOT EXISTS {TABLE_AUDIT_LOG}
-                          (id INTEGER PRIMARY KEY, operation_type TEXT, old_values TEXT, 
-                           new_values TEXT, actor TEXT, timestamp TIMESTAMP)''')
-        cursor.execute(f'''CREATE INDEX IF NOT EXISTS idx_{TABLE_AUDIT_LOG}_operation_type 
-                          ON {TABLE_AUDIT_LOG}(operation_type)''')
-        cursor.execute(f'''CREATE INDEX IF NOT EXISTS idx_{TABLE_AUDIT_LOG}_timestamp 
-                          ON {TABLE_AUDIT_LOG}(timestamp)''')
-        
-        cursor.execute(f'''
-            CREATE TRIGGER IF NOT EXISTS audit_{TABLE_ALIAS_PROPOSALS}_insert
-            AFTER INSERT ON {TABLE_ALIAS_PROPOSALS}
-            BEGIN
-                INSERT INTO {TABLE_AUDIT_LOG} (operation_type, old_values, new_values, actor, timestamp)
-                VALUES ('INSERT', NULL, 
-                        json_object('id', NEW.id, 'alias_name', NEW.alias_name, 'ip_address', NEW.ip_address, 'status', NEW.status, 'created_at', NEW.created_at),
-                        '{AUDIT_ACTOR}', datetime('now'));
-            END;
-        ''')
-        
-        cursor.execute(f'''
-            CREATE TRIGGER IF NOT EXISTS audit_{TABLE_ALIAS_PROPOSALS}_update
-            AFTER UPDATE ON {TABLE_ALIAS_PROPOSALS}
-            BEGIN
-                INSERT INTO {TABLE_AUDIT_LOG} (operation_type, old_values, new_values, actor, timestamp)
-                VALUES ('UPDATE',
-                        json_object('id', OLD.id, 'alias_name', OLD.alias_name, 'ip_address', OLD.ip_address, 'status', OLD.status, 'created_at', OLD.created_at),
-                        json_object('id', NEW.id, 'alias_name', NEW.alias_name, 'ip_address', NEW.ip_address, 'status', NEW.status, 'created_at', NEW.created_at),
-                        '{AUDIT_ACTOR}', datetime('now'));
-            END;
-        ''')
-        
-        cursor.execute(f'''
-            CREATE TRIGGER IF NOT EXISTS audit_{TABLE_ALIAS_PROPOSALS}_delete
-            AFTER DELETE ON {TABLE_ALIAS_PROPOSALS}
-            BEGIN
-                INSERT INTO {TABLE_AUDIT_LOG} (operation_type, old_values, new_values, actor, timestamp)
-                VALUES ('DELETE',
-                        json_object('id', OLD.id, 'alias_name', OLD.alias_name, 'ip_address', OLD.ip_address, 'status', OLD.status, 'created_at', OLD.created_at),
-                        NULL,
-                        '{AUDIT_ACTOR}', datetime('now'));
-            END;
-        ''')
-        
+        create_tables(cursor)
+        create_indexes(cursor)
+        create_triggers(cursor)
         conn.commit()
         conn.close()
     except Exception:
         raise RuntimeError("Database initialization failed")
+
 
 def store_proposal(name: str, ip: str) -> None:
     """Stores a new alias proposal in the database.
@@ -108,9 +122,11 @@ def store_proposal(name: str, ip: str) -> None:
     except Exception:
         raise RuntimeError("Failed to store proposal")
 
+
 def rollback_plan() -> None:
     """Prints instructions for rolling back pending alias proposals."""
     print(f"{MSG_ROLLBACK_REFERENCE}: To revert, execute 'DELETE FROM {TABLE_ALIAS_PROPOSALS} WHERE status = \"{PROPOSAL_STATUS_PENDING}\"' in sqlite3.")
+
 
 def rollback_execute(approved: bool = False) -> int:
     """Executes rollback of pending alias proposals.
@@ -144,6 +160,7 @@ def rollback_execute(approved: bool = False) -> int:
     except Exception:
         raise RuntimeError("Rollback execution failed")
 
+
 def main() -> None:
     """Parses command line arguments and executes the alias proposal workflow.
 
@@ -170,6 +187,7 @@ def main() -> None:
         raise RuntimeError("Rollback completed successfully")
     else:
         raise RuntimeError("Invalid operation mode")
+
 
 if __name__ == "__main__":
     main()
