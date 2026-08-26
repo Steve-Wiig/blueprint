@@ -154,8 +154,9 @@ def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = Non
         return EXIT_CONFIG_ERROR
 
     try:
-        if os.path.getsize(schema_path) > MAX_SCHEMA_SIZE:
-            print(f"WARNING: Schema file is {os.path.getsize(schema_path) // (1024*1024)}MiB, "
+        file_size = os.path.getsize(schema_path)
+        if file_size > MAX_SCHEMA_SIZE:
+            print(f"WARNING: Schema file is {file_size // (1024*1024)}MiB, "
                   "exceeding the recommended 100 MiB limit. "
                   "This may cause OOM with standard JSON parsing. "
                   "Consider using ijson for iterative parsing.")
