@@ -196,25 +196,45 @@ def seal_audit_chain(
         _close_connection_safely(conn)
 
 
-def main() -> None:
-    handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(JsonFormatter())
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(handler)
+def load_config() -> Dict[str, Any]:
+    required_vars = ["SOC_DBNAME", "SOC_USER"]
+    missing = [var for var in required_vars if not os.getenv(var)]
+    if missing:
+        raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
 
-    db_config = {}
-    if dbname := os.getenv("SOC_DBNAME"):
-        db_config["dbname"] = dbname
-    if user := os.getenv("SOC_USER"):
-        db_config["user"] = user
+    db_config = {
+        "dbname": os.getenv("SOC_DBNAME"),
+        "user": os.getenv("SOC_USER"),
+    }
+    if password := os.getenv("SOC_PASSWORD"):
+        db_config["password"] = password
+    if host := os.getenv("SOC_HOST"):
+        db_config["host"] = host
+    if port := os.getenv("SOC_PORT"):
+        db_config["port"] = int(port)
+
     batch_size = DEFAULT_BATCH_SIZE
     if batch_size_env := os.getenv("SOC_BATCH_SIZE"):
         try:
             batch_size = int(batch_size_env)
         except ValueError:
             pass
-    seal_audit_chain(db_config, batch_size=batch_size)
+
+    return {"db_config": db_config, "batch_size": batch_size}
+
+
+def configure_logging() -> None:
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(JsonFormatter())
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(handler)
+
+
+def main() -> None:
+    configure_logging()
+    config = load_config()
+    seal_audit_chain(config["db_config"], batch_size=config["batch_size"])
 
 
 if __name__ == "__main__":
