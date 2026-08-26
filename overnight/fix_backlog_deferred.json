@@ -1,35 +1,5 @@
 [
   {
-    "file": "engine/hash_chain_sealer.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 24,
-      "line_end": 97,
-      "description": "Function seal_audit_chain is 73 lines and handles connection, locking, querying, hashing, and insertion. Violates single responsibility principle. Hard to test, debug, and maintain.",
-      "suggestion": "Split into: get_last_chain_state(), fetch_pending_batches(), compute_chain_hashes(), insert_chain_links(). Each with clear inputs/outputs. Use dependency injection for database connection.",
-      "impact": "medium",
-      "effort": "medium"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "tools/sanitization_field_policy_check.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "informational",
-      "line_start": 1,
-      "line_end": 72,
-      "description": "No append-only audit logging for policy check results - blueprint Section 30 requires audit patterns for handoffs/corrections",
-      "suggestion": "Add optional --audit-log argument to write JSONL audit records with timestamp, schema path, result, violations found",
-      "impact": "low",
-      "effort": "medium"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
     "file": "engine/writeback/so_cases.py",
     "issue": {
       "description": "The 'main' function uses 'raise RuntimeError' to simulate an exit(0) success, which is non-standard and confusing for callers.",
@@ -118,21 +88,6 @@
   {
     "file": "tools/hash_chain_concurrency_check.py",
     "issue": {
-      "category": "blueprint_compliance",
-      "severity": "medium",
-      "line_start": 158,
-      "line_end": 158,
-      "description": "Uses `sys.exit(main())` in `__main__` block. Blueprint AMEND-64 prohibits sys.exit() in library code, requiring RuntimeError instead. While this is a CLI script, the blueprint classifies it as library code.",
-      "suggestion": "Replace with `raise RuntimeError(main())` or restructure to return exit code and let caller handle exit. For CLI scripts, consider if this rule applies.",
-      "impact": "medium",
-      "effort": "trivial"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "tools/hash_chain_concurrency_check.py",
-    "issue": {
       "category": "maintainability",
       "severity": "low",
       "line_start": 67,
@@ -178,21 +133,6 @@
   {
     "file": "tools/sanitization_entropy_check.py",
     "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 27,
-      "line_end": 35,
-      "description": "ALLOWLIST_PATTERNS have inline comments explaining each pattern; these would be better as a docstring or separate documentation for maintainability",
-      "suggestion": "Move pattern explanations to module docstring or a dedicated PATTERNS_DOC dictionary; keep regex list clean",
-      "impact": "low",
-      "effort": "trivial"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "tools/sanitization_entropy_check.py",
-    "issue": {
       "category": "performance",
       "severity": "low",
       "line_start": 81,
@@ -216,21 +156,6 @@
       "suggestion": "Merge the two loops: after fetching, validate all providers_in_batch in single pass. Consider moving cache to module-level with TTL decorator instead of passing dicts around.",
       "impact": "medium",
       "effort": "small"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/enrichment_scheduler.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 149,
-      "line_end": 175,
-      "description": "get_provider_cost is deprecated AND incomplete - worst of both worlds: dead code that also breaks imports",
-      "suggestion": "Remove entirely. All callers should migrate to _fetch_provider_data which returns both quota and cost in single call.",
-      "impact": "medium",
-      "effort": "trivial"
     },
     "attempts": 3,
     "deferred_reason": "failed 3 attempts"
