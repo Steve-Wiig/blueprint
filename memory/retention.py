@@ -83,7 +83,8 @@ def archive_partition(conn: PgConnection, partition_name: str, dry_run: bool = F
 
         archive_dir.mkdir(parents=True, exist_ok=True)
 
-        query = f"COPY (SELECT * FROM {partition_name}) TO STDOUT WITH (FORMAT JSON);"
+        _query_template = "COPY (SELECT * FROM {table}) TO STDOUT WITH (FORMAT JSON);"
+        query = _query_template.format(table=partition_name)
         
         with open(output_file, 'wb') as f:
             zstd = subprocess.Popen(["zstd", "--rm"], stdin=subprocess.PIPE, stdout=f)
