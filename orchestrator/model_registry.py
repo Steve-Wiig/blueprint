@@ -64,6 +64,7 @@ class ModelRegistryClient:
         self._conn: sqlite3.Connection = None
         self._routing_config_path = routing_config_path
         self._routing_config = routing_config
+        self._adapter_cache: Dict[str, Dict[str, Any]] = {}
 
         if routing_config_path is not None and routing_config is not None:
             raise ValueError("Exactly one of routing_config_path or routing_config must be provided")
@@ -94,6 +95,7 @@ class ModelRegistryClient:
         except Exception:
             raise ValueError(f"CONFIG ERROR: Could not load routing config: {self._routing_config_path}")
 
+        self._adapter_cache.clear()
         return self._routing_config
 
     @property
@@ -140,7 +142,8 @@ class ModelRegistryClient:
         """Retrieve adapter information for a given task type.
 
         Looks up the adapter ID from the routing configuration, then queries
-        the model_registry table for the adapter's metadata.
+        the model_registry table for the adapter's metadata. Results are cached
+        per task_type to avoid repeated database queries.
 
         Args:
             task_type: The task type to look up in the routing configuration
@@ -166,6 +169,9 @@ class ModelRegistryClient:
             sharing the same instance may result in race conditions.
             Each thread should use its own ModelRegistryClient instance.
         """
+        if task_type in self._adapter_cache:
+            return self._adapter_cache[task_type]
+
         adapter_id = self.routing_config.get(task_type)
         if not adapter_id:
             raise AdapterNotFoundError(f"No adapter configured for task type: {task_type}")
@@ -185,7 +191,9 @@ class ModelRegistryClient:
             if row['status'] not in self.VALID_STATUSES:
                 raise InvalidStatusError(f"Invalid adapter status: {row['status']} for adapter: {adapter_id}")
 
-            return {"adapter_id": row['adapter_id'], "sha256": row['adapter_sha256'], "status": row['status']}
+            result = {"adapter_id": row['adapter_id'], "sha256": row['adapter_sha256'], "status": row['status']}
+            self._adapter_cache[task_type] = result
+            return result
         except sqlite3.Error as e:
             raise DatabaseError(f"Database error retrieving adapter {adapter_id}: {e}")
 
