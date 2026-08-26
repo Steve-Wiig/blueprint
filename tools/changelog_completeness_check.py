@@ -167,11 +167,10 @@ def main() -> int:
     Parses command-line arguments, retrieves commits since the latest tag,
     scans CHANGELOG.md for commit hashes, and reports any missing entries.
 
-    Args:
-        None (uses sys.argv via argparse):
-            --dry-run (bool): If set, returns 0 even when commits are missing.
-                              Useful for testing CI logic without blocking pipelines.
-            --changelog-path (str): Path to changelog file (default: CHANGELOG.md)
+    Command-line arguments:
+        --dry-run (bool): If set, returns 0 even when commits are missing.
+                          Useful for testing CI logic without blocking pipelines.
+        --changelog-path (str): Path to changelog file (default: CHANGELOG.md)
 
     Returns:
         int: Exit code indicating verification result:
