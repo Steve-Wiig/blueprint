@@ -1,63 +1,3 @@
-"""
-IOC Extraction Module for SOC Automation Platform.
-
-This module provides functionality to extract Indicators of Compromise (IOCs) from
-sanitized alert JSON payloads and persist them to a PostgreSQL database.
-
-Purpose:
-    - Parse alert data for IPv4 addresses, domains, URLs, SHA256 hashes, and email addresses
-    - Deduplicate IOCs within a single alert
-    - Store IOCs in the `iocs` table with enrichment status tracking
-    - Maintain an audit trail in the `ioc_audit` table
-
-Database Schema Requirements:
-    Table `iocs`:
-        - value (TEXT, PRIMARY KEY): The IOC value
-        - type (TEXT): One of 'ipv4', 'domain', 'url', 'sha256', 'email'
-        - enrichment_status (TEXT): Current enrichment state (e.g., 'pending', 'enriched', 'failed')
-        - first_seen (TIMESTAMPTZ): When the IOC was first observed
-        - last_seen (TIMESTAMPTZ): When the IOC was last observed (updated on conflict)
-
-    Table `ioc_audit`:
-        - value (TEXT): The IOC value
-        - type (TEXT): IOC type
-        - action (TEXT): Action performed ('insert', 'update', etc.)
-        - timestamp (TIMESTAMPTZ): When the action occurred
-
-Function Contracts:
-    extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int
-        Extracts IOCs from the provided alert JSON and persists to database.
-
-        Args:
-            sanitized_alert_json: Dictionary containing alert data. Must be JSON-serializable.
-                                  Expected to contain fields like 'alert_id', 'alertId', 'id', or 'alert_id_str'
-                                  for alert identification.
-
-        Returns:
-            int: 0 on success (including when no IOCs are found).
-
-        Raises:
-            RuntimeError: If database operations fail or extraction encounters an error.
-
-Usage:
-    from ioc_extractor import extract_iocs
-
-    alert = {
-        "alert_id": "ALT-2024-001",
-        "description": "Suspicious connection to 192.168.1.100 and malicious.com",
-        "source_ip": "10.0.0.5"
-    }
-    result = extract_iocs(alert)
-    # result == 0 indicates success
-
-Connection Management:
-    Uses a function-level cached PostgreSQL connection (dsn: dbname=soc_memory user=orchestrator).
-    Connection is reused across calls and automatically reconnected if closed.
-
-Compliance:
-    Implements LOCAL-SOC-SLM Blueprint v11.6.0 Section 30.
-"""
-
 import json
 import logging
 import re
@@ -155,18 +95,16 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
         cur = conn.cursor()
 
         query = """
-            INSERT INTO iocs (value, type, enrichment_status, first_seen)
-            VALUES %s
-            ON CONFLICT (value) DO UPDATE SET last_seen = EXCLUDED.first_seen
+            WITH ins AS (
+                INSERT INTO iocs (value, type, enrichment_status, first_seen)
+                VALUES %s
+                ON CONFLICT (value) DO UPDATE SET last_seen = EXCLUDED.first_seen
+                RETURNING value, type, first_seen
+            )
+            INSERT INTO ioc_audit (value, type, action, timestamp)
+            SELECT value, type, 'insert', first_seen FROM ins;
         """
         execute_values(cur, query, extracted)
-
-        audit_records = [(value, ioc_type, "insert", seen) for value, ioc_type, _, _ in extracted]
-        audit_query = """
-            INSERT INTO ioc_audit (value, type, action, timestamp)
-            VALUES %s
-        """
-        execute_values(cur, audit_query, audit_records)
 
         conn.commit()
         cur.close()
