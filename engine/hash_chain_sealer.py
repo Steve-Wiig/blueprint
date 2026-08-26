@@ -55,16 +55,19 @@ def _release_lock(cur: Optional[psycopg2.extensions.cursor], lock_id: int) -> No
 
 
 def _get_chain_tail(cur: psycopg2.extensions.cursor) -> Tuple[int, str]:
-    cur.execute("SELECT COALESCE(MAX(chain_seq), 0) FROM audit_chain")
-    last_seq = cur.fetchone()[0]
-    if last_seq == 0:
-        return 0, GENESIS_HASH
     cur.execute(
-        "SELECT row_hash FROM audit_chain WHERE chain_seq = %s",
-        (last_seq,),
+        """
+        SELECT COALESCE((
+            SELECT chain_seq FROM audit_chain ORDER BY chain_seq DESC LIMIT 1
+        ), 0) as last_seq,
+        COALESCE((
+            SELECT row_hash FROM audit_chain ORDER BY chain_seq DESC LIMIT 1
+        ), %s) as prev_hash
+        """,
+        (GENESIS_HASH,),
     )
-    prev_hash = cur.fetchone()[0]
-    return last_seq, prev_hash
+    row = cur.fetchone()
+    return row[0], row[1]
 
 
 def _create_pending_cursor(conn: psycopg2.extensions.connection) -> psycopg2.extensions.cursor:
