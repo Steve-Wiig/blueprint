@@ -3,6 +3,7 @@ import psycopg2.extensions
 import psycopg2.pool
 import sys
 import hashlib
+import json
 from datetime import datetime, timezone, timedelta
 from typing import TypedDict, Optional, Callable
 from xml.sax.saxutils import escape
@@ -100,17 +101,19 @@ def _log_audit(
     query_hash: str,
     case_ids: list[str],
     top_k: int,
-    max_age_days: int
+    max_age_days: int,
+    audit_context: Optional[dict] = None
 ) -> None:
     """Insert an audit log entry for the memory retrieval operation."""
     cur = None
     try:
         cur = conn.cursor()
         audit_query = """
-            INSERT INTO memory_retrieval_audit (retrieval_timestamp, query_hash, case_ids, top_k, max_age_days)
-            VALUES (%s, %s, %s, %s, %s);
+            INSERT INTO memory_retrieval_audit (retrieval_timestamp, query_hash, case_ids, top_k, max_age_days, audit_context)
+            VALUES (%s, %s, %s, %s, %s, %s);
         """
-        cur.execute(audit_query, (retrieval_timestamp, query_hash, case_ids, top_k, max_age_days))
+        context_json = json.dumps(audit_context) if audit_context is not None else None
+        cur.execute(audit_query, (retrieval_timestamp, query_hash, case_ids, top_k, max_age_days, context_json))
         conn.commit()
     except psycopg2.Error:
         try:
@@ -129,7 +132,8 @@ def stitch_memory_context(
     top_k: int = 5,
     max_age_days: int = 30,
     conn: Optional[psycopg2.extensions.connection] = None,
-    pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
+    pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None,
+    audit_context: Optional[dict] = None
 ) -> tuple[str, MemoryMetadata]:
     """
     Queries case_embeddings for semantic recall and formats for SLM injection.
@@ -140,6 +144,7 @@ def stitch_memory_context(
         max_age_days: Maximum age of cases to consider in days. Defaults to 30.
         conn: Optional psycopg2 connection to use. If not provided, acquires from pool.
         pool: Optional connection pool to use. If not provided, uses default pool.
+        audit_context: Optional dictionary containing requestor/approval context for compliance audit trail.
 
     Returns:
         A tuple containing:
@@ -185,7 +190,7 @@ def stitch_memory_context(
         }
 
         query_hash = _compute_query_hash(query_embedding)
-        _log_audit(conn, retrieval_timestamp, query_hash, case_refs, top_k, max_age_days)
+        _log_audit(conn, retrieval_timestamp, query_hash, case_refs, top_k, max_age_days, audit_context)
         
         return formatted_context, metadata
 
