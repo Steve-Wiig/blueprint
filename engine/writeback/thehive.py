@@ -4,6 +4,7 @@ import requests
 import json
 import sys
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, Union
@@ -25,6 +26,18 @@ Environment Variables:
 """
 
 REQUIRED_CASE_FIELDS = {'title', 'description'}
+
+SECRET_PATTERNS = [
+    re.compile(r'(?i)(api[_-]?key|apikey)\s*[:=]\s*[\w\-]{20,}'),
+    re.compile(r'(?i)(password|passwd|pwd)\s*[:=]\s*\S+'),
+    re.compile(r'(?i)(token|access[_-]?token|bearer)\s*[:=]\s*[\w\-]{20,}'),
+    re.compile(r'(?i)(secret|client[_-]?secret)\s*[:=]\s*[\w\-]{20,}'),
+    re.compile(r'(?i)(authorization|auth)\s*[:=]\s*Bearer\s+\S+'),
+    re.compile(r'[\w\-]{32,}'),  # High entropy strings (32+ chars)
+    re.compile(r'sk-[\w\-]{20,}'),  # OpenAI-style keys
+    re.compile(r'gh[pousr]_[A-Za-z0-9]{36,}'),  # GitHub tokens
+    re.compile(r'xox[baprs]-[\w\-]{10,}'),  # Slack tokens
+]
 
 
 def _setup_logger(log_path: Path) -> logging.Logger:
@@ -67,6 +80,26 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def verify_sanitization(payload: Any, context: str = "payload") -> None:
+    """Verify that payload contains no secrets or high-entropy tokens.
+
+    Args:
+        payload: The sanitized payload to verify.
+        context: Description of the payload for error messages.
+
+    Raises:
+        ValueError: If any secret pattern is detected in the payload.
+    """
+    payload_str = json.dumps(payload, ensure_ascii=False)
+    for pattern in SECRET_PATTERNS:
+        match = pattern.search(payload_str)
+        if match:
+            raise ValueError(
+                f"Sanitization verification failed: potential secret detected in {context} "
+                f"(pattern: {pattern.pattern}, match: {match.group()[:50]})"
+            )
+
+
 def build_payload(raw_data: Any, mode: str) -> Any:
     """Build and sanitize the case payload for TheHive API.
 
@@ -81,13 +114,15 @@ def build_payload(raw_data: Any, mode: str) -> Any:
         Sanitized payload ready for TheHive API submission.
 
     Raises:
-        ValueError: If sanitization fails due to invalid data.
+        ValueError: If sanitization fails due to invalid data or secrets remain.
     """
     data = dict(raw_data)
     if mode == 'draft':
         data['status'] = 'Open'
         data['tags'] = data.get('tags', []) + ['draft-mode']
-    return sanitize_payload(data)
+    sanitized = sanitize_payload(data)
+    verify_sanitization(sanitized, "sanitized payload")
+    return sanitized
 
 
 def call_thehive_api(url: str, api_key: str, payload: Any) -> str:
@@ -150,6 +185,7 @@ def main() -> Union[str, int]:
         - 1: Missing required fields or TheHive API error
         - 2: Invalid JSON in case-data
         - 3: Network/request exception
+        - 4: Sanitization verification failed
 
     Raises:
         SystemExit: Not raised directly; returns exit codes for caller to handle.
@@ -164,7 +200,11 @@ def main() -> Union[str, int]:
     if missing:
         print(f"Missing required fields: {missing}", file=sys.stderr)
         return 1
-    sanitized_data = build_payload(raw_data, args.mode)
+    try:
+        sanitized_data = build_payload(raw_data, args.mode)
+    except ValueError as e:
+        print(f"Sanitization error: {e}", file=sys.stderr)
+        return 4
     try:
         case_id = call_thehive_api(args.url, args.api_key, sanitized_data)
         log_handoff(log_path, case_id, args.mode)
@@ -182,7 +222,50 @@ def main() -> Union[str, int]:
         return 1
 
 
+def run_sanitization_tests() -> bool:
+    """Run unit tests for sanitization verification.
+
+    Returns:
+        True if all tests pass, False otherwise.
+    """
+    test_cases = [
+        # (input_payload, should_pass, description)
+        ({"title": "Test", "description": "Normal case"}, True, "clean payload"),
+        ({"title": "Test", "description": "Case with api_key=abcdefghijklmnopqrstuvwxyz"}, False, "api key in description"),
+        ({"title": "Test", "description": "Password: secret123"}, False, "password in description"),
+        ({"title": "Test", "description": "Token: ghp_abcdefghijklmnopqrstuvwxyz123456"}, False, "github token"),
+        ({"title": "Test", "description": "Key: sk-abcdefghijklmnopqrstuvwxyz123456"}, False, "openai key"),
+        ({"title": "Test", "description": "Auth: Bearer abcdefghijklmnopqrstuvwxyz"}, False, "bearer token"),
+        ({"title": "Test", "description": "Secret: abcdefghijklmnopqrstuvwxyz123456"}, False, "high entropy string"),
+        ({"title": "Test", "tags": ["normal", "tag"]}, True, "clean tags"),
+        ({"title": "Test", "tags": ["api_key=abcdefghijklmnopqrstuvwxyz"]}, False, "secret in tag"),
+        ({"title": "Test", "customFields": [{"name": "api_key", "value": "abcdefghijklmnopqrstuvwxyz"}]}, False, "secret in custom field"),
+    ]
+
+    all_passed = True
+    for payload, should_pass, description in test_cases:
+        try:
+            verify_sanitization(payload, f"test: {description}")
+            if not should_pass:
+                print(f"FAIL: {description} - expected detection but passed")
+                all_passed = False
+            else:
+                print(f"PASS: {description}")
+        except ValueError as e:
+            if should_pass:
+                print(f"FAIL: {description} - unexpected detection: {e}")
+                all_passed = False
+            else:
+                print(f"PASS: {description} - correctly detected secret")
+
+    return all_passed
+
+
 if __name__ == "__main__":
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--test-sanitization":
+        success = run_sanitization_tests()
+        sys.exit(0 if success else 1)
     result = main()
     if isinstance(result, str):
         sys.exit(0)
