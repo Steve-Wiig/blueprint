@@ -15,36 +15,6 @@
     "deferred_reason": "failed 3 attempts"
   },
   {
-    "file": "engine/queue_manager.py",
-    "issue": {
-      "category": "performance",
-      "severity": "medium",
-      "line_start": 154,
-      "line_end": 175,
-      "description": "reap_stale_jobs executes two separate UPDATE statements. Can combine into single statement with CASE expression.",
-      "suggestion": "Use single UPDATE with CASE: SET status = CASE WHEN attempts < ? THEN 'pending' ELSE 'failed' END, ... WHERE status='processing' AND lease_expires_at < CURRENT_TIMESTAMP;",
-      "impact": "low",
-      "effort": "small"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/queue_manager.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "low",
-      "line_start": 28,
-      "line_end": 33,
-      "description": "Default db_path='soc_triage.db' creates file on disk. For testing/library use, should default to ':memory:' per AMEND-65 (use real :memory: databases).",
-      "suggestion": "Change default to ':memory:' or require explicit path. Document that file path is for production only.",
-      "impact": "low",
-      "effort": "trivial"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
     "file": "tools/sanitization_field_policy_check.py",
     "issue": {
       "category": "blueprint_compliance",
@@ -55,6 +25,227 @@
       "suggestion": "Add optional --audit-log argument to write JSONL audit records with timestamp, schema path, result, violations found",
       "impact": "low",
       "effort": "medium"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/enrichment_scheduler.py",
+    "issue": {
+      "category": "performance",
+      "severity": "medium",
+      "line_start": 140,
+      "line_end": 198,
+      "description": "Deprecated check_quota and get_provider_cost functions still perform individual DB queries when called, defeating bulk fetch optimization",
+      "suggestion": "Remove deprecated functions entirely since _fetch_provider_data provides bulk fetching. Update any internal callers to use the bulk method",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/enrichment_scheduler.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "medium",
+      "line_start": 140,
+      "line_end": 198,
+      "description": "Deprecated functions check_quota and get_provider_cost remain in codebase with deprecation warnings, increasing maintenance burden",
+      "suggestion": "Remove deprecated functions completely. If external callers exist, provide a migration path in release notes",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/enrichment_scheduler.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 154,
+      "line_end": 155,
+      "description": "Docstring for get_provider_cost is truncated ('bulk cost chec'), indicating incomplete documentation",
+      "suggestion": "Complete the docstring: 'Use _fetch_provider_data for bulk cost checks instead.'",
+      "impact": "low",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/writeback/so_cases.py",
+    "issue": {
+      "description": "The 'main' function uses 'raise RuntimeError' to simulate an exit(0) success, which is non-standard and confusing for callers.",
+      "category": "maintainability",
+      "severity": "low",
+      "suggestion": "Use 'sys.exit(0)' only in the 'main' entry point, not in library functions, and remove the 'raise RuntimeError' for success cases."
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "memory/retention.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "medium",
+      "line_start": 17,
+      "line_end": 18,
+      "description": "Module-level os.environ.get() calls constitute module-level side effects (I/O). Violates v11.7 'No module-level side effects'.",
+      "suggestion": "Move ARCHIVE_BASE and CMR_MOUNT resolution into functions or a config class initialized at runtime.",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "memory/retention.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "medium",
+      "line_start": 55,
+      "line_end": 56,
+      "description": "Hardcoded 'psql' and 'zstd' commands assume availability in PATH. No version checks or fallback.",
+      "suggestion": "Use shutil.which() to verify commands exist at startup; make commands configurable via env vars.",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "memory/retention.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 33,
+      "line_end": 68,
+      "description": "archive_partition function does too much: creates dirs, runs subprocess, drops table. Hard to test and reuse.",
+      "suggestion": "Split into: create_archive_dir(), export_partition_to_jsonl(), compress_file(), drop_partition().",
+      "impact": "low",
+      "effort": "medium"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/embedding_prefix_check.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "medium",
+      "line_start": 31,
+      "line_end": 31,
+      "description": "Module-level mutable global 'calls' list violates v11.7 'No module-level side effects' rule",
+      "suggestion": "Move calls list inside run_verification function or encapsulate in a verification context class",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/embedding_prefix_check.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "medium",
+      "line_start": 35,
+      "line_end": 50,
+      "description": "fake_encode function defined at module level with dependency on global 'calls' list; pollutes production namespace despite being test-only utility",
+      "suggestion": "Move fake_encode inside run_verification as a local function, or create a test-specific module. For CI tool, define it locally within the verification function",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/hash_chain_concurrency_check.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "medium",
+      "line_start": 158,
+      "line_end": 158,
+      "description": "Uses `sys.exit(main())` in `__main__` block. Blueprint AMEND-64 prohibits sys.exit() in library code, requiring RuntimeError instead. While this is a CLI script, the blueprint classifies it as library code.",
+      "suggestion": "Replace with `raise RuntimeError(main())` or restructure to return exit code and let caller handle exit. For CLI scripts, consider if this rule applies.",
+      "impact": "medium",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/hash_chain_concurrency_check.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 67,
+      "line_end": 90,
+      "description": "Worker function mutates shared `results` list via side effect instead of returning value. Makes testing harder and obscures data flow.",
+      "suggestion": "Return the index from worker and collect via `future.result()`: `results = [f.result() for f in futures]`.",
+      "impact": "low",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/sanitization_entropy_check.py",
+    "issue": {
+      "category": "performance",
+      "severity": "medium",
+      "line_start": 75,
+      "line_end": 86,
+      "description": "calculate_entropy creates collections.Counter and log2_table for every call; for large tokens or many tokens this allocates O(n) memory and O(n) time per token",
+      "suggestion": "Cache log2_table per token length using functools.lru_cache; consider streaming entropy calculation for very long tokens; avoid Counter for single-pass frequency counting",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/sanitization_entropy_check.py",
+    "issue": {
+      "category": "performance",
+      "severity": "medium",
+      "line_start": 88,
+      "line_end": 115,
+      "description": "is_allowlisted iterates through all compiled regex patterns for every token; O(patterns * tokens) complexity; patterns could be combined into single alternation regex",
+      "suggestion": "Combine ALLOWLIST_PATTERNS into single regex: re.compile('|'.join(f'(?:{p})' for p in ALLOWLIST_PATTERNS)); use single fullmatch call",
+      "impact": "medium",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/sanitization_entropy_check.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 27,
+      "line_end": 35,
+      "description": "ALLOWLIST_PATTERNS have inline comments explaining each pattern; these would be better as a docstring or separate documentation for maintainability",
+      "suggestion": "Move pattern explanations to module docstring or a dedicated PATTERNS_DOC dictionary; keep regex list clean",
+      "impact": "low",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/sanitization_entropy_check.py",
+    "issue": {
+      "category": "performance",
+      "severity": "low",
+      "line_start": 81,
+      "line_end": 83,
+      "description": "log2_table recreated for every calculate_entropy call; for repeated token lengths this is redundant computation",
+      "suggestion": "Add @functools.lru_cache(maxsize=128) to a helper _make_log2_table(length) function; or cache table in module-level dict keyed by length",
+      "impact": "low",
+      "effort": "trivial"
     },
     "attempts": 3,
     "deferred_reason": "failed 3 attempts"

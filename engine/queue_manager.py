@@ -37,7 +37,7 @@ class TriageQueueManager:
         Threshold for backpressure on low‑priority jobs.
     """
 
-    def __init__(self, db_path: str = "soc_triage.db") -> None:
+    def __init__(self, db_path: str = ":memory:") -> None:
         """
         Initialize the queue manager.
 
