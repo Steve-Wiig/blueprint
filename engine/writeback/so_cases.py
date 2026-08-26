@@ -6,12 +6,13 @@ LOCAL-SOC-SLM Blueprint v11.6.0 - Appendix Q.4
 import argparse
 import json
 import logging
+from datetime import datetime, timezone
+from typing import Any, Dict, Callable
+
 import requests
 
 # Module-level session for HTTP connection pooling (TCP keepalive)
 _HTTP_SESSION = requests.Session()
-from datetime import datetime, timezone
-from typing import Any, Dict, Callable
 
 
 DRAFT_CASE_ID = 'DRAFT_ID_000'
