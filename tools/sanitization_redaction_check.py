@@ -81,9 +81,19 @@ class Sanitizer:
 
         Args:
             patterns: Optional dict of pattern configurations. If None, uses global PATTERNS.
+                      A copy is made to avoid external mutations affecting compiled patterns.
         """
-        self._patterns = patterns if patterns is not None else PATTERNS
-        self._compiled_patterns: Dict[str, Pattern[str]] = {
+        self._patterns = dict(patterns) if patterns is not None else dict(PATTERNS)
+        self._compiled_patterns: Dict[str, Pattern[str]] = {}
+        self.recompile()
+
+    def recompile(self) -> None:
+        """Recompile all patterns from the current _patterns dict.
+
+        Call this if _patterns is modified after initialization to ensure
+        compiled patterns are up to date.
+        """
+        self._compiled_patterns = {
             k: re.compile(v["pattern"]) for k, v in self._patterns.items()
         }
 
