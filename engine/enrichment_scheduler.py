@@ -4,7 +4,6 @@ import json
 import logging
 import signal
 import sqlite3
-import warnings
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from enum import Enum
@@ -145,78 +144,6 @@ def _fetch_provider_values(
     finally:
         if own_cursor:
             cursor.close()
-
-
-def check_quota(
-    sq_conn: sqlite3.Connection,
-    provider: str,
-    cache: Optional[Dict[str, int]] = None,
-    cursor: Optional[sqlite3.Cursor] = None
-) -> int:
-    """Checks the remaining quota for a specific provider.
-
-    If a cache dictionary is supplied and contains the provider, the cached value is returned
-    to avoid an extra database query.
-
-    .. deprecated:: 1.0
-        Use `_fetch_provider_data` for bulk quota checks instead.
-
-    Args:
-        sq_conn: The SQLite database connection.
-        provider: The name of the enrichment provider.
-        cache: Optional dict mapping providers to their remaining quota.
-        cursor: Optional cursor to reuse.
-
-    Returns:
-        The remaining quota as an integer.
-    """
-    warnings.warn(
-        "check_quota is deprecated and will be removed in a future version. "
-        "Use _fetch_provider_data for bulk quota checks.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    if cache is not None and provider in cache:
-        return cache[provider]
-
-    quota_dict = _fetch_provider_values(sq_conn, [provider], 'quota_ledger', 'remaining', cursor)
-    return quota_dict.get(provider, 0)
-
-
-def get_provider_cost(
-    sq_conn: sqlite3.Connection,
-    provider: str,
-    cache: Optional[Dict[str, int]] = None,
-    cursor: Optional[sqlite3.Cursor] = None
-) -> int:
-    """Retrieves the cost per enrichment for a provider.
-
-    If a cache dictionary is supplied and contains the provider, the cached value is returned
-    to avoid an extra database query.
-
-    .. deprecated:: 1.0
-        Use `_fetch_provider_data` for bulk cost checks instead.
-
-    Args:
-        sq_conn: The SQLite database connection.
-        provider: The name of the enrichment provider.
-        cache: Optional dict mapping providers to their cost.
-        cursor: Optional cursor to reuse.
-
-    Returns:
-        The cost as an integer. Defaults to 1 if not specified.
-    """
-    warnings.warn(
-        "get_provider_cost is deprecated and will be removed in a future version. "
-        "Use _fetch_provider_data for bulk cost checks.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    if cache is not None and provider in cache:
-        return cache[provider]
-
-    cost_dict = _fetch_provider_values(sq_conn, [provider], 'provider_costs', 'cost', cursor)
-    return cost_dict.get(provider, 1)
 
 
 def update_quota(

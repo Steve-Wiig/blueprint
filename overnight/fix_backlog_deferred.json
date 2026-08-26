@@ -1,45 +1,30 @@
 [
   {
-    "file": "engine/hash_chain_sealer.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 24,
-      "line_end": 97,
-      "description": "Function seal_audit_chain is 73 lines and handles connection, locking, querying, hashing, and insertion. Violates single responsibility principle. Hard to test, debug, and maintain.",
-      "suggestion": "Split into: get_last_chain_state(), fetch_pending_batches(), compute_chain_hashes(), insert_chain_links(). Each with clear inputs/outputs. Use dependency injection for database connection.",
-      "impact": "medium",
-      "effort": "medium"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "tools/sanitization_field_policy_check.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "informational",
-      "line_start": 1,
-      "line_end": 72,
-      "description": "No append-only audit logging for policy check results - blueprint Section 30 requires audit patterns for handoffs/corrections",
-      "suggestion": "Add optional --audit-log argument to write JSONL audit records with timestamp, schema path, result, violations found",
-      "impact": "low",
-      "effort": "medium"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/enrichment_scheduler.py",
+    "file": "engine/queue_manager.py",
     "issue": {
       "category": "performance",
       "severity": "medium",
-      "line_start": 140,
-      "line_end": 198,
-      "description": "Deprecated check_quota and get_provider_cost functions still perform individual DB queries when called, defeating bulk fetch optimization",
-      "suggestion": "Remove deprecated functions entirely since _fetch_provider_data provides bulk fetching. Update any internal callers to use the bulk method",
-      "impact": "medium",
+      "line_start": 154,
+      "line_end": 175,
+      "description": "reap_stale_jobs executes two separate UPDATE statements. Can combine into single statement with CASE expression.",
+      "suggestion": "Use single UPDATE with CASE: SET status = CASE WHEN attempts < ? THEN 'pending' ELSE 'failed' END, ... WHERE status='processing' AND lease_expires_at < CURRENT_TIMESTAMP;",
+      "impact": "low",
       "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/queue_manager.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "low",
+      "line_start": 28,
+      "line_end": 33,
+      "description": "Default db_path='soc_triage.db' creates file on disk. For testing/library use, should default to ':memory:' per AMEND-65 (use real :memory: databases).",
+      "suggestion": "Change default to ':memory:' or require explicit path. Document that file path is for production only.",
+      "impact": "low",
+      "effort": "trivial"
     },
     "attempts": 3,
     "deferred_reason": "failed 3 attempts"

@@ -8,7 +8,7 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from engine.enrichment_scheduler import check_quota, update_quota, get_db_connections
+from engine.enrichment_scheduler import update_quota, get_db_connections
 
 
 def _make_quota_db():
@@ -27,28 +27,14 @@ def _make_quota_db():
     return conn
 
 
-def test_check_quota_returns_remaining():
-    """check_quota should return remaining quota as int."""
-    conn = _make_quota_db()
-    remaining = check_quota(conn, "gemini")
-    assert isinstance(remaining, int)
-    assert remaining == 90
-    conn.close()
-
-
-def test_check_quota_unknown_provider():
-    """Unknown provider should return 0 or handle gracefully."""
-    conn = _make_quota_db()
-    remaining = check_quota(conn, "unknown_provider")
-    assert isinstance(remaining, int)
-    conn.close()
-
-
 def test_update_quota_increments_used():
     """update_quota should decrement the remaining counter."""
     conn = _make_quota_db()
     update_quota(conn, "gemini", 5)
-    remaining = check_quota(conn, "gemini")
+    # Verify via direct SQL (check_quota deprecated/removed)
+    cur = conn.cursor()
+    cur.execute("SELECT remaining FROM quota_ledger WHERE provider = 'gemini'")
+    remaining = cur.fetchone()[0]
     assert remaining == 85  # 90 - 5
     conn.close()
 
