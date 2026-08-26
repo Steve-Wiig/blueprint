@@ -1,12 +1,5 @@
-"""
-engine.writeback.pfsense_alias
-============================
-
-LOCAL-SOC-SLM Blueprint v11.6.0 - Appendix Q.5
-Alias-Table Writeback Adapter (Proposal-Only Mode)
-"""
-
 import argparse
+import logging
 import os
 import sqlite3
 from datetime import datetime, timezone
@@ -148,7 +141,7 @@ def rollback_execute(approved: bool = False) -> int:
         
         if not approved:
             conn.close()
-            print(f"{MSG_ROLLBACK_DRYRUN}: Would delete {count} pending proposal(s)")
+            logging.info(f"{MSG_ROLLBACK_DRYRUN}: Would delete {count} pending proposal(s)")
             return count
         
         cursor.execute(f"DELETE FROM {TABLE_ALIAS_PROPOSALS} WHERE status = ?", (PROPOSAL_STATUS_PENDING,))
