@@ -8,12 +8,6 @@ from typing import Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-try:
-    import requests
-except ImportError:
-    logging.error("FAIL: requests library is not installed")
-    raise RuntimeError("Library code called exit(2)")
-
 DEFAULT_CONFIG_PATH: str = str(Path(__file__).parent / "config.json")
 
 REQUIRED_KEYS = {"user_env", "token_env", "read", "forbidden", "forbidden_method"}
@@ -137,7 +131,7 @@ def get_mock_response(status_code: int) -> MockResponse:
     return MockResponse(status_code)
 
 
-def check_service(service: str, cfg: dict, lab_url: str, session: requests.Session | None, dry_run: bool = False) -> bool:
+def check_service(service: str, cfg: dict, lab_url: str, session: "requests.Session" | None, dry_run: bool = False) -> bool:
     """
     Verify credential permissions for a single service.
 
@@ -210,6 +204,12 @@ def main() -> int:
         format="%(levelname)s: %(message)s",
         stream=sys.stderr
     )
+
+    try:
+        import requests
+    except ImportError:
+        logging.error("FAIL: requests library is not installed")
+        raise RuntimeError("Library code called exit(2)")
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
