@@ -228,7 +228,7 @@ def main() -> int:
         logging.error("CONFIG ERROR: LAB_URL is not set")
         return 2
 
-    max_workers = args.workers or int(os.getenv("MAX_WORKERS", str(len(config))))
+    max_workers = args.workers or int(os.getenv("MAX_WORKERS", str(min(10, len(config)))))
     max_workers = max(1, min(max_workers, len(config)))
 
     session = None if args.dry_run else requests.Session()
