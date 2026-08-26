@@ -5,7 +5,6 @@ import requests
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
