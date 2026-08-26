@@ -185,7 +185,7 @@ def seal_audit_chain(
         )
         if conn:
             conn.rollback()
-        raise RuntimeError(f"Sealer failed: {e}")
+        raise RuntimeError(f"Sealer failed: {e}") from e
     finally:
         _release_lock(cur, lock_id) if lock_acquired else None
         _close_cursor_safely(pending_cur)
