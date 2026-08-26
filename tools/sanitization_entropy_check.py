@@ -332,18 +332,12 @@ def main_stream(input_stream: TextIO) -> int:
             0: PASS - Sanitization consistent, no high-entropy secrets detected.
             1: FAIL - Inconsistency between passes (potential missed secret).
             2: CONFIG ERROR - Unexpected exception during processing.
-
-    Edge Cases:
-        - Empty stream: returns 0 (PASS)
-        - Stream with only allowlisted tokens: returns 0 (PASS)
-        - Stream causing exception: returns 2 (CONFIG ERROR)
-        - Unicode input: handled correctly
     """
     try:
         # Read entire stream for two-pass verification
         # (streaming two-pass would require buffering or re-reading)
-        input_data = input_stream.read()
-        return main(input_data)
+        content = input_stream.read()
+        return main(content)
     except Exception as e:
         print(f"CONFIG ERROR: {str(e)}")
         return 2
@@ -355,25 +349,33 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  echo "text with secret" | python sanitize_entropy.py
-  python sanitize_entropy.py --file input.txt
+  # Check stdin (streaming)
+  cat secrets.txt | python sanitize_entropy.py
+
+  # Check string argument
+  python sanitize_entropy.py "text with sk_live_abc123 token"
+
+  # Dry-run with default test data
   python sanitize_entropy.py --dry-run
+
+  # Custom entropy threshold
+  ENTROPY_THRESHOLD=4.0 python sanitize_entropy.py "input text"
         """
     )
     parser.add_argument(
-        "--file", "-f",
-        type=argparse.FileType('r', encoding='utf-8'),
-        help="Input file to sanitize (default: stdin)"
+        "input",
+        nargs="?",
+        help="Input text to sanitize. If omitted, reads from stdin."
     )
     parser.add_argument(
-        "--dry-run", "-d",
+        "--dry-run",
         action="store_true",
-        help="Run with built-in test data"
+        help="Run with default test data and show sanitization output."
     )
     parser.add_argument(
-        "--threshold", "-t",
+        "--threshold",
         type=float,
-        help=f"Entropy threshold (default: {ENTROPY_THRESHOLD}, env: ENTROPY_THRESHOLD)"
+        help="Override entropy threshold (default: 4.5, env: ENTROPY_THRESHOLD)."
     )
     args = parser.parse_args()
 
@@ -382,10 +384,23 @@ Examples:
 
     if args.dry_run:
         test_data = get_default_test_data()
-        sys.exit(main(test_data))
+        print("=== Input ===")
+        print(test_data.strip())
+        print("\n=== Pass 1 ===")
+        pass1 = sanitize_pass(test_data)
+        print(pass1)
+        print("\n=== Pass 2 ===")
+        pass2 = sanitize_pass(pass1)
+        print(pass2)
+        print("\n=== Result ===")
+        if pass1 == pass2:
+            print("PASS: Idempotent")
+            sys.exit(0)
+        else:
+            print("FAIL: Not idempotent")
+            sys.exit(1)
 
-    if args.file:
-        sys.exit(main_stream(args.file))
-
-    # Default: read from stdin
-    sys.exit(main_stream(sys.stdin))
+    if args.input is not None:
+        sys.exit(main(args.input))
+    else:
+        sys.exit(main_stream(sys.stdin))
