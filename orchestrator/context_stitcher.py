@@ -1,6 +1,6 @@
-"""Memory context stitcher for SOC orchestrator. Retrieves semantically similar cases for SLM injection."""
 import psycopg2
 import psycopg2.extensions
+import psycopg2.pool
 import sys
 import hashlib
 from datetime import datetime, timezone, timedelta
@@ -8,32 +8,66 @@ from typing import TypedDict, Optional
 from xml.sax.saxutils import escape
 
 
-# Module-level connection cache for connection pooling/reuse
-_PG_CONN = None
-_PG_CONN_PARAMS = None
+# Module-level connection pool for connection pooling/reuse
+_PG_POOL: Optional[psycopg2.pool.ThreadedConnectionPool] = None
+_PG_POOL_PARAMS: Optional[dict] = None
+_PG_POOL_MINCONN = 1
+_PG_POOL_MAXCONN = 10
 
 
-def configure_connection(dbname: str = "soc_db", user: str = "orchestrator", **kwargs) -> None:
-    """Configure database connection parameters. Call before first use or let defaults apply."""
-    global _PG_CONN_PARAMS, _PG_CONN
-    _PG_CONN_PARAMS = {"dbname": dbname, "user": user, **kwargs}
-    # Reset cached connection so new params take effect
-    if _PG_CONN is not None:
+def configure_connection(
+    dbname: str = "soc_db",
+    user: str = "orchestrator",
+    minconn: int = 1,
+    maxconn: int = 10,
+    **kwargs
+) -> None:
+    """Configure database connection pool parameters. Call before first use or let defaults apply."""
+    global _PG_POOL, _PG_POOL_PARAMS, _PG_POOL_MINCONN, _PG_POOL_MAXCONN
+    _PG_POOL_PARAMS = {"dbname": dbname, "user": user, **kwargs}
+    _PG_POOL_MINCONN = minconn
+    _PG_POOL_MAXCONN = maxconn
+    # Reset cached pool so new params take effect
+    if _PG_POOL is not None:
         try:
-            _PG_CONN.close()
+            _PG_POOL.closeall()
         except Exception:
             pass
-        _PG_CONN = None
+        _PG_POOL = None
 
 
-def _get_pg_conn():
-    """Get or create a cached PostgreSQL connection."""
-    global _PG_CONN, _PG_CONN_PARAMS
-    if _PG_CONN is None or getattr(_PG_CONN, 'closed', True):
-        if _PG_CONN_PARAMS is None:
-            _PG_CONN_PARAMS = {"dbname": "soc_db", "user": "orchestrator"}
-        _PG_CONN = psycopg2.connect(**_PG_CONN_PARAMS)
-    return _PG_CONN
+def _get_pg_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    """Get or create a cached PostgreSQL connection pool."""
+    global _PG_POOL, _PG_POOL_PARAMS, _PG_POOL_MINCONN, _PG_POOL_MAXCONN
+    if _PG_POOL is None:
+        if _PG_POOL_PARAMS is None:
+            _PG_POOL_PARAMS = {"dbname": "soc_db", "user": "orchestrator"}
+        _PG_POOL = psycopg2.pool.ThreadedConnectionPool(
+            minconn=_PG_POOL_MINCONN,
+            maxconn=_PG_POOL_MAXCONN,
+            **_PG_POOL_PARAMS
+        )
+    return _PG_POOL
+
+
+def _get_pg_conn() -> psycopg2.extensions.connection:
+    """Acquire a connection from the pool."""
+    pool = _get_pg_pool()
+    return pool.getconn()
+
+
+def _put_pg_conn(conn: psycopg2.extensions.connection) -> None:
+    """Return a connection to the pool."""
+    global _PG_POOL
+    if _PG_POOL is not None:
+        try:
+            _PG_POOL.putconn(conn)
+        except Exception:
+            # If pool is closed or error, close the connection directly
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 class DatabaseError(Exception):
@@ -107,7 +141,7 @@ def stitch_memory_context(
         query_embedding: List of floats representing the query vector for cosine similarity search.
         top_k: Maximum number of similar cases to retrieve. Defaults to 5.
         max_age_days: Maximum age of cases to consider in days. Defaults to 30.
-        conn: Optional psycopg2 connection to use. If not provided, uses module-level cached connection.
+        conn: Optional psycopg2 connection to use. If not provided, acquires from module-level pool.
 
     Returns:
         A tuple containing:
@@ -118,8 +152,8 @@ def stitch_memory_context(
         DatabaseError: If a psycopg2 database error occurs during query execution or connection.
         StitcherError: If an unexpected error occurs during memory context stitching.
     """
-    use_cached = conn is None
-    if use_cached:
+    use_pool = conn is None
+    if use_pool:
         conn = _get_pg_conn()
     
     cur = None
@@ -164,8 +198,10 @@ def stitch_memory_context(
     finally:
         if cur is not None:
             cur.close()
-        # Don't close cached connection; only close if caller provided their own
-        if not use_cached and conn is not None:
+        # Return connection to pool if we acquired it; close if caller provided their own
+        if use_pool and conn is not None:
+            _put_pg_conn(conn)
+        elif not use_pool and conn is not None:
             try:
                 conn.close()
             except Exception:
