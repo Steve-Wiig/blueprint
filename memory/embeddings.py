@@ -60,6 +60,29 @@ class EmbeddingService:
             return text
         return f"{prefix}{text}"
 
+    def _encode_internal(self, texts: Union[str, List[str]], prefix: str) -> np.ndarray:
+        """Encode text(s) with prefix into embedding vector(s).
+
+        Args:
+            texts: Input text or list of texts to encode.
+            prefix: Prefix to apply idempotently.
+
+        Returns:
+            np.ndarray: 1D array (768,) for single text, 2D array (n, 768) for batch.
+
+        Raises:
+            RuntimeError: If encoding fails.
+        """
+        try:
+            if isinstance(texts, str):
+                processed = self._apply_prefix(texts, prefix)
+            else:
+                processed = [self._apply_prefix(text, prefix) for text in texts]
+            embeddings = self.model.encode(processed)
+            return embeddings.astype(np.float32, copy=False)
+        except Exception:
+            raise RuntimeError(f"Library code called exit(1)")
+
     def _encode(self, text: str, prefix: str) -> np.ndarray:
         """Encode text with prefix into a 768-dim embedding vector.
 
@@ -73,12 +96,7 @@ class EmbeddingService:
         Raises:
             RuntimeError: If encoding fails.
         """
-        try:
-            processed = self._apply_prefix(text, prefix)
-            embedding = self.model.encode(processed)
-            return embedding.astype(np.float32, copy=False)
-        except Exception:
-            raise RuntimeError(f"Library code called exit(1)")
+        return self._encode_internal(text, prefix)
 
     def _encode_batch(self, texts: List[str], prefix: str) -> np.ndarray:
         """Encode a batch of texts with prefix into embedding vectors.
@@ -93,12 +111,7 @@ class EmbeddingService:
         Raises:
             RuntimeError: If encoding fails.
         """
-        try:
-            processed = [self._apply_prefix(text, prefix) for text in texts]
-            embeddings = self.model.encode(processed)
-            return embeddings.astype(np.float32, copy=False)
-        except Exception:
-            raise RuntimeError(f"Library code called exit(1)")
+        return self._encode_internal(texts, prefix)
 
     def embed_document(self, text: str) -> np.ndarray:
         """Encode a document text into a 768-dim embedding vector.
