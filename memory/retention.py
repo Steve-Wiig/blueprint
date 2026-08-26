@@ -56,7 +56,7 @@ def check_cmr_mount() -> None:
         pass
 
 
-def archive_partition(conn: PgConnection, partition_name: str) -> None:
+def archive_partition(conn: PgConnection, partition_name: str, dry_run: bool = False) -> None:
     """
     Archive a partition table to a compressed JSONL file and drop the table.
     
@@ -65,6 +65,7 @@ def archive_partition(conn: PgConnection, partition_name: str) -> None:
     Args:
         conn: Active PostgreSQL connection.
         partition_name: Name of the partition table to archive (format: iocs_YYYY_MM_DD).
+        dry_run: If True, log actions without executing them.
         
     Raises:
         RuntimeError: If the archiving process fails.
@@ -73,8 +74,14 @@ def archive_partition(conn: PgConnection, partition_name: str) -> None:
     try:
         date_part = partition_name.replace('iocs_', '')
         archive_dir = Path(ARCHIVE_BASE) / date_part[:7]
-        archive_dir.mkdir(parents=True, exist_ok=True)
         output_file = archive_dir / f"{partition_name}.jsonl.zst"
+
+        if dry_run:
+            sys.stdout.write(f"[DRY-RUN] Would archive {partition_name} to {output_file}\n")
+            sys.stdout.write(f"[DRY-RUN] Would execute: DROP TABLE {partition_name};\n")
+            return
+
+        archive_dir.mkdir(parents=True, exist_ok=True)
 
         query = f"COPY (SELECT * FROM {partition_name}) TO STDOUT WITH (FORMAT JSON);"
         
@@ -97,25 +104,34 @@ def archive_partition(conn: PgConnection, partition_name: str) -> None:
         raise RuntimeError(f"Archive failed for {partition_name}: {e}") from e
 
 
-def archive_partition_with_connection(db_url: str, partition_name: str) -> None:
+def archive_partition_with_connection(db_url: str, partition_name: str, dry_run: bool = False) -> None:
     """
     Archive a partition using a dedicated connection (for parallel processing).
     
     Args:
         db_url: PostgreSQL connection string.
         partition_name: Name of the partition table to archive.
+        dry_run: If True, log actions without executing them.
         
     Raises:
         RuntimeError: If the archiving process fails.
     """
+    if dry_run:
+        date_part = partition_name.replace('iocs_', '')
+        archive_dir = Path(ARCHIVE_BASE) / date_part[:7]
+        output_file = archive_dir / f"{partition_name}.jsonl.zst"
+        sys.stdout.write(f"[DRY-RUN] Would archive {partition_name} to {output_file}\n")
+        sys.stdout.write(f"[DRY-RUN] Would execute: DROP TABLE {partition_name};\n")
+        return
+
     conn = psycopg2.connect(db_url)
     try:
-        archive_partition(conn, partition_name)
+        archive_partition(conn, partition_name, dry_run=False)
     finally:
         conn.close()
 
 
-def run_retention(db_url: str, retention_days: int = None, max_workers: int = 4) -> None:
+def run_retention(db_url: str, retention_days: int = None, max_workers: int = 4, dry_run: bool = False) -> None:
     """
     Execute the retention policy: archive and drop partitions older than the configured retention period.
     
@@ -125,6 +141,7 @@ def run_retention(db_url: str, retention_days: int = None, max_workers: int = 4)
         db_url: PostgreSQL connection string.
         retention_days: Number of days to retain partitions. Defaults to RETENTION_DAYS env var or 90.
         max_workers: Maximum number of parallel workers for archiving (default: 4).
+        dry_run: If True, log actions without executing them.
         
     Raises:
         RuntimeError: If retention logic encounters an error.
@@ -160,6 +177,18 @@ def run_retention(db_url: str, retention_days: int = None, max_workers: int = 4)
         conn.close()
         
         if not partitions_to_archive:
+            if dry_run:
+                sys.stdout.write("[DRY-RUN] No partitions to archive.\n")
+            return
+        
+        if dry_run:
+            sys.stdout.write(f"[DRY-RUN] Would archive {len(partitions_to_archive)} partition(s): {', '.join(partitions_to_archive)}\n")
+            for part in partitions_to_archive:
+                date_part = part.replace('iocs_', '')
+                archive_dir = Path(ARCHIVE_BASE) / date_part[:7]
+                output_file = archive_dir / f"{part}.jsonl.zst"
+                sys.stdout.write(f"[DRY-RUN] Would archive {part} to {output_file}\n")
+                sys.stdout.write(f"[DRY-RUN] Would execute: DROP TABLE {part};\n")
             return
         
         if len(partitions_to_archive) == 1:
@@ -195,9 +224,10 @@ def main() -> None:
     parser.add_argument("--db-url", required=True, help="Postgres connection string")
     parser.add_argument("--retention-days", type=int, default=90, help="Retention period in days (default: 90). Overrides RETENTION_DAYS env var.")
     parser.add_argument("--max-workers", type=int, default=4, help="Maximum parallel workers for archiving (default: 4)")
+    parser.add_argument("--dry-run", action="store_true", help="Log actions without executing archive or DROP TABLE")
     args = parser.parse_args()
     
-    run_retention(args.db_url, retention_days=args.retention_days, max_workers=args.max_workers)
+    run_retention(args.db_url, retention_days=args.retention_days, max_workers=args.max_workers, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
