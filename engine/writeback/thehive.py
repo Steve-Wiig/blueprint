@@ -40,6 +40,15 @@ SECRET_PATTERNS = [
 ]
 
 _LOGGER_CACHE: dict[Path, logging.Logger] = {}
+_SESSION: Optional[requests.Session] = None
+
+
+def _get_session() -> requests.Session:
+    """Get or create a requests Session for connection pooling."""
+    global _SESSION
+    if _SESSION is None:
+        _SESSION = requests.Session()
+    return _SESSION
 
 
 def _setup_logger(log_path: Path) -> logging.Logger:
@@ -150,7 +159,8 @@ def call_thehive_api(url: str, api_key: str, payload: Any) -> str:
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
-    response = requests.post(
+    session = _get_session()
+    response = session.post(
         f"{url}/api/case",
         json=payload,
         headers=headers,
