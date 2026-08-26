@@ -26,12 +26,31 @@ def load_prefixes_from_config() -> Dict[str, str]:
 
 
 def load_prefixes_from_env() -> Dict[str, str]:
-    """Load prefixes from environment variables."""
+    """Load prefixes from environment variables with validation."""
     prefixes = {}
-    if doc_prefix := os.getenv(ENV_DOC_PREFIX):
-        prefixes["document"] = doc_prefix
-    if query_prefix := os.getenv(ENV_QUERY_PREFIX):
-        prefixes["query"] = query_prefix
+    used_vars = []
+    
+    doc_prefix = os.getenv(ENV_DOC_PREFIX)
+    if doc_prefix is not None:
+        doc_prefix = doc_prefix.strip()
+        if doc_prefix:
+            prefixes["document"] = doc_prefix
+            used_vars.append(ENV_DOC_PREFIX)
+        else:
+            print(f"WARNING: {ENV_DOC_PREFIX} is set but empty after stripping whitespace", file=sys.stderr)
+    
+    query_prefix = os.getenv(ENV_QUERY_PREFIX)
+    if query_prefix is not None:
+        query_prefix = query_prefix.strip()
+        if query_prefix:
+            prefixes["query"] = query_prefix
+            used_vars.append(ENV_QUERY_PREFIX)
+        else:
+            print(f"WARNING: {ENV_QUERY_PREFIX} is set but empty after stripping whitespace", file=sys.stderr)
+    
+    if used_vars:
+        print(f"INFO: Loaded prefixes from environment variables: {', '.join(used_vars)}", file=sys.stderr)
+    
     return prefixes
 
 
