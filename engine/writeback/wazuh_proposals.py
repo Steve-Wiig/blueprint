@@ -19,39 +19,43 @@ _db_connection: Optional[sqlite3.Connection] = None
 
 class ProposalError(Exception):
     """Base exception for proposal adapter errors."""
-    def __init__(self, message: str, exit_code: int):
-        super().__init__(message)
-        self.exit_code = exit_code
+    exit_code: int = 1
+    default_message: str = "Proposal error"
+
+    def __init__(self, message: Optional[str] = None, exit_code: Optional[int] = None):
+        msg = message if message is not None else self.default_message
+        super().__init__(msg)
+        self.exit_code = exit_code if exit_code is not None else self.exit_code
 
 
 class ProposalRejectedError(ProposalError):
     """Raised when a proposal is rejected (denylist, validation)."""
-    def __init__(self, message: str = "Proposal rejected"):
-        super().__init__(message, 1)
+    exit_code = 1
+    default_message = "Proposal rejected"
 
 
 class ProposalStorageError(ProposalError):
     """Raised when database/storage operations fail."""
-    def __init__(self, message: str = "Storage operation failed"):
-        super().__init__(message, 2)
+    exit_code = 2
+    default_message = "Storage operation failed"
 
 
 class ProposalDirectoryError(ProposalError):
     """Raised when required directory is missing."""
-    def __init__(self, message: str = "Required directory missing"):
-        super().__init__(message, 3)
+    exit_code = 3
+    default_message = "Required directory missing"
 
 
 class ProposalApprovalError(ProposalError):
     """Raised when approval validation fails."""
-    def __init__(self, message: str = "Approval validation failed"):
-        super().__init__(message, 4)
+    exit_code = 4
+    default_message = "Approval validation failed"
 
 
 class ProposalSuccess(ProposalError):
     """Raised on successful proposal submission."""
-    def __init__(self, message: str = "Proposal stored successfully"):
-        super().__init__(message, 0)
+    exit_code = 0
+    default_message = "Proposal stored successfully"
 
 
 def _get_connection() -> sqlite3.Connection:
