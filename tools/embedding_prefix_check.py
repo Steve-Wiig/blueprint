@@ -163,7 +163,7 @@ class EmbeddingService:
             >>> len(vec)
             768
         """
-        vector = self.encoder(self.doc_prefix + text)
+        vector = self.encoder(f'{self.doc_prefix}{text}')
         self._validate_dimension(vector, "document")
         return list(vector)
 
@@ -192,7 +192,7 @@ class EmbeddingService:
             >>> len(vec)
             768
         """
-        vector = self.encoder(self.query_prefix + text)
+        vector = self.encoder(f'{self.query_prefix}{text}')
         self._validate_dimension(vector, "query")
         return list(vector)
 
