@@ -17,7 +17,6 @@ except ImportError:
 # Exit code constants
 EXIT_OK = 0
 EXIT_VIOLATION = 1
-EXIT_VALIDATION_FAIL = EXIT_VIOLATION  # Alias for clarity
 EXIT_CONFIG_ERROR = 2
 EXIT_CI_MISSING = 3
 EXIT_META_SCHEMA_ERROR = 4
@@ -204,7 +203,7 @@ def main() -> int:
     epilog = (
         "Exit codes:\n"
         "  0 (EXIT_OK) - Validation passed, no forbidden fields found\n"
-        "  1 (EXIT_VALIDATION_FAIL) - Forbidden fields detected or invalid JSON format\n"
+        "  1 (EXIT_VIOLATION) - Forbidden fields detected or invalid JSON format\n"
         "  2 (EXIT_CONFIG_ERROR) - Schema file not found at given path\n"
         "  3 (EXIT_CI_MISSING) - CI_PIPELINE_ID environment variable not set\n"
         "  4 (EXIT_META_SCHEMA_ERROR) - Schema failed JSON Schema Draft 7 meta-schema validation"
