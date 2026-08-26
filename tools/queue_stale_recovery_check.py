@@ -7,6 +7,7 @@ import os
 import sys
 import argparse
 import time
+from enum import IntEnum
 from typing import Literal
 
 DEFAULT_STALE_THRESHOLD_SECONDS = 300
@@ -14,7 +15,15 @@ DEFAULT_REQUIRED_RECOVERY_LOG_PATTERN = "RECOVERY_INITIATED_STALE_MSG"
 DEFAULT_MANIFEST_FILENAME = "recovery_manifest.log"
 MAX_MANIFEST_SIZE_BYTES = 10 * 1024 * 1024
 
-ExitCode = Literal[0, 1, 2, 3, 4, 5]
+
+class ExitCode(IntEnum):
+    SUCCESS = 0
+    FAIL = 1
+    CONFIG_ERROR = 2
+    ENV_NOT_AVAILABLE = 3
+    NOT_DIRECTORY = 4
+    PERMISSION_ERROR = 5
+
 
 def get_config() -> dict:
     """Load configuration from environment variables with defaults."""
@@ -23,6 +32,7 @@ def get_config() -> dict:
         "required_recovery_log_pattern": os.getenv("REQUIRED_RECOVERY_LOG_PATTERN", DEFAULT_REQUIRED_RECOVERY_LOG_PATTERN),
         "manifest_filename": os.getenv("RECOVERY_MANIFEST_FILE", DEFAULT_MANIFEST_FILENAME),
     }
+
 
 def check_queue_recovery(dry_run: bool = False, config: dict | None = None) -> ExitCode:
     """
@@ -36,45 +46,46 @@ def check_queue_recovery(dry_run: bool = False, config: dict | None = None) -> E
     queue_path = os.getenv("SOC_QUEUE_PATH")
     if not queue_path:
         print("CONFIG ERROR: SOC_QUEUE_PATH not defined")
-        return 2
+        return ExitCode.CONFIG_ERROR
 
     if not os.path.exists(queue_path):
         print("ENV_NOT_AVAILABLE: Queue path unreachable")
-        return 3
+        return ExitCode.ENV_NOT_AVAILABLE
 
     if not os.path.isdir(queue_path):
         print("CONFIG ERROR: SOC_QUEUE_PATH is not a directory")
-        return 4
+        return ExitCode.NOT_DIRECTORY
 
     if not os.access(queue_path, os.R_OK):
         print("PERMISSION ERROR: SOC_QUEUE_PATH is not readable")
-        return 5
+        return ExitCode.PERMISSION_ERROR
 
     if dry_run:
         print("DRY-RUN: Validation of queue recovery logic skipped.")
-        return 0
+        return ExitCode.SUCCESS
 
     # Simulate recovery check logic
     try:
         manifest_path = os.path.join(queue_path, config["manifest_filename"])
         if not os.path.exists(manifest_path):
             print("FAIL: Recovery manifest missing.")
-            return 1
+            return ExitCode.FAIL
         if os.path.getsize(manifest_path) > MAX_MANIFEST_SIZE_BYTES:
             print(f"FAIL: Recovery manifest exceeds maximum size of {MAX_MANIFEST_SIZE_BYTES} bytes.")
-            return 1
+            return ExitCode.FAIL
         with open(manifest_path, "r") as f:
             if any(config["required_recovery_log_pattern"] in line for line in f):
                 print("PASS: Stale recovery logic verified.")
-                return 0
+                return ExitCode.SUCCESS
             print("FAIL: Recovery pattern not found in manifest.")
-            return 1
+            return ExitCode.FAIL
     except FileNotFoundError:
         print("FAIL: Recovery manifest missing.")
-        return 1
+        return ExitCode.FAIL
     except Exception as e:
         print(f"FAIL: Unexpected error during check: {e}")
-        return 1
+        return ExitCode.FAIL
+
 
 def main() -> ExitCode:
     """Entry point for queue stale recovery check. Returns exit code."""
@@ -94,6 +105,7 @@ def main() -> ExitCode:
     config["manifest_filename"] = args.manifest_file
 
     return check_queue_recovery(dry_run=args.dry_run, config=config)
+
 
 if __name__ == "__main__":
     sys.exit(main())
