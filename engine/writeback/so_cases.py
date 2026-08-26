@@ -113,19 +113,20 @@ def create_case(api_url: str, api_key: str, payload: Dict[str, Any], draft_mode:
     return creator(api_url, api_key, sanitized, timeout)
 
 
-def write_to_ledger(payload_ref: str, case_id: str) -> None:
+def write_to_ledger(payload_ref: str, case_id: str, draft_mode: bool = False) -> None:
     """Writes the case transaction to the local handoff ledger.
 
     Args:
         payload_ref: The reference identifier from the payload.
         case_id: The ID of the created case.
+        draft_mode: Whether the case was created in draft mode.
 
     Raises:
         RuntimeError: If the ledger file cannot be written to.
     """
     try:
         with open(DEFAULT_LEDGER_PATH, "a") as f:
-            f.write(f"{datetime.now(timezone.utc).isoformat()} | {payload_ref} | {case_id}\n")
+            f.write(f"{datetime.now(timezone.utc).isoformat()} | {payload_ref} | {case_id} | draft={draft_mode}\n")
     except IOError:
         raise RuntimeError(f"Library code called exit(2)")
 
@@ -150,8 +151,7 @@ def main() -> None:
 
     case_id = create_case(args.url, args.key, data, args.draft, args.timeout)
     
-    if not args.draft:
-        write_to_ledger(data.get("ref", "N/A"), case_id)
+    write_to_ledger(data.get("ref", "N/A"), case_id, args.draft)
     
     logging.info(f"SUCCESS: {case_id}")
     raise RuntimeError(f"Library code called exit(0)")
