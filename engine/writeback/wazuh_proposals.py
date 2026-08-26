@@ -6,6 +6,7 @@ import os
 import atexit
 from datetime import datetime, timezone
 from typing import NoReturn, Optional
+import hashlib
 
 # LOCAL-SOC-SLM Blueprint v11.6.0 - Wazuh Proposal Adapter
 # Appendix Q.3: Writeback Isolation Layer
@@ -87,7 +88,7 @@ def init_db() -> None:
         cursor = conn.cursor()
         cursor.execute('''CREATE TABLE IF NOT EXISTS proposals 
                           (id INTEGER PRIMARY KEY, key TEXT, value TEXT, 
-                           status TEXT, created_at TIMESTAMP)''')
+                           status TEXT, created_at TIMESTAMP, changed_by TEXT)''')
         cursor.execute('''CREATE INDEX IF NOT EXISTS idx_proposals_key 
                           ON proposals(key)''')
         cursor.execute('''CREATE INDEX IF NOT EXISTS idx_proposals_status 
@@ -117,7 +118,7 @@ def init_db() -> None:
                           AFTER INSERT ON proposals
                           BEGIN
                               INSERT INTO audit_log (proposal_id, action, old_status, new_status, changed_by, changed_at)
-                              VALUES (NEW.id, 'INSERT', NULL, NEW.status, 'wazuh-proposal-adapter', datetime('now'));
+                              VALUES (NEW.id, 'INSERT', NULL, NEW.status, NEW.changed_by, datetime('now'));
                           END;''')
         
         # Trigger on UPDATE of status column in proposals
@@ -126,7 +127,7 @@ def init_db() -> None:
                           WHEN OLD.status != NEW.status
                           BEGIN
                               INSERT INTO audit_log (proposal_id, action, old_status, new_status, changed_by, changed_at)
-                              VALUES (NEW.id, 'STATUS_CHANGE', OLD.status, NEW.status, 'wazuh-proposal-adapter', datetime('now'));
+                              VALUES (NEW.id, 'STATUS_CHANGE', OLD.status, NEW.status, NEW.changed_by, datetime('now'));
                           END;''')
         
         conn.commit()
@@ -160,7 +161,6 @@ def validate_approval_token(token: str) -> bool:
     Returns:
         True if token is valid and active, False otherwise.
     """
-    import hashlib
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     
     try:
@@ -225,12 +225,15 @@ def store_proposal(key: str, value: str, approval_token: str | None = None) -> N
     if not validate_approval_token(approval_token):
         raise ProposalApprovalError("Invalid or expired approval token")
     
+    # Use token hash as actor identity for audit trail
+    token_hash = hashlib.sha256(approval_token.encode()).hexdigest()
+    
     try:
         init_db()
         conn = _get_connection()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO proposals (key, value, status, created_at) VALUES (?, ?, ?, ?)",
-                       (key, value, 'PENDING', datetime.now(timezone.utc)))
+        cursor.execute("INSERT INTO proposals (key, value, status, created_at, changed_by) VALUES (?, ?, ?, ?, ?)",
+                       (key, value, 'PENDING', datetime.now(timezone.utc), token_hash))
         conn.commit()
     except ProposalError:
         raise
