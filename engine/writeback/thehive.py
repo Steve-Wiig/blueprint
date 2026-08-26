@@ -33,11 +33,13 @@ SECRET_PATTERNS = [
     re.compile(r'(?i)(token|access[_-]?token|bearer)\s*[:=]\s*[\w\-]{20,}'),
     re.compile(r'(?i)(secret|client[_-]?secret)\s*[:=]\s*[\w\-]{20,}'),
     re.compile(r'(?i)(authorization|auth)\s*[:=]\s*Bearer\s+\S+'),
-    re.compile(r'[\w\-]{32,}'),  # High entropy strings (32+ chars)
-    re.compile(r'sk-[\w\-]{20,}'),  # OpenAI-style keys
-    re.compile(r'gh[pousr]_[A-Za-z0-9]{36,}'),  # GitHub tokens
-    re.compile(r'xox[baprs]-[\w\-]{10,}'),  # Slack tokens
+    re.compile(r'[\w\-]{32,}'),
+    re.compile(r'sk-[\w\-]{20,}'),
+    re.compile(r'gh[pousr]_[A-Za-z0-9]{36,}'),
+    re.compile(r'xox[baprs]-[\w\-]{10,}'),
 ]
+
+_LOGGER_CACHE: dict[Path, logging.Logger] = {}
 
 
 def _setup_logger(log_path: Path) -> logging.Logger:
@@ -49,6 +51,9 @@ def _setup_logger(log_path: Path) -> logging.Logger:
     Returns:
         Configured logger instance with file handler.
     """
+    if log_path in _LOGGER_CACHE:
+        return _LOGGER_CACHE[log_path]
+
     logger_name = f"thehive_writeback.handoff.{log_path}"
     logger = logging.getLogger(logger_name)
     logger.setLevel(logging.INFO)
@@ -57,6 +62,7 @@ def _setup_logger(log_path: Path) -> logging.Logger:
     handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(message)s"))
     logger.addHandler(handler)
+    _LOGGER_CACHE[log_path] = logger
     return logger
 
 
@@ -229,7 +235,6 @@ def run_sanitization_tests() -> bool:
         True if all tests pass, False otherwise.
     """
     test_cases = [
-        # (input_payload, should_pass, description)
         ({"title": "Test", "description": "Normal case"}, True, "clean payload"),
         ({"title": "Test", "description": "Case with api_key=abcdefghijklmnopqrstuvwxyz"}, False, "api key in description"),
         ({"title": "Test", "description": "Password: secret123"}, False, "password in description"),
