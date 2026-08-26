@@ -5,8 +5,10 @@ import json
 import os
 import atexit
 import functools
+import threading
+import time
 from datetime import datetime, timezone
-from typing import NoReturn, Optional
+from typing import NoReturn, Optional, List, Tuple
 import hashlib
 
 # LOCAL-SOC-SLM Blueprint v11.6.0 - Wazuh Proposal Adapter
@@ -16,6 +18,14 @@ DB_PATH: str = os.environ.get("WAZUH_PROPOSALS_DB", "/var/lib/wazuh-slm/proposal
 
 _db_initialized: bool = False
 _db_connection: Optional[sqlite3.Connection] = None
+
+# Batch audit logging for high-throughput scenarios
+_audit_batch: List[Tuple] = []
+_audit_batch_lock = threading.Lock()
+_AUDIT_BATCH_SIZE = int(os.environ.get("WAZUH_AUDIT_BATCH_SIZE", "100"))
+_AUDIT_FLUSH_INTERVAL = float(os.environ.get("WAZUH_AUDIT_FLUSH_INTERVAL", "5.0"))
+_audit_flush_timer: Optional[threading.Timer] = None
+_batch_mode_enabled = os.environ.get("WAZUH_AUDIT_BATCH_MODE", "false").lower() == "true"
 
 
 class ProposalError(Exception):
@@ -73,10 +83,67 @@ def _get_connection() -> sqlite3.Connection:
 
 def _close_connection() -> None:
     """Close the persistent database connection."""
-    global _db_connection
+    global _db_connection, _audit_flush_timer
+    if _audit_flush_timer is not None:
+        _audit_flush_timer.cancel()
+        _audit_flush_timer = None
+    _flush_audit_batch()
     if _db_connection is not None:
         _db_connection.close()
         _db_connection = None
+
+
+def _flush_audit_batch() -> None:
+    """Flush accumulated audit log entries to database."""
+    global _audit_batch, _audit_flush_timer
+    with _audit_batch_lock:
+        if not _audit_batch:
+            return
+        batch = _audit_batch[:]
+        _audit_batch.clear()
+    
+    if not batch:
+        return
+    
+    try:
+        conn = _get_connection()
+        cursor = conn.cursor()
+        cursor.executemany(
+            "INSERT INTO audit_log (proposal_id, action, old_status, new_status, changed_by, changed_at) VALUES (?, ?, ?, ?, ?, ?)",
+            batch
+        )
+        conn.commit()
+    except sqlite3.Error:
+        # On failure, put entries back for retry
+        with _audit_batch_lock:
+            _audit_batch = batch + _audit_batch
+    finally:
+        if _batch_mode_enabled:
+            _schedule_audit_flush()
+
+
+def _schedule_audit_flush() -> None:
+    """Schedule the next audit batch flush."""
+    global _audit_flush_timer
+    if _audit_flush_timer is not None:
+        _audit_flush_timer.cancel()
+    _audit_flush_timer = threading.Timer(_AUDIT_FLUSH_INTERVAL, _flush_audit_batch)
+    _audit_flush_timer.daemon = True
+    _audit_flush_timer.start()
+
+
+def _queue_audit_entry(proposal_id: int, action: str, old_status: Optional[str], 
+                       new_status: str, changed_by: str) -> None:
+    """Queue an audit entry for batch writing."""
+    if not _batch_mode_enabled:
+        return
+    entry = (proposal_id, action, old_status, new_status, changed_by, datetime.now(timezone.utc))
+    with _audit_batch_lock:
+        _audit_batch.append(entry)
+        if len(_audit_batch) >= _AUDIT_BATCH_SIZE:
+            _flush_audit_batch()
+        else:
+            _schedule_audit_flush()
 
 
 def init_db() -> None:
@@ -85,7 +152,7 @@ def init_db() -> None:
     Raises:
         ProposalStorageError: If database initialization fails.
     """
-    global _db_initialized
+    global _db_initialized, _audit_flush_timer
     if _db_initialized:
         return
     try:
@@ -118,7 +185,7 @@ def init_db() -> None:
         cursor.execute('''CREATE INDEX IF NOT EXISTS idx_approval_tokens_hash
                           ON approval_tokens(token_hash)''')
         
-        # Trigger on INSERT to proposals
+        # Trigger on INSERT to proposals (kept for compliance)
         cursor.execute('''CREATE TRIGGER IF NOT EXISTS audit_proposals_insert
                           AFTER INSERT ON proposals
                           BEGIN
@@ -126,7 +193,7 @@ def init_db() -> None:
                               VALUES (NEW.id, 'INSERT', NULL, NEW.status, NEW.changed_by, datetime('now'));
                           END;''')
         
-        # Trigger on UPDATE of status column in proposals
+        # Trigger on UPDATE of status column in proposals (kept for compliance)
         cursor.execute('''CREATE TRIGGER IF NOT EXISTS audit_proposals_status_change
                           AFTER UPDATE OF status ON proposals
                           WHEN OLD.status != NEW.status
@@ -137,6 +204,9 @@ def init_db() -> None:
         
         conn.commit()
         _db_initialized = True
+        
+        if _batch_mode_enabled:
+            _schedule_audit_flush()
     except sqlite3.Error as e:
         raise ProposalStorageError(f"Database initialization failed: {e}")
 
@@ -240,7 +310,12 @@ def store_proposal(key: str, value: str, approval_token: str | None = None) -> N
         cursor = conn.cursor()
         cursor.execute("INSERT INTO proposals (key, value, status, created_at, changed_by) VALUES (?, ?, ?, ?, ?)",
                        (key, value, 'PENDING', datetime.now(timezone.utc), token_hash))
+        proposal_id = cursor.lastrowid
         conn.commit()
+        
+        # Also queue for batch audit logging if enabled (triggers handle compliance)
+        if _batch_mode_enabled and proposal_id is not None:
+            _queue_audit_entry(proposal_id, 'INSERT', None, 'PENDING', token_hash)
     except ProposalError:
         raise
     except Exception as e:
