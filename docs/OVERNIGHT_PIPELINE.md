@@ -490,4 +490,56 @@ Used by: `openrouter_quota.py`, `llm_client.py` (cooldown), `fix_backlog.json` m
 
 ---
 
-*Document version: v11.9 — Generated for LOCAL-SOC-SLM overnight pipeline operators*
+
+---
+
+## 14. Overnight Run Wrapper & Recent Hardening (v11.10)
+
+### 14.1 Launching an Overnight Run
+
+Use the wrapper script for a budget-gated, self-reporting run:
+
+    cd /home/swiig/Documents/blueprint
+    nohup bash overnight/overnight_run.sh > overnight/overnight_console.log 2>&1 &
+    echo "Launched PID $!"
+
+The wrapper:
+1. Checks daily budget for Gemini + OpenRouter (stops if either < 60 calls remaining)
+2. Invokes `--drain-backlog` once (internal loop handles all passes until backlog empty or budget exhausted)
+3. Writes `overnight/morning_report.md` with commits, backlog delta, deferred count, and errors
+
+In the morning: `cat overnight/morning_report.md`
+
+### 14.2 Safety Hardening (added 2026-08-25)
+
+| Defense | Location | What it catches |
+|---|---|---|
+| ast.parse gate | apply_auto_fix | Non-Python output (CoT prose, markdown) rejected before disk write |
+| CoT detector | _looks_like_reasoning | Models returning "let me think..." prose instead of code |
+| pytest gate | apply_auto_fix | Fixes that break tests are reverted |
+| Truncation guard | apply_auto_fix | Rewrites suspiciously shorter than original (would delete code) |
+
+Result: zero corrupted files across 90+ auto-fix commits.
+
+### 14.3 Efficiency Improvements
+
+- Large-prompt filter (llm_client.py): prompts >25k chars routed only to high-capacity models (ultra, 550b, super-120b, compound). Small models truncate mid-string on large files.
+- Groq budget tracking: Groq calls now recorded via APIBudgetManager().record_call("groq").
+- Anti-CoT prompts: system prompts forbid reasoning prose; first non-empty line must be valid Python.
+
+### 14.4 Interpreting the Morning Report
+
+- Auto-fix commits (12h): fixes that landed. Expect 20-90 per full drain.
+- Backlog start -> end: should reach 0 if budget allowed.
+- Deferred queue: items that failed 3x, quarantined for manual triage.
+- Errors section: every rejected fix is a safety gate working, not a failure.
+
+### 14.5 Known Limitations
+
+- Deferred accumulation: hard architectural issues accumulate. Plan periodic manual triage.
+- Large-file truncation: files >800 lines may fail if no high-capacity model available.
+- Groq fallback: only used when OpenRouter saturated; context limits may truncate large prompts.
+
+---
+
+*Document version: v11.10 — Updated 2026-08-25 with overnight wrapper and safety hardening*
