@@ -136,8 +136,7 @@ class Sanitizer:
         """
         payloads = test_payloads if test_payloads is not None else TEST_PAYLOADS
         try:
-            if not self._patterns or not payloads:
-                return CheckResult.INTERNAL_ERROR
+            assert self._patterns and payloads
 
             for key in self._patterns:
                 payload = payloads.get(key)
