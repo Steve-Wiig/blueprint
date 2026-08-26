@@ -44,6 +44,8 @@ EXIT_FAIL = 1
 EXIT_CONFIG_ERROR = 2
 EXIT_ENV_ERROR = 3
 
+COMMIT_HASH_PATTERN: Pattern[str] = re.compile(r'\b([0-9a-f]{7,12})\b')
+
 
 def get_latest_tag() -> Optional[str]:
     """
@@ -109,12 +111,11 @@ def parse_changelog_hashes(changelog_path: str) -> Set[str]:
     Returns:
         Set of lowercase commit hashes found in the changelog.
     """
-    commit_hash_pattern: Pattern[str] = re.compile(r'\b([0-9a-f]{7,12})\b')
     changelog_hashes: Set[str] = set()
 
     with open(changelog_path, "r") as f:
         for line in f:
-            changelog_hashes.update(commit_hash_pattern.findall(line.lower()))
+            changelog_hashes.update(COMMIT_HASH_PATTERN.findall(line.lower()))
 
     return changelog_hashes
 
