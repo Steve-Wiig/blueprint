@@ -40,7 +40,7 @@ class ModelRegistryClient:
 
     VALID_STATUSES = {'canary', 'active', 'retired'}
 
-    def __init__(self, db_path: str, routing_config_path: Optional[str] = None, routing_config: Optional[Dict[str, Any]] = None):
+    def __init__(self, db_path: str, routing_config_path: Optional[str] = None, routing_config: Optional[Dict[str, str]] = None):
         """Initialize the ModelRegistryClient.
 
         Args:
@@ -63,7 +63,7 @@ class ModelRegistryClient:
         self.db_path = db_path
         self._conn: sqlite3.Connection = None
         self._routing_config_path = routing_config_path
-        self._routing_config = routing_config
+        self._routing_config: Optional[Dict[str, str]] = routing_config
         self._adapter_cache: Dict[str, Dict[str, Any]] = {}
 
         if routing_config_path is not None and routing_config is not None:
@@ -71,11 +71,11 @@ class ModelRegistryClient:
         if routing_config_path is None and routing_config is None:
             raise ValueError("Exactly one of routing_config_path or routing_config must be provided")
 
-    def load_config(self) -> Dict[str, Any]:
+    def load_config(self) -> Dict[str, str]:
         """Load the routing configuration from the YAML file.
 
         Returns:
-            The loaded routing configuration dictionary.
+            The loaded routing configuration dictionary mapping task types to adapter IDs.
 
         Raises:
             ValueError: If the routing configuration file cannot be loaded
@@ -99,7 +99,7 @@ class ModelRegistryClient:
         return self._routing_config
 
     @property
-    def routing_config(self) -> Dict[str, Any]:
+    def routing_config(self) -> Dict[str, str]:
         """Get the routing configuration, loading it lazily if needed."""
         if self._routing_config is None:
             self.load_config()
