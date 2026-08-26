@@ -5,6 +5,7 @@ import argparse
 import json
 import sys
 import os
+from typing import Any
 
 try:
     import ijson
@@ -14,7 +15,7 @@ except ImportError:
 
 LARGE_FILE_THRESHOLD = 100 * 1024 * 1024  # 100 MB
 
-def compute_row_hash(row: dict) -> str:
+def compute_row_hash(row: dict[str, Any]) -> str:
     """Recomputes hash for a single row excluding the hash field itself."""
     data = {k: v for k, v in row.items() if k != "hash"}
     serialized = json.dumps(data, sort_keys=True, separators=(',', ':'), ensure_ascii=True)
@@ -56,7 +57,7 @@ def verify_chain_streaming(file_path: str) -> bool:
             
     return True
 
-def verify_chain(chain_data: list[dict]) -> bool:
+def verify_chain(chain_data: list[dict[str, Any]]) -> bool:
     """
     Verifies:
     1. chain_seq ordering (0..N)
