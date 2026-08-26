@@ -17,13 +17,6 @@ Leaves 10% headroom for system/other processes."""
 DEFAULT_VRAM_BUDGET_RATIO = 0.9
 
 
-class ExitException(RuntimeError):
-    """Exception raised to signal program exit with a specific exit code."""
-    def __init__(self, exit_code: int):
-        self.exit_code = exit_code
-        super().__init__(f"Exit with code {exit_code}")
-
-
 @dataclass
 class VramCheckResult:
     """Result of VRAM budget check."""
@@ -156,13 +149,20 @@ def check_vram_budget() -> VramCheckResult:
     )
 
 
-def main() -> int:
+def main(dry_run: bool = False) -> int:
     """
     CLI entry point for VRAM budget check.
+
+    Args:
+        dry_run: If True, mock nvidia-smi and return success.
 
     Returns:
         int: Exit code (EXIT_PASS=0, EXIT_FAIL=1, EXIT_CONFIG_ERROR=2).
     """
+    if dry_run:
+        print("PASS: dry-run successful (nvidia-smi mocked)")
+        return EXIT_PASS
+
     result = check_vram_budget()
     print(result.message)
     return result.exit_code
@@ -173,10 +173,4 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", help="Mock nvidia-smi and pass")
     args = parser.parse_args()
 
-    try:
-        if args.dry_run:
-            print("PASS: dry-run successful (nvidia-smi mocked)")
-            raise ExitException(EXIT_PASS)
-        raise ExitException(main())
-    except ExitException as e:
-        sys.exit(e.exit_code)
+    sys.exit(main(dry_run=args.dry_run))
