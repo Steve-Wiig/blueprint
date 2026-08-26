@@ -38,10 +38,21 @@ ALLOWLIST_PATTERNS: List[str] = [
     r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'  # UUID v4/v1/v2/v3/v5 format; allowlisted as structurally random but non-secret identifiers
 ]
 
-ALLOWLIST_REGEX = [re.compile(p) for p in ALLOWLIST_PATTERNS]
+# Combined into a single alternation regex: one fullmatch per token
+# instead of iterating every pattern (O(patterns) -> O(1) per token).
+ALLOWLIST_REGEX = re.compile(
+    r"(?:" + "|".join(f"(?:{pat})" for pat in ALLOWLIST_PATTERNS) + r")"
+)
 
-# Default test data for dry-run mode
-DEFAULT_TEST_DATA = """
+
+def get_default_test_data() -> str:
+    """Return default test data for dry-run mode.
+
+    Returns:
+        Multi-line string containing sample text with various token types
+        for testing the sanitization system.
+    """
+    return """
 Normal text with entropy around 3.5 bits per character.
 SHA256 hash: a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3
 API key: sk_live_abcdefghijklmnopqrstuvwxyz123456
@@ -126,7 +137,7 @@ def is_allowlisted(token: str) -> bool:
         >>> is_allowlisted("")
         False
     """
-    return any(regex.fullmatch(token) for regex in ALLOWLIST_REGEX)
+    return bool(ALLOWLIST_REGEX.fullmatch(token))
 
 
 def _tokenize(text: str) -> Iterator[str]:
@@ -326,43 +337,55 @@ def main_stream(input_stream: TextIO) -> int:
         - Empty stream: returns 0 (PASS)
         - Stream with only allowlisted tokens: returns 0 (PASS)
         - Stream causing exception: returns 2 (CONFIG ERROR)
-        - Very large streams: constant memory for first pass, second pass on string
-        - Unicode streams: handled via TextIO encoding
-
-    Note:
-        First pass streams from input_stream, second pass operates on the
-        string result of first pass (not re-streaming from original).
+        - Unicode input: handled correctly
     """
     try:
-        # Pass 1: Initial scan and redaction
-        pass1 = sanitize_stream(input_stream)
-
-        # Pass 2: Verification of remaining high-entropy tokens
-        # For pass 2, we need to re-process the output of pass1
-        pass2 = sanitize_pass(pass1)
-
-        if pass1 != pass2:
-            print("FAIL: Sanitization inconsistency detected between passes.")
-            return 1
-
-        print("PASS: Sanitization entropy threshold verified.")
-        return 0
-
+        # Read entire stream for two-pass verification
+        # (streaming two-pass would require buffering or re-reading)
+        input_data = input_stream.read()
+        return main(input_data)
     except Exception as e:
         print(f"CONFIG ERROR: {str(e)}")
         return 2
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="CI Check Tool")
-    parser.add_argument("--dry-run", action="store_true", help="Run with test/mock data")
+    parser = argparse.ArgumentParser(
+        description="Two-pass sanitization entropy check for CI gates.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  echo "text with secret" | python sanitize_entropy.py
+  python sanitize_entropy.py --file input.txt
+  python sanitize_entropy.py --dry-run
+        """
+    )
+    parser.add_argument(
+        "--file", "-f",
+        type=argparse.FileType('r', encoding='utf-8'),
+        help="Input file to sanitize (default: stdin)"
+    )
+    parser.add_argument(
+        "--dry-run", "-d",
+        action="store_true",
+        help="Run with built-in test data"
+    )
+    parser.add_argument(
+        "--threshold", "-t",
+        type=float,
+        help=f"Entropy threshold (default: {ENTROPY_THRESHOLD}, env: ENTROPY_THRESHOLD)"
+    )
     args = parser.parse_args()
 
+    if args.threshold is not None:
+        ENTROPY_THRESHOLD = args.threshold
+
     if args.dry_run:
-        # Use test data from environment variable or default
-        input_data = os.environ.get("SANITIZER_TEST_DATA", DEFAULT_TEST_DATA)
-        print("DRY-RUN MODE: Using test data")
-        sys.exit(main(input_data))
-    else:
-        # Stream from stdin to avoid loading large inputs into memory
-        sys.exit(main_stream(sys.stdin))
+        test_data = get_default_test_data()
+        sys.exit(main(test_data))
+
+    if args.file:
+        sys.exit(main_stream(args.file))
+
+    # Default: read from stdin
+    sys.exit(main_stream(sys.stdin))
