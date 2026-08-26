@@ -83,4 +83,5 @@ def main() -> int:
     return 0
 
 if __name__ == "__main__":
+    # sys.exit is intentional here as this is a CLI entry point, not library code
     sys.exit(main())
