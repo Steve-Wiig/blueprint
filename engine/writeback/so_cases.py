@@ -152,7 +152,7 @@ def main() -> None:
     if not args.draft:
         write_to_ledger(data.get("ref", "N/A"), case_id)
     
-    print(f"SUCCESS: {case_id}")
+    logging.info(f"SUCCESS: {case_id}")
     raise RuntimeError(f"Library code called exit(0)")
 
 
