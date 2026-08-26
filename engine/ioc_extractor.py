@@ -51,7 +51,7 @@ Usage:
     # result == 0 indicates success
 
 Connection Management:
-    Uses a module-level cached PostgreSQL connection (dsn: dbname=soc_memory user=orchestrator).
+    Uses a function-level cached PostgreSQL connection (dsn: dbname=soc_memory user=orchestrator).
     Connection is reused across calls and automatically reconnected if closed.
 
 Compliance:
@@ -71,15 +71,12 @@ from psycopg2.extras import execute_values
 logger = logging.getLogger(__name__)
 
 
-# Module-level connection cache for connection pooling/reuse
-_PG_CONN = None
-
 def _get_pg_conn():
     """Get or create a cached PostgreSQL connection."""
-    global _PG_CONN
-    if _PG_CONN is None or getattr(_PG_CONN, 'closed', True):
-        _PG_CONN = psycopg2.connect("dbname=soc_memory user=orchestrator")
-    return _PG_CONN
+    conn = getattr(_get_pg_conn, "_conn", None)
+    if conn is None or conn.closed:
+        _get_pg_conn._conn = psycopg2.connect("dbname=soc_memory user=orchestrator")
+    return _get_pg_conn._conn
 
 
 class IOCType(Enum):
@@ -173,7 +170,7 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
 
         conn.commit()
         cur.close()
-        # Connection stays open for reuse (module-level cache)
+        # Connection stays open for reuse (function-level cache)
 
         logger.info(
             "IOC extraction audit: alert_id=%s ioc_count=%s timestamp=%s",
