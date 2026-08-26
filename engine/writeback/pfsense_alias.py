@@ -148,7 +148,7 @@ def rollback_execute(approved: bool = False) -> int:
         deleted = cursor.rowcount
         conn.commit()
         conn.close()
-        print(f"{MSG_ROLLBACK_EXECUTED}: Deleted {deleted} pending proposal(s)")
+        logging.info(f"{MSG_ROLLBACK_EXECUTED}: Deleted {deleted} pending proposal(s)")
         return deleted
     except Exception:
         raise RuntimeError("Rollback execution failed")
