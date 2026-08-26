@@ -37,6 +37,11 @@ DEFAULT_FORBIDDEN_FIELDS = {
 MAX_SCHEMA_SIZE = 100 * 1024 * 1024  # 100 MiB
 
 
+class CIMissingError(Exception):
+    """Raised when required CI environment context is missing."""
+    pass
+
+
 def load_forbidden_fields(policy_file: Optional[str] = None, env_var: str = "FORBIDDEN_FIELDS") -> Set[str]:
     """Load forbidden fields from a policy file, environment variable, or defaults.
 
@@ -174,19 +179,14 @@ def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = Non
     return EXIT_OK
 
 
-def check_ci_context(dry_run: bool) -> Optional[int]:
+def check_ci_context() -> None:
     """Validate CI environment context.
 
-    Args:
-        dry_run: Whether the check is running in dry-run mode.
-
-    Returns:
-        EXIT_CI_MISSING if CI_PIPELINE_ID is not set, None to continue.
+    Raises:
+        CIMissingError: If CI_PIPELINE_ID environment variable is not set.
     """
     if not os.getenv("CI_PIPELINE_ID"):
-        print("ENV_NOT_AVAILABLE: CI context missing")
-        return EXIT_CI_MISSING
-    return None
+        raise CIMissingError("ENV_NOT_AVAILABLE: CI context missing")
 
 
 def main() -> int:
@@ -218,9 +218,11 @@ def main() -> int:
     parser.add_argument("--policy-file", help="Path to JSON file containing forbidden fields (overrides env var and defaults)")
     args = parser.parse_args()
 
-    ci_check = check_ci_context(args.dry_run)
-    if ci_check is not None:
-        return ci_check
+    try:
+        check_ci_context()
+    except CIMissingError as e:
+        print(str(e))
+        return EXIT_CI_MISSING
 
     forbidden_fields = load_forbidden_fields(policy_file=args.policy_file)
     result = validate_schema(args.schema, forbidden_fields=forbidden_fields)
