@@ -1,5 +1,6 @@
 """Memory context stitcher for SOC orchestrator. Retrieves semantically similar cases for SLM injection."""
 import psycopg2
+import psycopg2.extensions
 import sys
 import hashlib
 from datetime import datetime, timezone, timedelta
