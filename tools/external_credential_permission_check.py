@@ -209,7 +209,7 @@ def main() -> int:
         import requests
     except ImportError:
         logging.error("FAIL: requests library is not installed")
-        raise RuntimeError("Library code called exit(2)")
+        raise RuntimeError("requests library is not installed; install with pip install requests")
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
