@@ -4,6 +4,7 @@ import sys
 import json
 import os
 import atexit
+import functools
 from datetime import datetime, timezone
 from typing import NoReturn, Optional
 import hashlib
@@ -156,6 +157,7 @@ def check_approval_gate(key: str) -> bool:
     return not key.startswith("wazuh-internal-")
 
 
+@functools.lru_cache(maxsize=128)
 def validate_approval_token(token: str) -> bool:
     """Validates an approval token against the approval_tokens table.
 
