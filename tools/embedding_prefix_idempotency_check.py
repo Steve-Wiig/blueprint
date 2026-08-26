@@ -15,10 +15,14 @@ ENV_QUERY_PREFIX = "EMBEDDING_QUERY_PREFIX"
 
 def load_prefixes_from_config() -> Dict[str, str]:
     """Load prefixes from JSON config file."""
-    if CONFIG_PATH.exists():
+    if not CONFIG_PATH.exists():
+        print(f"WARNING: Config file not found at {CONFIG_PATH}, falling back to environment variables", file=sys.stderr)
+        return {}
+    try:
         with open(CONFIG_PATH, "r") as f:
             return json.load(f)
-    return {}
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON in config file {CONFIG_PATH}: {e}") from e
 
 
 def load_prefixes_from_env() -> Dict[str, str]:
