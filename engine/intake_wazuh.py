@@ -136,5 +136,11 @@ if __name__ == "__main__":
         input_data = sys.stdin.read()
         status_code = intake_adapter(input_data)
         sys.exit(0)
+    except RuntimeError as e:
+        if "exit(2)" in str(e):
+            sys.exit(2)
+        sys.exit(1)
+    except json.JSONDecodeError:
+        sys.exit(2)
     except Exception:
         sys.exit(1)
