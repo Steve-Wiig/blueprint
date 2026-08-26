@@ -116,20 +116,21 @@ class ModelRegistryClient:
             DatabaseError: If a database operation fails during schema initialization.
         """
         try:
-            conn = self._get_connection()
+            conn = self._connection
             conn.execute("CREATE INDEX IF NOT EXISTS idx_adapter_id ON model_registry(adapter_id)")
             conn.commit()
         except sqlite3.Error as e:
             raise DatabaseError(f"Database error initializing schema: {e}")
 
-    def _get_connection(self) -> sqlite3.Connection:
+    @property
+    def _connection(self) -> sqlite3.Connection:
         """Get or create a database connection.
 
         Returns:
             An active sqlite3.Connection with row_factory set to sqlite3.Row.
 
         Note:
-            This method is not thread-safe. Concurrent calls from multiple
+            This property is not thread-safe. Concurrent access from multiple
             threads may result in multiple connections being created.
             Each thread should use its own ModelRegistryClient instance.
         """
@@ -177,7 +178,7 @@ class ModelRegistryClient:
             raise AdapterNotFoundError(f"No adapter configured for task type: {task_type}")
 
         try:
-            conn = self._get_connection()
+            conn = self._connection
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT adapter_id, adapter_sha256, status FROM model_registry WHERE adapter_id = ?",
