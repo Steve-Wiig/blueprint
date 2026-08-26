@@ -70,6 +70,9 @@ def parse_args() -> argparse.Namespace:
 def build_payload(raw_data: Any, mode: str) -> Any:
     """Build and sanitize the case payload for TheHive API.
 
+    This function creates a copy of the input data to avoid mutating
+    the caller's original dictionary.
+
     Args:
         raw_data: Raw case data dictionary.
         mode: Operation mode ('draft' or 'live').
@@ -80,10 +83,11 @@ def build_payload(raw_data: Any, mode: str) -> Any:
     Raises:
         ValueError: If sanitization fails due to invalid data.
     """
+    data = dict(raw_data)
     if mode == 'draft':
-        raw_data['status'] = 'Open'
-        raw_data['tags'] = raw_data.get('tags', []) + ['draft-mode']
-    return sanitize_payload(raw_data)
+        data['status'] = 'Open'
+        data['tags'] = data.get('tags', []) + ['draft-mode']
+    return sanitize_payload(data)
 
 
 def call_thehive_api(url: str, api_key: str, payload: Any) -> str:
