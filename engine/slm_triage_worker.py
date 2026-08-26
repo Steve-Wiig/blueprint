@@ -121,6 +121,8 @@ def run_worker(config: WorkerConfig) -> None:
         config: Worker configuration containing db path, slm_url, and lease duration.
     """
     conn = get_db(config.db)
+    empty_queue_backoff = 1
+    MAX_BACKOFF = 30
     
     while True:
         reap_stale(conn)
@@ -146,8 +148,12 @@ def run_worker(config: WorkerConfig) -> None:
         conn.commit()
         
         if not row:
-            time.sleep(5)
+            time.sleep(empty_queue_backoff)
+            empty_queue_backoff = min(empty_queue_backoff * 2, MAX_BACKOFF)
             continue
+            
+        # Job found, reset backoff
+        empty_queue_backoff = 1
             
         job_id, payload = row['id'], row['payload_ref']
         
@@ -200,8 +206,6 @@ def run_worker(config: WorkerConfig) -> None:
                 conn.execute("UPDATE triage_queue SET status = 'failed', failure_reason = ? WHERE id = ?", (str(e), job_id))
                 conn.commit()
                 break
-        
-        time.sleep(1)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
