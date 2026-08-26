@@ -31,6 +31,10 @@ from typing import List, Iterator, TextIO
 _ENTROPY_THRESHOLD_ENV = os.environ.get("ENTROPY_THRESHOLD")
 ENTROPY_THRESHOLD: float = float(_ENTROPY_THRESHOLD_ENV) if _ENTROPY_THRESHOLD_ENV is not None else 4.5
 
+# Redaction token used to replace high-entropy secrets.
+# Defined as a module constant to avoid magic strings in multiple locations.
+REDACTION_TOKEN: str = "[REDACTED]"
+
 ALLOWLIST_PATTERNS: List[str] = [
     r'[a-fA-F0-9]{64}',  # SHA256 hash (256-bit digest); allowlisted as deterministic checksums are non-secret, low-entropy patterns
     r'[a-fA-F0-9]{40}',  # SHA1 hash (160-bit digest); allowlisted for compatibility with legacy checksums and hash-based verification
@@ -166,14 +170,14 @@ def sanitize_pass(text: str) -> str:
 
     Processes text token by token using a generator to avoid loading
     all tokens into memory at once. Preserves allowlisted tokens,
-    and redacts high-entropy tokens (> ENTROPY_THRESHOLD bits/char) as "[REDACTED]".
+    and redacts high-entropy tokens (> ENTROPY_THRESHOLD bits/char) as REDACTION_TOKEN.
 
     Args:
         text: Input text to sanitize. Can be any string including Unicode.
               Empty string returns empty string.
 
     Returns:
-        Sanitized text with high-entropy tokens redacted to "[REDACTED]".
+        Sanitized text with high-entropy tokens redacted to REDACTION_TOKEN.
         Whitespace between tokens is normalized to single spaces.
         Leading/trailing whitespace is not preserved.
 
@@ -206,7 +210,7 @@ def sanitize_pass(text: str) -> str:
 
         entropy = calculate_entropy(token)
         if entropy > ENTROPY_THRESHOLD:
-            output.write("[REDACTED]")
+            output.write(REDACTION_TOKEN)
         else:
             output.write(token)
     
@@ -226,7 +230,7 @@ def sanitize_stream(input_stream: TextIO) -> str:
                       Stream position is consumed.
 
     Returns:
-        Sanitized text with high-entropy tokens redacted to "[REDACTED]".
+        Sanitized text with high-entropy tokens redacted to REDACTION_TOKEN.
         Whitespace between tokens is normalized to single spaces.
         Line boundaries are not preserved (tokens separated by single space).
 
@@ -258,7 +262,7 @@ def sanitize_stream(input_stream: TextIO) -> str:
 
             entropy = calculate_entropy(token)
             if entropy > ENTROPY_THRESHOLD:
-                output.write("[REDACTED]")
+                output.write(REDACTION_TOKEN)
             else:
                 output.write(token)
     
@@ -334,10 +338,19 @@ def main_stream(input_stream: TextIO) -> int:
             2: CONFIG ERROR - Unexpected exception during processing.
     """
     try:
-        # Read entire stream for two-pass verification
-        # (streaming two-pass would require buffering or re-reading)
-        content = input_stream.read()
-        return main(content)
+        # Pass 1: Read entire stream and sanitize
+        pass1 = sanitize_stream(input_stream)
+
+        # Pass 2: Verify idempotency on the sanitized output
+        pass2 = sanitize_pass(pass1)
+
+        if pass1 != pass2:
+            print("FAIL: Sanitization inconsistency detected between passes.")
+            return 1
+
+        print("PASS: Sanitization entropy threshold verified.")
+        return 0
+
     except Exception as e:
         print(f"CONFIG ERROR: {str(e)}")
         return 2
@@ -349,8 +362,8 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Check stdin (streaming)
-  cat secrets.txt | python sanitize_entropy.py
+  # Check stdin (streaming mode)
+  cat secrets.log | python sanitize_entropy.py
 
   # Check string argument
   python sanitize_entropy.py "text with sk_live_abc123 token"
@@ -359,7 +372,7 @@ Examples:
   python sanitize_entropy.py --dry-run
 
   # Custom entropy threshold
-  ENTROPY_THRESHOLD=4.0 python sanitize_entropy.py "input text"
+  ENTROPY_THRESHOLD=5.0 python sanitize_entropy.py "input text"
         """
     )
     parser.add_argument(
@@ -373,34 +386,30 @@ Examples:
         help="Run with default test data and show sanitization output."
     )
     parser.add_argument(
-        "--threshold",
-        type=float,
-        help="Override entropy threshold (default: 4.5, env: ENTROPY_THRESHOLD)."
+        "--stream",
+        action="store_true",
+        help="Force streaming mode (read from stdin)."
     )
-    args = parser.parse_args()
 
-    if args.threshold is not None:
-        ENTROPY_THRESHOLD = args.threshold
+    args = parser.parse_args()
 
     if args.dry_run:
         test_data = get_default_test_data()
-        print("=== Input ===")
-        print(test_data.strip())
-        print("\n=== Pass 1 ===")
+        print("=== Dry-run mode ===")
+        print("Input:")
+        print(test_data)
+        print("\nSanitized (pass 1):")
         pass1 = sanitize_pass(test_data)
         print(pass1)
-        print("\n=== Pass 2 ===")
+        print("\nSanitized (pass 2):")
         pass2 = sanitize_pass(pass1)
         print(pass2)
-        print("\n=== Result ===")
-        if pass1 == pass2:
-            print("PASS: Idempotent")
-            sys.exit(0)
-        else:
-            print("FAIL: Not idempotent")
-            sys.exit(1)
+        print(f"\nIdempotent: {pass1 == pass2}")
+        sys.exit(0 if pass1 == pass2 else 1)
 
-    if args.input is not None:
+    if args.input is not None and not args.stream:
+        # String argument mode
         sys.exit(main(args.input))
     else:
+        # Streaming mode (stdin)
         sys.exit(main_stream(sys.stdin))
