@@ -9,10 +9,33 @@ from pathlib import Path
 from typing import Any, Optional, Union
 from engine.sanitization_pipeline import sanitize_payload
 
+"""
+TheHive Case Writeback Adapter
+
+This module provides functionality to create cases in TheHive platform
+from structured case data. It handles payload sanitization, API communication,
+and audit logging for SOC automation workflows.
+
+Usage:
+    python -m thehive_writeback.handoff --case-data '{"title": "...", "description": "..."}' \
+        --api-key <key> --url <url> [--mode draft|live] [--log-path <path>]
+
+Environment Variables:
+    HANDOFF_LOG_PATH: Default path for handoff log file (default: handoff_log.txt)
+"""
+
 REQUIRED_CASE_FIELDS = {'title', 'description'}
 
 
 def _setup_logger(log_path: Path) -> logging.Logger:
+    """Configure a file logger for handoff audit trail.
+
+    Args:
+        log_path: Path to the log file.
+
+    Returns:
+        Configured logger instance with file handler.
+    """
     logger_name = f"thehive_writeback.handoff.{log_path}"
     logger = logging.getLogger(logger_name)
     logger.setLevel(logging.INFO)
@@ -25,6 +48,16 @@ def _setup_logger(log_path: Path) -> logging.Logger:
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the TheHive writeback adapter.
+
+    Returns:
+        Parsed arguments namespace with attributes:
+        - case_data: JSON string of case data
+        - api_key: TheHive API key
+        - url: TheHive base URL
+        - mode: Operation mode ('draft' or 'live')
+        - log_path: Optional path to handoff log file
+    """
     parser = argparse.ArgumentParser(description="TheHive Case Writeback Adapter v11.6.0")
     parser.add_argument("--case-data", required=True, help="JSON string of case data")
     parser.add_argument("--api-key", required=True, help="TheHive API Key")
@@ -35,6 +68,18 @@ def parse_args() -> argparse.Namespace:
 
 
 def build_payload(raw_data: Any, mode: str) -> Any:
+    """Build and sanitize the case payload for TheHive API.
+
+    Args:
+        raw_data: Raw case data dictionary.
+        mode: Operation mode ('draft' or 'live').
+
+    Returns:
+        Sanitized payload ready for TheHive API submission.
+
+    Raises:
+        ValueError: If sanitization fails due to invalid data.
+    """
     if mode == 'draft':
         raw_data['status'] = 'Open'
         raw_data['tags'] = raw_data.get('tags', []) + ['draft-mode']
@@ -42,6 +87,20 @@ def build_payload(raw_data: Any, mode: str) -> Any:
 
 
 def call_thehive_api(url: str, api_key: str, payload: Any) -> str:
+    """Create a case in TheHive via REST API.
+
+    Args:
+        url: TheHive base URL (e.g., 'https://thehive.example.com').
+        api_key: TheHive API key for authentication.
+        payload: Sanitized case payload dictionary.
+
+    Returns:
+        TheHive case ID string.
+
+    Raises:
+        RuntimeError: If API returns error status or missing case ID in response.
+        requests.exceptions.RequestException: If network request fails.
+    """
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
@@ -61,12 +120,36 @@ def call_thehive_api(url: str, api_key: str, payload: Any) -> str:
 
 
 def log_handoff(log_path: Path, case_id: str, mode: str) -> None:
+    """Log successful case creation to handoff audit file.
+
+    Args:
+        log_path: Path to the handoff log file.
+        case_id: TheHive case ID that was created.
+        mode: Operation mode ('draft' or 'live').
+
+    Returns:
+        None
+    """
     logger = _setup_logger(log_path)
     now = datetime.now(timezone.utc)
     logger.info(f"{now.isoformat()}|REF:{case_id}|STATUS:SUCCESS|MODE:{mode}")
 
 
 def main() -> Union[str, int]:
+    """Main entry point for TheHive case writeback adapter.
+
+    Parses arguments, validates input, creates case in TheHive,
+    and logs the handoff result.
+
+    Returns:
+        Case ID string on success, or integer exit code on failure:
+        - 1: Missing required fields or TheHive API error
+        - 2: Invalid JSON in case-data
+        - 3: Network/request exception
+
+    Raises:
+        SystemExit: Not raised directly; returns exit codes for caller to handle.
+    """
     args = parse_args()
     log_path = Path(args.log_path) if args.log_path else Path(os.environ.get("HANDOFF_LOG_PATH", "handoff_log.txt"))
     try:
