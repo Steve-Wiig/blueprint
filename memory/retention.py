@@ -7,6 +7,8 @@ from datetime import timezone
 import psycopg2
 from psycopg2.extensions import connection as PgConnection
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 """
 IOC Retention Manager
@@ -58,6 +60,8 @@ def archive_partition(conn: PgConnection, partition_name: str) -> None:
     """
     Archive a partition table to a compressed JSONL file and drop the table.
     
+    Uses psycopg2.copy_expert for efficient streaming without subprocess overhead.
+    
     Args:
         conn: Active PostgreSQL connection.
         partition_name: Name of the partition table to archive (format: iocs_YYYY_MM_DD).
@@ -75,16 +79,15 @@ def archive_partition(conn: PgConnection, partition_name: str) -> None:
         query = f"COPY (SELECT * FROM {partition_name}) TO STDOUT WITH (FORMAT JSON);"
         
         with open(output_file, 'wb') as f:
-            psql_cmd = ["psql", "-t", "-c", query]
-            zstd_cmd = ["zstd", "--rm"]
-            
-            psql = subprocess.Popen(psql_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            zstd = subprocess.Popen(zstd_cmd, stdin=psql.stdout, stdout=f)
-            psql.stdout.close()
-            zstd.communicate()
-
-            if psql.returncode != 0 or zstd.returncode != 0:
-                raise Exception("Archiving process failed")
+            zstd = subprocess.Popen(["zstd", "--rm"], stdin=subprocess.PIPE, stdout=f)
+            try:
+                with conn.cursor() as cur:
+                    cur.copy_expert(query, zstd.stdin)
+            finally:
+                zstd.stdin.close()
+                zstd.wait()
+                if zstd.returncode != 0:
+                    raise Exception("zstd compression failed")
 
         with conn.cursor() as cur:
             cur.execute(f"DROP TABLE {partition_name};")
@@ -94,13 +97,34 @@ def archive_partition(conn: PgConnection, partition_name: str) -> None:
         raise RuntimeError(f"Archive failed for {partition_name}: {e}") from e
 
 
-def run_retention(db_url: str, retention_days: int = None) -> None:
+def archive_partition_with_connection(db_url: str, partition_name: str) -> None:
+    """
+    Archive a partition using a dedicated connection (for parallel processing).
+    
+    Args:
+        db_url: PostgreSQL connection string.
+        partition_name: Name of the partition table to archive.
+        
+    Raises:
+        RuntimeError: If the archiving process fails.
+    """
+    conn = psycopg2.connect(db_url)
+    try:
+        archive_partition(conn, partition_name)
+    finally:
+        conn.close()
+
+
+def run_retention(db_url: str, retention_days: int = None, max_workers: int = 4) -> None:
     """
     Execute the retention policy: archive and drop partitions older than the configured retention period.
+    
+    Uses parallel processing with a connection pool for improved performance.
     
     Args:
         db_url: PostgreSQL connection string.
         retention_days: Number of days to retain partitions. Defaults to RETENTION_DAYS env var or 90.
+        max_workers: Maximum number of parallel workers for archiving (default: 4).
         
     Raises:
         RuntimeError: If retention logic encounters an error.
@@ -123,17 +147,36 @@ def run_retention(db_url: str, retention_days: int = None) -> None:
             """, (cutoff_date,))
             partitions = [row[0] for row in cur.fetchall()]
             
+            partitions_to_archive = []
             for part in partitions:
-                # Assuming partition naming convention iocs_YYYY_MM_DD
                 try:
                     part_date = datetime.datetime.strptime(part.replace('iocs_', ''), '%Y_%m_%d')
-                    # Make part_date timezone-aware for comparison
                     part_date = part_date.replace(tzinfo=timezone.utc)
                     if part_date < cutoff:
-                        archive_partition(conn, part)
+                        partitions_to_archive.append(part)
                 except ValueError:
                     continue
+        
         conn.close()
+        
+        if not partitions_to_archive:
+            return
+        
+        if len(partitions_to_archive) == 1:
+            archive_partition_with_connection(db_url, partitions_to_archive[0])
+        else:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(archive_partition_with_connection, db_url, part): part
+                    for part in partitions_to_archive
+                }
+                for future in as_completed(futures):
+                    part = futures[future]
+                    try:
+                        future.result()
+                    except Exception as e:
+                        sys.stderr.write(f"Failed to archive {part}: {e}\n")
+                        raise
     except Exception as e:
         sys.stderr.write(f"Retention logic error: {e}\n")
         raise RuntimeError(f"Retention logic error: {e}") from e
@@ -151,9 +194,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="IOC Retention Manager")
     parser.add_argument("--db-url", required=True, help="Postgres connection string")
     parser.add_argument("--retention-days", type=int, default=90, help="Retention period in days (default: 90). Overrides RETENTION_DAYS env var.")
+    parser.add_argument("--max-workers", type=int, default=4, help="Maximum parallel workers for archiving (default: 4)")
     args = parser.parse_args()
     
-    run_retention(args.db_url, retention_days=args.retention_days)
+    run_retention(args.db_url, retention_days=args.retention_days, max_workers=args.max_workers)
 
 
 if __name__ == "__main__":
