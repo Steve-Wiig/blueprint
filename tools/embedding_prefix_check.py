@@ -26,7 +26,8 @@ import sys
 import os
 import argparse
 import logging
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
+from collections.abc import Sequence as ABCSequence
 
 DEFAULT_DOC_PREFIX = "search_document: "
 DEFAULT_QUERY_PREFIX = "search_query: "
@@ -64,7 +65,7 @@ class EmbeddingService:
     encoding. This ensures consistent prefix usage across the platform.
 
     Attributes:
-        encoder: Callable that takes a string and returns a list of floats
+        encoder: Callable that takes a string and returns a sequence of floats
                  representing the embedding vector.
         doc_prefix: Prefix to prepend for document embeddings.
         query_prefix: Prefix to prepend for query embeddings.
@@ -79,7 +80,7 @@ class EmbeddingService:
         768
     """
 
-    encoder: Callable[[str], list[float]]
+    encoder: Callable[[str], Sequence[float]]
     doc_prefix: str
     query_prefix: str
     strict: bool
@@ -87,7 +88,7 @@ class EmbeddingService:
 
     def __init__(
         self,
-        encoder: Callable[[str], list[float]],
+        encoder: Callable[[str], Sequence[float]],
         doc_prefix: Optional[str] = None,
         query_prefix: Optional[str] = None,
         strict: bool = False,
@@ -97,7 +98,7 @@ class EmbeddingService:
         Initialize the EmbeddingService with an encoder function.
 
         Args:
-            encoder: Callable that takes a string and returns a list of floats
+            encoder: Callable that takes a string and returns a sequence of floats
                      representing the embedding vector. The encoder is expected
                      to handle the prefixed text and return a vector of dimension
                      REQUIRED_DIM (768) unless a different expected_dim is provided.
@@ -121,7 +122,7 @@ class EmbeddingService:
         self.strict = strict
         self.expected_dim = expected_dim if expected_dim is not None else REQUIRED_DIM
 
-    def _validate_dimension(self, vector: list[float], context: str) -> None:
+    def _validate_dimension(self, vector: Sequence[float], context: str) -> None:
         """
         Validate that the embedding vector has the expected dimension.
 
@@ -164,7 +165,7 @@ class EmbeddingService:
         """
         vector = self.encoder(self.doc_prefix + text)
         self._validate_dimension(vector, "document")
-        return vector
+        return list(vector)
 
     def embed_query(self, text: str) -> list[float]:
         """
@@ -193,7 +194,7 @@ class EmbeddingService:
         """
         vector = self.encoder(self.query_prefix + text)
         self._validate_dimension(vector, "query")
-        return vector
+        return list(vector)
 
 
 def run_verification(
