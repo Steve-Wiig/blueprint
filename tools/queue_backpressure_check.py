@@ -10,6 +10,7 @@ import logging
 import requests
 import json
 from enum import Enum
+from datetime import datetime, timezone
 
 # Blueprint v11.6.0 Constants (configurable via environment variables)
 MAX_QUEUE_DEPTH = int(os.getenv('MAX_QUEUE_DEPTH', '1000'))
@@ -23,11 +24,20 @@ class ExitCode(Enum):
     TOKEN_MISSING = 3
     API_RESPONSE_ERROR = 4
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+class UTCFormatter(logging.Formatter):
+    """Custom formatter that uses timezone-aware UTC timestamps."""
+    def formatTime(self, record, datefmt=None):
+        dt = datetime.fromtimestamp(record.created, tz=timezone.utc)
+        if datefmt:
+            return dt.strftime(datefmt)
+        return dt.isoformat()
+
+handler = logging.StreamHandler()
+handler.setFormatter(UTCFormatter(
+    fmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%dT%H:%M:%S%z'
-)
+))
+logging.basicConfig(level=logging.INFO, handlers=[handler])
 logger = logging.getLogger(__name__)
 
 def check_backpressure(lab_url: str | None, dry_run: bool = False) -> int:
