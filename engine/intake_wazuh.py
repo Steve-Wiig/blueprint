@@ -23,6 +23,7 @@ def _get_connection() -> sqlite3.Connection:
         _connection.execute("PRAGMA journal_mode=WAL")
         _connection.execute("PRAGMA busy_timeout=5000")
         _init_audit_table(_connection)
+        _init_triage_table(_connection)
     return _connection
 
 def _init_audit_table(conn: sqlite3.Connection) -> None:
@@ -35,6 +36,23 @@ def _init_audit_table(conn: sqlite3.Connection) -> None:
             details TEXT NOT NULL
         )
     """)
+    conn.commit()
+
+def _init_triage_table(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS triage_queue (
+            id TEXT PRIMARY KEY,
+            severity INTEGER NOT NULL,
+            payload TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_triage_status ON triage_queue(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_triage_severity ON triage_queue(severity)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_triage_created_at ON triage_queue(created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_triage_status_severity ON triage_queue(status, severity)")
     conn.commit()
 
 def _audit_log(conn: sqlite3.Connection, event_type: str, alert_id: str, details: dict[str, Any]) -> None:
