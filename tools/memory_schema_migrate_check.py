@@ -60,8 +60,8 @@ def main() -> int:
     try:
         with open(SCHEMA_PATH, 'r') as f:
             schema = json.load(f)
-    except json.JSONDecodeError:
-        print("FAIL: Invalid JSON schema format")
+    except json.JSONDecodeError as e:
+        print(f"FAIL: Invalid JSON at line {e.lineno}, column {e.colno}: {e.msg}")
         return 1
 
     success, message = validate_schema(schema)
