@@ -47,8 +47,7 @@ def verify_payload(ledger_path: str) -> int:
             EXIT_FAIL_JSON (2) - FAIL: Invalid JSON format
 
     Raises:
-        OSError: If file cannot be read due to permissions or I/O error.
-        json.JSONDecodeError: If file contains invalid JSON (caught and returns EXIT_FAIL_JSON).
+        OSError: If file cannot be read due to permissions or I/O error (not caught, propagates to caller).
     """
     if not os.path.exists(ledger_path):
         print(f"FAIL: Ledger file not found at {ledger_path}")
