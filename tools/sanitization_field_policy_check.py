@@ -90,35 +90,12 @@ def validate_meta_schema(data: Any) -> List[str]:
         return [f"Meta-schema validation error: {str(e)}"]
 
 
-def format_path(components: Tuple[Tuple[str, Any], ...]) -> str:
-    """Format path components into dot/bracket notation string.
-
-    Args:
-        components: Tuple of (type, value) pairs where type is 'key' or 'index'.
-
-    Returns:
-        Formatted path string using dot notation for keys and bracket notation for indices.
-        Returns empty string if components is empty.
-    """
-    if not components:
-        return ""
-    parts = []
-    for i, (comp_type, value) in enumerate(components):
-        if comp_type == 'key':
-            if i == 0:
-                parts.append(str(value))
-            else:
-                parts.append('.' + str(value))
-        elif comp_type == 'index':
-            parts.append(f'[{value}]')
-    return ''.join(parts)
-
-
 def find_forbidden(obj: Any, forbidden_fields: Set[str]) -> List[str]:
     """Recursively search for forbidden field names in a JSON schema object.
 
-    Uses an iterative stack-based approach to traverse nested dictionaries and lists,
-    collecting the full path to any forbidden field names found.
+    Uses an iterative stack-based approach with string paths to traverse nested
+    dictionaries and lists, collecting the full path to any forbidden field names found.
+    This avoids O(depth × width) memory growth from storing path tuples.
 
     Args:
         obj: The JSON schema object (dict, list, or primitive) to search.
@@ -128,19 +105,19 @@ def find_forbidden(obj: Any, forbidden_fields: Set[str]) -> List[str]:
         List[str]: List of dot/bracket-notation paths to forbidden fields found.
             Empty list if no forbidden fields detected.
     """
-    stack: List[Tuple[Any, Tuple[Tuple[str, Any], ...]]] = [(obj, ())]
+    stack: List[Tuple[Any, str]] = [(obj, "")]
     found = []
     while stack:
-        current_obj, path_components = stack.pop()
+        current_obj, path = stack.pop()
         if isinstance(current_obj, dict):
             for k, v in current_obj.items():
-                new_path = path_components + (('key', k),)
+                new_path = f"{path}.{k}" if path else k
                 if k in forbidden_fields:
-                    found.append(format_path(new_path))
+                    found.append(new_path)
                 stack.append((v, new_path))
         elif isinstance(current_obj, list):
             for i, item in enumerate(current_obj):
-                new_path = path_components + (('index', i),)
+                new_path = f"{path}[{i}]"
                 stack.append((item, new_path))
     return found
 
