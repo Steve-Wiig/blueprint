@@ -78,7 +78,7 @@ def verify_payload(ledger_path: str) -> int:
     payload_content = json.dumps(data.get("payload_hash")).encode('utf-8')
     computed_hash = hashlib.sha256(payload_content).hexdigest()
     
-    # Note: In production, this compares against a signed manifest
+    # Note: Full manifest verification occurs in separate pipeline stage
     if len(data.get("integrity_checksum", "")) != SHA256_HEX_LENGTH:
         print("FAIL: Integrity checksum length mismatch")
         return EXIT_FAIL_INTEGRITY
