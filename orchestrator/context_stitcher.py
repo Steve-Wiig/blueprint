@@ -4,13 +4,10 @@ import psycopg2.pool
 import sys
 import hashlib
 from datetime import datetime, timezone, timedelta
-from typing import TypedDict, Optional
+from typing import TypedDict, Optional, Callable
 from xml.sax.saxutils import escape
 
 
-# Module-level connection pool for connection pooling/reuse
-_PG_POOL: Optional[psycopg2.pool.ThreadedConnectionPool] = None
-_PG_POOL_PARAMS: Optional[dict] = None
 _PG_POOL_MINCONN = 1
 _PG_POOL_MAXCONN = 10
 
@@ -21,49 +18,51 @@ def configure_connection(
     minconn: int = 1,
     maxconn: int = 10,
     **kwargs
-) -> None:
-    """Configure database connection pool parameters. Call before first use or let defaults apply."""
-    global _PG_POOL, _PG_POOL_PARAMS, _PG_POOL_MINCONN, _PG_POOL_MAXCONN
-    _PG_POOL_PARAMS = {"dbname": dbname, "user": user, **kwargs}
-    _PG_POOL_MINCONN = minconn
-    _PG_POOL_MAXCONN = maxconn
-    # Reset cached pool so new params take effect
-    if _PG_POOL is not None:
-        try:
-            _PG_POOL.closeall()
-        except Exception:
-            pass
-        _PG_POOL = None
+) -> Callable[[], psycopg2.pool.ThreadedConnectionPool]:
+    """Configure database connection pool parameters and return a pool factory."""
+    pool_params = {"dbname": dbname, "user": user, **kwargs}
+    min_conn = minconn
+    max_conn = maxconn
 
-
-def _get_pg_pool() -> psycopg2.pool.ThreadedConnectionPool:
-    """Get or create a cached PostgreSQL connection pool."""
-    global _PG_POOL, _PG_POOL_PARAMS, _PG_POOL_MINCONN, _PG_POOL_MAXCONN
-    if _PG_POOL is None:
-        if _PG_POOL_PARAMS is None:
-            _PG_POOL_PARAMS = {"dbname": "soc_db", "user": "orchestrator"}
-        _PG_POOL = psycopg2.pool.ThreadedConnectionPool(
-            minconn=_PG_POOL_MINCONN,
-            maxconn=_PG_POOL_MAXCONN,
-            **_PG_POOL_PARAMS
+    def pool_factory() -> psycopg2.pool.ThreadedConnectionPool:
+        return psycopg2.pool.ThreadedConnectionPool(
+            minconn=min_conn,
+            maxconn=max_conn,
+            **pool_params
         )
-    return _PG_POOL
+
+    return pool_factory
 
 
-def _get_pg_conn() -> psycopg2.extensions.connection:
+_DEFAULT_POOL_FACTORY: Optional[Callable[[], psycopg2.pool.ThreadedConnectionPool]] = None
+_DEFAULT_POOL: Optional[psycopg2.pool.ThreadedConnectionPool] = None
+
+
+def _get_default_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    """Get or create the default PostgreSQL connection pool."""
+    global _DEFAULT_POOL, _DEFAULT_POOL_FACTORY
+    if _DEFAULT_POOL is None:
+        if _DEFAULT_POOL_FACTORY is None:
+            _DEFAULT_POOL_FACTORY = configure_connection()
+        _DEFAULT_POOL = _DEFAULT_POOL_FACTORY()
+    return _DEFAULT_POOL
+
+
+def _get_pg_conn(pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None) -> psycopg2.extensions.connection:
     """Acquire a connection from the pool."""
-    pool = _get_pg_pool()
+    if pool is None:
+        pool = _get_default_pool()
     return pool.getconn()
 
 
-def _put_pg_conn(conn: psycopg2.extensions.connection) -> None:
+def _put_pg_conn(conn: psycopg2.extensions.connection, pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None) -> None:
     """Return a connection to the pool."""
-    global _PG_POOL
-    if _PG_POOL is not None:
+    if pool is None:
+        pool = _DEFAULT_POOL
+    if pool is not None:
         try:
-            _PG_POOL.putconn(conn)
+            pool.putconn(conn)
         except Exception:
-            # If pool is closed or error, close the connection directly
             try:
                 conn.close()
             except Exception:
@@ -90,7 +89,6 @@ class MemoryMetadata(TypedDict):
 
 def _compute_query_hash(query_embedding: list[float]) -> str:
     """Compute a deterministic SHA256 hash of the query embedding for audit logging."""
-    # Use a stable string representation of the embedding
     embedding_str = ",".join(f"{x:.8f}" for x in query_embedding)
     return hashlib.sha256(embedding_str.encode()).hexdigest()
 
@@ -114,14 +112,11 @@ def _log_audit(
         cur.execute(audit_query, (retrieval_timestamp, query_hash, case_ids, top_k, max_age_days))
         conn.commit()
     except psycopg2.Error:
-        # Audit logging failure should not break the main operation
-        # Rollback any partial transaction and ignore
         try:
             conn.rollback()
         except Exception:
             pass
     except Exception:
-        # Ignore any other unexpected errors in audit logging
         pass
     finally:
         if cur is not None:
@@ -132,7 +127,8 @@ def stitch_memory_context(
     query_embedding: list[float],
     top_k: int = 5,
     max_age_days: int = 30,
-    conn: Optional[psycopg2.extensions.connection] = None
+    conn: Optional[psycopg2.extensions.connection] = None,
+    pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
 ) -> tuple[str, MemoryMetadata]:
     """
     Queries case_embeddings for semantic recall and formats for SLM injection.
@@ -141,7 +137,8 @@ def stitch_memory_context(
         query_embedding: List of floats representing the query vector for cosine similarity search.
         top_k: Maximum number of similar cases to retrieve. Defaults to 5.
         max_age_days: Maximum age of cases to consider in days. Defaults to 30.
-        conn: Optional psycopg2 connection to use. If not provided, acquires from module-level pool.
+        conn: Optional psycopg2 connection to use. If not provided, acquires from pool.
+        pool: Optional connection pool to use. If not provided, uses default pool.
 
     Returns:
         A tuple containing:
@@ -154,7 +151,7 @@ def stitch_memory_context(
     """
     use_pool = conn is None
     if use_pool:
-        conn = _get_pg_conn()
+        conn = _get_pg_conn(pool)
     
     cur = None
     try:
@@ -185,7 +182,6 @@ def stitch_memory_context(
             "max_age_days": max_age_days
         }
 
-        # Audit logging after successful retrieval
         query_hash = _compute_query_hash(query_embedding)
         _log_audit(conn, retrieval_timestamp, query_hash, case_refs, top_k, max_age_days)
         
@@ -198,9 +194,8 @@ def stitch_memory_context(
     finally:
         if cur is not None:
             cur.close()
-        # Return connection to pool if we acquired it; close if caller provided their own
         if use_pool and conn is not None:
-            _put_pg_conn(conn)
+            _put_pg_conn(conn, pool)
         elif not use_pool and conn is not None:
             try:
                 conn.close()
@@ -208,9 +203,23 @@ def stitch_memory_context(
                 pass
 
 
+def set_default_pool_factory(factory: Callable[[], psycopg2.pool.ThreadedConnectionPool]) -> None:
+    """Set a custom default pool factory for testing or alternative configurations."""
+    global _DEFAULT_POOL_FACTORY, _DEFAULT_POOL
+    _DEFAULT_POOL_FACTORY = factory
+    _DEFAULT_POOL = None
+
+
+def reset_default_pool() -> None:
+    """Reset the default pool (useful for testing)."""
+    global _DEFAULT_POOL
+    if _DEFAULT_POOL is not None:
+        try:
+            _DEFAULT_POOL.closeall()
+        except Exception:
+            pass
+        _DEFAULT_POOL = None
+
+
 if __name__ == "__main__":
-    # Example usage for orchestrator integration
-    # embedding = [0.12, -0.05, ...]
-    # context, meta = stitch_memory_context(embedding)
-    # print(context)
     pass
