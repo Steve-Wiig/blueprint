@@ -202,6 +202,16 @@ def _call_openrouter(prompt, api_key, model=None, system_prompt=None, max_tokens
             models_to_try = [primary] + models_to_try
             print(f"    🔄 Checking if primary ({primary}) is back...")
 
+    # Large-prompt filter: small free models truncate mid-string on big files,
+    # wasting quota. Route large prompts (>~25k chars ≈ >800 lines) to
+    # high-capacity models only.
+    if len(prompt) > 25000:
+        big_models = [m for m in models_to_try
+                      if any(k in m for k in ("ultra", "550b", "super-120b", "compound"))]
+        if big_models:
+            print(f"    📏 Large prompt ({len(prompt)} chars) → high-capacity models only")
+            models_to_try = big_models
+
     for try_model in models_to_try:
         # Count every attempt against the 50 RPD quota
         from overnight import openrouter_quota
@@ -512,6 +522,12 @@ def _call_groq(prompt, api_key, model=None, system_prompt=None, max_tokens=8192,
                             if ap:
                                 content = ap
                         _groq_429_count[try_model] = 0  # success resets backoff
+                        # Record Groq call in budget manager
+                        try:
+                            from overnight.budget_manager import APIBudgetManager
+                            APIBudgetManager().record_call("groq")
+                        except Exception:
+                            pass  # non-critical
                         print(f"    ✅ Groq ({try_model}) responded ({len(content)} chars)")
                         return content
 
@@ -610,11 +626,15 @@ def generate(prompt, api_keys, model_type="code", max_tokens=8192, temperature=0
 RULES:
 - Output ONLY valid Python code
 - No markdown fences, no explanations, no preamble
+No reasoning, analysis, planning, or thinking process
+Do NOT start with Let me / Here / I will / First or any prose
+The first non-empty line MUST be valid Python code
 - Use real sqlite3.connect(":memory:") for SQLite, not mocks
 - Expect RuntimeError not SystemExit (library code auto-fixed)
 - Import from actual modules, don't hallucinate"""
     elif model_type == "docs":
-        system_prompt = "You are a technical writer. Output ONLY the document content."
+        system_prompt = ("You are a technical writer. Output ONLY the document content. "
+                     "No reasoning, planning, or meta-commentary. Start directly with the content.")
     else:
         system_prompt = None
 

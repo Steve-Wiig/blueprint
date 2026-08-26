@@ -314,6 +314,20 @@ def process_advisory_queue(api_keys, budget, state, max_items=50):
     return processed
 
 
+_REASONING_MARKERS = (
+    "here's a thinking process", "here is a thinking process", "thinking process:",
+    "let me analyze", "let me think", "let's think", "let me reconstruct",
+    "let me look", "let me examine", "let me review", "i'll start by",
+    "i will start by", "first, let me", "step 1:", "1. analyze",
+)
+
+
+def _looks_like_reasoning(text):
+    """Detect chain-of-thought/prose returned instead of code."""
+    head = text.lstrip()[:400].lower()
+    return any(m in head for m in _REASONING_MARKERS)
+
+
 def apply_auto_fix(file_path, issue, api_keys):
     """Generate and apply a fix with test gating, crash-safe backup, and
     precise git error handling. Every exit path is deliberate."""
@@ -325,8 +339,13 @@ def apply_auto_fix(file_path, issue, api_keys):
 
     prompt = (
         "You are a senior Python engineer. Fix the issue below in this file.\n"
-        "Return ONLY the complete fixed file content. No markdown fences, "
-        "no explanations, no comments about the change.\n"
+        "Return ONLY the complete fixed file content.\n"
+        "STRICT OUTPUT RULES:\n"
+        "- Your response must be ONLY valid Python code. Nothing else.\n"
+        "- No markdown fences, no explanations, no comments about the change.\n"
+        "- No reasoning, analysis, planning, or thinking process.\n"
+        "- Do NOT start with Let me / Here / I will / First or any prose.\n"
+        "- The first non-empty line MUST be Python code.\n"
         "Preserve all unrelated behavior. Keep the module importable without "
         "side effects. Use datetime.now(timezone.utc), never utcnow().\n"
         f"Issue: {issue.get('description', '')}\n"
@@ -389,6 +408,37 @@ def apply_auto_fix(file_path, issue, api_keys):
             return True
         print(f"       ❌ git failed: {err.decode(errors='replace')[:200]}")
         return False
+MAX_AUTOFIX_PER_FILE = 6      # cap: no file gets more than this many auto-fixes
+COOLDOWN_COMMITS = 3           # skip a file if its last N commits are all auto-fixes
+
+
+def _recently_autofixed(file_path):
+    """True if the file's last COOLDOWN_COMMITS commits are all auto-fixes.
+    Prevents the pipeline from re-analyzing and rewriting its own fresh output."""
+    try:
+        log = subprocess.run(
+            ["git", "log", f"-{COOLDOWN_COMMITS}", "--format=%s", "--", str(file_path)],
+            cwd=ROOT, capture_output=True, text=True, timeout=10,
+        ).stdout.strip().splitlines()
+        return len(log) >= COOLDOWN_COMMITS and all(s.startswith("Auto-fix") for s in log)
+    except Exception:
+        return False
+
+
+def _autofix_count(file_path):
+    """Total number of auto-fix commits touching this file."""
+    try:
+        return int(subprocess.run(
+            ["git", "log", "--oneline", "--grep=Auto-fix", "--", str(file_path)],
+            cwd=ROOT, capture_output=True, text=True, timeout=10,
+        ).stdout.strip().count("\n") + (1 if subprocess.run(
+            ["git", "log", "--oneline", "--grep=Auto-fix", "--", str(file_path)],
+            cwd=ROOT, capture_output=True, text=True, timeout=10,
+        ).stdout.strip() else 0))
+    except Exception:
+        return 0
+
+
 def discover_files():
     """Find all reviewable source files."""
     files = []
