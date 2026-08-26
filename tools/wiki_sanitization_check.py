@@ -92,9 +92,11 @@ def scan_file(file_path: str) -> list[tuple[str, str]]:
         OSError: If the file cannot be read.
         UnicodeDecodeError: If the file cannot be decoded as UTF-8.
     """
+    found: list[tuple[str, str]] = []
     with open(file_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    return scan_text(content)
+        for line in f:
+            found.extend(scan_text(line))
+    return found
 
 
 def _generate_dry_run_payloads() -> list[str]:
