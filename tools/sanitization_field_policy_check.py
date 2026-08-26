@@ -1,4 +1,58 @@
 #!/usr/bin/env python3
+"""
+Sanitization Field Policy Check - CI Gate for SOC Automation Platform
+
+Purpose:
+    Validates JSON schema files to ensure sensitive/forbidden fields are not present
+    in raw ingestion schemas. This prevents accidental exposure of credentials, PII,
+    and internal infrastructure details in data pipelines.
+
+Usage:
+    python sanitization_check.py --schema <path> [--policy-file <path>] [--dry-run]
+
+    Required:
+        --schema PATH         Path to JSON schema file to validate
+
+    Optional:
+        --policy-file PATH    JSON file containing list of forbidden field names
+                              (overrides FORBIDDEN_FIELDS env var and defaults)
+        --dry-run             Validate without enforcing (always returns EXIT_OK)
+
+Configuration:
+    Forbidden fields can be configured via (in order of precedence):
+    1. --policy-file argument (JSON array of strings)
+    2. FORBIDDEN_FIELDS environment variable (JSON array of strings)
+    3. Built-in DEFAULT_FORBIDDEN_FIELDS set
+
+    Default forbidden fields:
+        raw_password, session_token, private_key, user_email,
+        internal_ip_address, aws_secret_access_key
+
+Exit Codes:
+    0 (EXIT_OK)                    Validation passed, no forbidden fields found
+    1 (EXIT_VIOLATION)             Forbidden fields detected or invalid JSON format
+    2 (EXIT_CONFIG_ERROR)          Schema file not found at given path
+    3 (EXIT_CI_MISSING)            CI_PIPELINE_ID environment variable not set
+    4 (EXIT_META_SCHEMA_ERROR)     Schema failed JSON Schema Draft 7 meta-schema validation
+
+Examples:
+    # Basic validation with defaults
+    python sanitization_check.py --schema schemas/ingestion.json
+
+    # Custom policy file
+    python sanitization_check.py --schema schemas/ingestion.json --policy-file policies/strict.json
+
+    # Dry-run for CI preview
+    python sanitization_check.py --schema schemas/ingestion.json --dry-run
+
+    # Using environment variable
+    export FORBIDDEN_FIELDS='["api_key", "secret", "token"]'
+    python sanitization_check.py --schema schemas/ingestion.json
+
+CI Integration:
+    Requires CI_PIPELINE_ID environment variable to be set (enforced by check_ci_context).
+    Designed for use in GitLab CI, GitHub Actions, or similar pipelines.
+"""
 # CI Gate: Sanitization Field Policy Check
 # Verifies that sensitive fields are not present in raw ingestion schemas
 import sys
