@@ -103,6 +103,23 @@ class ModelRegistryClient:
             self.load_config()
         return self._routing_config
 
+    def initialize_schema(self) -> None:
+        """Initialize the database schema by creating required indexes.
+
+        This method should be called explicitly during application setup,
+        not as a side effect of getting a connection. It creates the index
+        on the adapter_id column for query performance.
+
+        Raises:
+            DatabaseError: If a database operation fails during schema initialization.
+        """
+        try:
+            conn = self._get_connection()
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_adapter_id ON model_registry(adapter_id)")
+            conn.commit()
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Database error initializing schema: {e}")
+
     def _get_connection(self) -> sqlite3.Connection:
         """Get or create a database connection.
 
@@ -117,7 +134,6 @@ class ModelRegistryClient:
         if self._conn is None:
             self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self._conn.row_factory = sqlite3.Row
-            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_adapter_id ON model_registry(adapter_id)")
         return self._conn
 
     def get_adapter(self, task_type: str) -> Dict[str, Any]:
@@ -248,6 +264,7 @@ class ModelRegistryClient:
 if __name__ == "__main__":
     import sys
     client = ModelRegistryClient("orchestration.db", routing_config_path="routing.json")
+    client.initialize_schema()
     adapter = client.get_adapter("triage_analysis")
     
     if adapter['status'] == 'retired':
