@@ -6,9 +6,7 @@
 import os
 import sys
 import argparse
-import time
 from enum import IntEnum
-from typing import Literal
 
 DEFAULT_STALE_THRESHOLD_SECONDS = 300
 DEFAULT_REQUIRED_RECOVERY_LOG_PATTERN = "RECOVERY_INITIATED_STALE_MSG"
@@ -25,12 +23,12 @@ class ExitCode(IntEnum):
     PERMISSION_ERROR = 5
 
 
-def get_config() -> dict:
-    """Load configuration from environment variables with defaults."""
+def load_config(args: argparse.Namespace) -> dict:
+    """Load configuration with precedence: CLI args > environment variables > defaults."""
     return {
-        "stale_threshold_seconds": int(os.getenv("STALE_THRESHOLD_SECONDS", DEFAULT_STALE_THRESHOLD_SECONDS)),
-        "required_recovery_log_pattern": os.getenv("REQUIRED_RECOVERY_LOG_PATTERN", DEFAULT_REQUIRED_RECOVERY_LOG_PATTERN),
-        "manifest_filename": os.getenv("RECOVERY_MANIFEST_FILE", DEFAULT_MANIFEST_FILENAME),
+        "stale_threshold_seconds": args.stale_threshold,
+        "required_recovery_log_pattern": args.recovery_pattern,
+        "manifest_filename": args.manifest_file,
     }
 
 
@@ -41,7 +39,7 @@ def check_queue_recovery(dry_run: bool = False, config: dict | None = None) -> E
     [LAB-VERIFY]: Requires local access to the message broker socket.
     """
     if config is None:
-        config = get_config()
+        raise ValueError("config must be provided")
 
     queue_path = os.getenv("SOC_QUEUE_PATH")
     if not queue_path:
@@ -64,7 +62,6 @@ def check_queue_recovery(dry_run: bool = False, config: dict | None = None) -> E
         print("DRY-RUN: Validation of queue recovery logic skipped.")
         return ExitCode.SUCCESS
 
-    # Simulate recovery check logic
     try:
         manifest_path = os.path.join(queue_path, config["manifest_filename"])
         if not os.path.exists(manifest_path):
@@ -91,19 +88,27 @@ def main() -> ExitCode:
     """Entry point for queue stale recovery check. Returns exit code."""
     parser = argparse.ArgumentParser(description="Queue Stale Recovery Check")
     parser.add_argument("--dry-run", action="store_true", help="Skip actual verification")
-    parser.add_argument("--stale-threshold", type=int, default=DEFAULT_STALE_THRESHOLD_SECONDS,
-                        help=f"Stale threshold in seconds (default: {DEFAULT_STALE_THRESHOLD_SECONDS})")
-    parser.add_argument("--recovery-pattern", type=str, default=DEFAULT_REQUIRED_RECOVERY_LOG_PATTERN,
-                        help=f"Required recovery log pattern (default: {DEFAULT_REQUIRED_RECOVERY_LOG_PATTERN})")
-    parser.add_argument("--manifest-file", type=str, default=DEFAULT_MANIFEST_FILENAME,
-                        help=f"Recovery manifest filename (default: {DEFAULT_MANIFEST_FILENAME})")
+    parser.add_argument(
+        "--stale-threshold",
+        type=int,
+        default=int(os.getenv("STALE_THRESHOLD_SECONDS", DEFAULT_STALE_THRESHOLD_SECONDS)),
+        help=f"Stale threshold in seconds (default: {DEFAULT_STALE_THRESHOLD_SECONDS}, env: STALE_THRESHOLD_SECONDS)"
+    )
+    parser.add_argument(
+        "--recovery-pattern",
+        type=str,
+        default=os.getenv("REQUIRED_RECOVERY_LOG_PATTERN", DEFAULT_REQUIRED_RECOVERY_LOG_PATTERN),
+        help=f"Required recovery log pattern (default: {DEFAULT_REQUIRED_RECOVERY_LOG_PATTERN}, env: REQUIRED_RECOVERY_LOG_PATTERN)"
+    )
+    parser.add_argument(
+        "--manifest-file",
+        type=str,
+        default=os.getenv("RECOVERY_MANIFEST_FILE", DEFAULT_MANIFEST_FILENAME),
+        help=f"Recovery manifest filename (default: {DEFAULT_MANIFEST_FILENAME}, env: RECOVERY_MANIFEST_FILE)"
+    )
     args = parser.parse_args()
 
-    config = get_config()
-    config["stale_threshold_seconds"] = args.stale_threshold
-    config["required_recovery_log_pattern"] = args.recovery_pattern
-    config["manifest_filename"] = args.manifest_file
-
+    config = load_config(args)
     return check_queue_recovery(dry_run=args.dry_run, config=config)
 
 
