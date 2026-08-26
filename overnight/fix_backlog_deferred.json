@@ -1,60 +1,30 @@
 [
   {
-    "file": "engine/queue_manager.py",
+    "file": "engine/hash_chain_sealer.py",
     "issue": {
-      "category": "performance",
+      "category": "maintainability",
       "severity": "medium",
-      "line_start": 154,
-      "line_end": 175,
-      "description": "reap_stale_jobs executes two separate UPDATE statements. Can combine into single statement with CASE expression.",
-      "suggestion": "Use single UPDATE with CASE: SET status = CASE WHEN attempts < ? THEN 'pending' ELSE 'failed' END, ... WHERE status='processing' AND lease_expires_at < CURRENT_TIMESTAMP;",
-      "impact": "low",
-      "effort": "small"
+      "line_start": 24,
+      "line_end": 97,
+      "description": "Function seal_audit_chain is 73 lines and handles connection, locking, querying, hashing, and insertion. Violates single responsibility principle. Hard to test, debug, and maintain.",
+      "suggestion": "Split into: get_last_chain_state(), fetch_pending_batches(), compute_chain_hashes(), insert_chain_links(). Each with clear inputs/outputs. Use dependency injection for database connection.",
+      "impact": "medium",
+      "effort": "medium"
     },
     "attempts": 3,
     "deferred_reason": "failed 3 attempts"
   },
   {
-    "file": "engine/queue_manager.py",
+    "file": "tools/sanitization_field_policy_check.py",
     "issue": {
       "category": "blueprint_compliance",
-      "severity": "low",
-      "line_start": 28,
-      "line_end": 33,
-      "description": "Default db_path='soc_triage.db' creates file on disk. For testing/library use, should default to ':memory:' per AMEND-65 (use real :memory: databases).",
-      "suggestion": "Change default to ':memory:' or require explicit path. Document that file path is for production only.",
+      "severity": "informational",
+      "line_start": 1,
+      "line_end": 72,
+      "description": "No append-only audit logging for policy check results - blueprint Section 30 requires audit patterns for handoffs/corrections",
+      "suggestion": "Add optional --audit-log argument to write JSONL audit records with timestamp, schema path, result, violations found",
       "impact": "low",
-      "effort": "trivial"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/enrichment_scheduler.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 140,
-      "line_end": 198,
-      "description": "Deprecated functions check_quota and get_provider_cost remain in codebase with deprecation warnings, increasing maintenance burden",
-      "suggestion": "Remove deprecated functions completely. If external callers exist, provide a migration path in release notes",
-      "impact": "medium",
-      "effort": "small"
-    },
-    "attempts": 3,
-    "deferred_reason": "failed 3 attempts"
-  },
-  {
-    "file": "engine/enrichment_scheduler.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 154,
-      "line_end": 155,
-      "description": "Docstring for get_provider_cost is truncated ('bulk cost chec'), indicating incomplete documentation",
-      "suggestion": "Complete the docstring: 'Use _fetch_provider_data for bulk cost checks instead.'",
-      "impact": "low",
-      "effort": "trivial"
+      "effort": "medium"
     },
     "attempts": 3,
     "deferred_reason": "failed 3 attempts"
@@ -231,6 +201,96 @@
       "suggestion": "Add @functools.lru_cache(maxsize=128) to a helper _make_log2_table(length) function; or cache table in module-level dict keyed by length",
       "impact": "low",
       "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/enrichment_scheduler.py",
+    "issue": {
+      "category": "performance",
+      "severity": "medium",
+      "line_start": 242,
+      "line_end": 280,
+      "description": "_check_batch_quota fetches quota/cost for providers_needed but then iterates all providers_in_batch again - redundant iteration and potential N+1 if called repeatedly without cache",
+      "suggestion": "Merge the two loops: after fetching, validate all providers_in_batch in single pass. Consider moving cache to module-level with TTL decorator instead of passing dicts around.",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/enrichment_scheduler.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "medium",
+      "line_start": 149,
+      "line_end": 175,
+      "description": "get_provider_cost is deprecated AND incomplete - worst of both worlds: dead code that also breaks imports",
+      "suggestion": "Remove entirely. All callers should migrate to _fetch_provider_data which returns both quota and cost in single call.",
+      "impact": "medium",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/enrichment_scheduler.py",
+    "issue": {
+      "category": "performance",
+      "severity": "low",
+      "line_start": 96,
+      "line_end": 120,
+      "description": "_fetch_provider_values creates new cursor for each call when cursor=None - inefficient for repeated calls in loops",
+      "suggestion": "Callers should pass reusable cursor. Document this clearly. Consider making cursor mandatory and removing auto-create logic to force proper cursor management.",
+      "impact": "low",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/enrichment_scheduler.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 53,
+      "line_end": 75,
+      "description": "sanitize function uses hardcoded sensitive_patterns list - not configurable, may miss organization-specific secret patterns",
+      "suggestion": "Make sensitive_patterns a parameter with default. Load from config file/env var for production deployments. Add regex support for high-entropy token detection.",
+      "impact": "low",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/enrichment_scheduler.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 1,
+      "line_end": 20,
+      "description": "Imports psycopg2 at module level - hard dependency even if only SQLite is used in tests, violates dependency isolation",
+      "suggestion": "Move psycopg2 import inside get_db_connections or behind try/except with helpful error message. Allows testing with only sqlite3.",
+      "impact": "low",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "engine/hash_chain_sealer.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 17,
+      "line_end": 38,
+      "description": "Custom JsonFormatter duplicates functionality available in python-json-logger or structlog. Adds maintenance burden and potential bugs (e.g., missing standard fields).",
+      "suggestion": "Replace with: import pythonjsonlogger.jsonlogger.JsonFormatter or structlog. Configure via dictConfig. Remove custom class.",
+      "impact": "low",
+      "effort": "small"
     },
     "attempts": 3,
     "deferred_reason": "failed 3 attempts"
