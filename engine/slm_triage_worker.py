@@ -131,8 +131,8 @@ def run_worker(config: WorkerConfig) -> None:
         reap_stale(conn)
         
         # Claim job with priority logic
-        with conn.cursor() as cursor:
-            cursor.execute("""
+        row = conn.execute(
+            """
                 UPDATE triage_queue 
                 SET status = 'processing', 
                     started_at = ?, 
@@ -145,9 +145,9 @@ def run_worker(config: WorkerConfig) -> None:
                     LIMIT 1
                 )
                 RETURNING id, payload_ref
-            """, (datetime.now(timezone.utc), datetime.now(timezone.utc) + timedelta(seconds=config.lease)))
-            
-            row = cursor.fetchone()
+            """,
+            (datetime.now(timezone.utc), datetime.now(timezone.utc) + timedelta(seconds=config.lease))
+        ).fetchone()
         conn.commit()
         
         if not row:
