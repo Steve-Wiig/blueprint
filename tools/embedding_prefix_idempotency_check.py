@@ -85,20 +85,29 @@ PREFIXES = get_prefixes()
 REQUIRED_DOC_PREFIX = PREFIXES["document"]
 REQUIRED_QUERY_PREFIX = PREFIXES["query"]
 
-DOC_TEST_CASES = [
-    ("unprefixed_data", REQUIRED_DOC_PREFIX, True),
-    (f"{REQUIRED_DOC_PREFIX}already_prefixed", REQUIRED_DOC_PREFIX, True),
-    (f"{REQUIRED_DOC_PREFIX}{REQUIRED_DOC_PREFIX}double_prefixed", REQUIRED_DOC_PREFIX, False),
-]
 
-QUERY_TEST_CASES = [
-    ("unprefixed_query", REQUIRED_QUERY_PREFIX, True),
-    (f"{REQUIRED_QUERY_PREFIX}already_prefixed", REQUIRED_QUERY_PREFIX, True),
-    (f"{REQUIRED_QUERY_PREFIX}{REQUIRED_QUERY_PREFIX}double_prefixed", REQUIRED_QUERY_PREFIX, False),
-]
+def get_doc_test_cases():
+    return [
+        ("unprefixed_data", REQUIRED_DOC_PREFIX, True),
+        (f"{REQUIRED_DOC_PREFIX}already_prefixed", REQUIRED_DOC_PREFIX, True),
+        (f"{REQUIRED_DOC_PREFIX}{REQUIRED_DOC_PREFIX}double_prefixed", REQUIRED_DOC_PREFIX, False),
+    ]
 
-MOCK_TEST_CASES = DOC_TEST_CASES + QUERY_TEST_CASES
-PRODUCTION_TEST_CASES = DOC_TEST_CASES
+
+def get_query_test_cases():
+    return [
+        ("unprefixed_query", REQUIRED_QUERY_PREFIX, True),
+        (f"{REQUIRED_QUERY_PREFIX}already_prefixed", REQUIRED_QUERY_PREFIX, True),
+        (f"{REQUIRED_QUERY_PREFIX}{REQUIRED_QUERY_PREFIX}double_prefixed", REQUIRED_QUERY_PREFIX, False),
+    ]
+
+
+def get_mock_test_cases():
+    return get_doc_test_cases() + get_query_test_cases()
+
+
+def get_production_test_cases():
+    return get_doc_test_cases()
 
 
 def check_idempotency(input_text: str, prefix: str) -> bool:
@@ -138,7 +147,7 @@ def main(dry_run: bool = False) -> int:
         if not dry_run:
             return 1
     
-    test_cases = MOCK_TEST_CASES if dry_run else PRODUCTION_TEST_CASES
+    test_cases = get_mock_test_cases() if dry_run else get_production_test_cases()
     
     if dry_run:
         print("DRY RUN: Running with mock test data (both document and query prefixes)")
