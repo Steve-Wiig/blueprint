@@ -1,6 +1,7 @@
 import re
 import sys
 import argparse
+from pathlib import Path
 from typing import Pattern
 
 # LOCAL-SOC-SLM Blueprint v11.6.0 - Credential Sanitization Tool
@@ -99,6 +100,43 @@ def scan_file(file_path: str) -> list[tuple[str, str]]:
     return found
 
 
+def scan_directory(dir_path: str, recursive: bool = True) -> list[tuple[str, str, str]]:
+    """
+    Scan a directory for credential violations.
+
+    Args:
+        dir_path: Path to the directory to scan.
+        recursive: If True, scan recursively using rglob. If False, scan only top-level files.
+
+    Returns:
+        List of tuples containing (file_path, pattern_name, matched_value) for each violation.
+
+    Raises:
+        OSError: If the directory cannot be accessed.
+    """
+    found: list[tuple[str, str, str]] = []
+    path = Path(dir_path)
+    
+    if not path.is_dir():
+        raise OSError(f"Path is not a directory: {dir_path}")
+    
+    if recursive:
+        files = path.rglob("*")
+    else:
+        files = path.glob("*")
+    
+    for file_path in files:
+        if file_path.is_file():
+            try:
+                violations = scan_file(str(file_path))
+                for v_type, val in violations:
+                    found.append((str(file_path), v_type, val))
+            except (OSError, UnicodeDecodeError):
+                continue
+    
+    return found
+
+
 def _generate_dry_run_payloads() -> list[str]:
     """
     Generate test payloads programmatically to avoid hardcoded credential-like strings.
@@ -138,37 +176,44 @@ def main() -> None:
     """
     Main entry point for credential scanning CLI.
 
-    Parses command-line arguments and scans specified files for credentials.
+    Parses command-line arguments and scans specified files/directories for credentials.
     Supports dry-run mode for testing with built-in test payloads.
 
     Command-line arguments:
         --dry-run: Run self-test with built-in payloads and exit.
-        files: Zero or more file paths to scan.
+        --recursive: Scan directories recursively (default: True).
+        --no-recursive: Scan only top-level files in directories.
+        files: Zero or more file or directory paths to scan.
 
     Raises:
         ScanExit: Always raised with exit code indicating scan result.
             exit_code 0 = success/no violations found
             exit_code 1 = violations found in scanned files or dry-run failed
-            exit_code 2 = file read error
+            exit_code 2 = file/directory read error
 
     Example:
         $ python credential_sanitizer.py --dry-run
         PASS: Dry-run successful.
         $ python credential_sanitizer.py config.yaml secrets.env
         FAIL: Found AWS_KEY in config.yaml
+        $ python credential_sanitizer.py --recursive ./project
+        FAIL: Found GITHUB_TOKEN in ./project/.env
     """
     parser = argparse.ArgumentParser(
-        description="Scan files for credential patterns",
+        description="Scan files and directories for credential patterns",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   %(prog)s --dry-run                    # Run self-test
   %(prog)s file1.txt file2.yaml         # Scan specific files
-  cat secrets.txt | %(prog)s -          # Scan stdin (not implemented)
+  %(prog)s --recursive ./project        # Scan directory recursively
+  %(prog)s --no-recursive ./config      # Scan only top-level files in directory
         """
     )
     parser.add_argument("--dry-run", action="store_true", help="Run self-test with built-in payloads")
-    parser.add_argument("files", nargs="*", help="Files to scan for credentials")
+    parser.add_argument("--recursive", action="store_true", default=True, help="Scan directories recursively (default)")
+    parser.add_argument("--no-recursive", action="store_false", dest="recursive", help="Scan only top-level files in directories")
+    parser.add_argument("paths", nargs="*", help="Files or directories to scan for credentials")
     args = parser.parse_args()
 
     if args.dry_run:
@@ -176,15 +221,26 @@ Examples:
         raise ScanExit(0 if success else 1)
 
     exit_code = 0
-    for file_path in args.files:
+    for path_str in args.paths:
+        path = Path(path_str)
         try:
-            violations = scan_file(file_path)
-            if violations:
-                for v_type, val in violations:
-                    print(f"FAIL: Found {v_type} in {file_path}")
-                exit_code = 1
+            if path.is_file():
+                violations = scan_file(path_str)
+                if violations:
+                    for v_type, val in violations:
+                        print(f"FAIL: Found {v_type} in {path_str}")
+                    exit_code = 1
+            elif path.is_dir():
+                violations = scan_directory(path_str, recursive=args.recursive)
+                if violations:
+                    for file_path, v_type, val in violations:
+                        print(f"FAIL: Found {v_type} in {file_path}")
+                    exit_code = 1
+            else:
+                print(f"CONFIG ERROR: Path does not exist: {path_str}")
+                raise ScanExit(2)
         except (OSError, UnicodeDecodeError) as e:
-            print(f"CONFIG ERROR: Could not read {file_path}: {e}")
+            print(f"CONFIG ERROR: Could not read {path_str}: {e}")
             raise ScanExit(2)
             
     raise ScanExit(exit_code)
