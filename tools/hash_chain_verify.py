@@ -162,8 +162,8 @@ if __name__ == "__main__":
         # verify_chain returns bool in this implementation
         if result:
             print("PASS: dry-run successful (mock chain verified)")
-            sys.exit(0)
+            raise SystemExit(0)
         print("FAIL: dry-run mock chain failed")
-        sys.exit(1)
+        raise SystemExit(1)
 
-    sys.exit(main(args.chain_file))
+    raise SystemExit(main(args.chain_file))
