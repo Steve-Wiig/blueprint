@@ -1,46 +1,5 @@
 [
   {
-    "file": "engine/writeback/so_cases.py",
-    "issue": {
-      "description": "The 'main' function uses 'raise RuntimeError' to simulate an exit(0) success, which is non-standard and confusing for callers.",
-      "category": "maintainability",
-      "severity": "low",
-      "suggestion": "Use 'sys.exit(0)' only in the 'main' entry point, not in library functions, and remove the 'raise RuntimeError' for success cases."
-    },
-    "attempts": 4,
-    "deferred_reason": "failed 4 attempts"
-  },
-  {
-    "file": "memory/retention.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "medium",
-      "line_start": 17,
-      "line_end": 18,
-      "description": "Module-level os.environ.get() calls constitute module-level side effects (I/O). Violates v11.7 'No module-level side effects'.",
-      "suggestion": "Move ARCHIVE_BASE and CMR_MOUNT resolution into functions or a config class initialized at runtime.",
-      "impact": "medium",
-      "effort": "small"
-    },
-    "attempts": 4,
-    "deferred_reason": "failed 4 attempts"
-  },
-  {
-    "file": "memory/retention.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 55,
-      "line_end": 56,
-      "description": "Hardcoded 'psql' and 'zstd' commands assume availability in PATH. No version checks or fallback.",
-      "suggestion": "Use shutil.which() to verify commands exist at startup; make commands configurable via env vars.",
-      "impact": "medium",
-      "effort": "small"
-    },
-    "attempts": 4,
-    "deferred_reason": "failed 4 attempts"
-  },
-  {
     "file": "memory/retention.py",
     "issue": {
       "category": "maintainability",
@@ -81,6 +40,21 @@
       "suggestion": "Move fake_encode inside run_verification as a local function, or create a test-specific module. For CI tool, define it locally within the verification function",
       "impact": "medium",
       "effort": "small"
+    },
+    "attempts": 4,
+    "deferred_reason": "failed 4 attempts"
+  },
+  {
+    "file": "tools/hash_chain_concurrency_check.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "medium",
+      "line_start": 158,
+      "line_end": 158,
+      "description": "Uses `sys.exit(main())` in `__main__` block. Blueprint AMEND-64 prohibits sys.exit() in library code, requiring RuntimeError instead. While this is a CLI script, the blueprint classifies it as library code.",
+      "suggestion": "Replace with `raise RuntimeError(main())` or restructure to return exit code and let caller handle exit. For CLI scripts, consider if this rule applies.",
+      "impact": "medium",
+      "effort": "trivial"
     },
     "attempts": 4,
     "deferred_reason": "failed 4 attempts"
