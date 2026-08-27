@@ -14,15 +14,15 @@ AllowlistPatternDict: TypeAlias = Dict[str, Pattern[str]]
 # Configurable thresholds loaded from environment variables with validation
 def _load_entropy_threshold() -> float:
     """Load and validate entropy threshold from environment."""
-    raw = os.getenv('SANITIZER_ENTROPY_THRESHOLD', '4.5')
+    env_var = 'SANITIZER_ENTROPY_THRESHOLD'
+    raw = os.getenv(env_var, '4.5')
     try:
         value = float(raw)
     except ValueError:
-        raise ValueError(f"SANITIZER_ENTROPY_THRESHOLD must be a valid float, got '{raw}'")
+        raise ValueError(f"{env_var} must be a valid float, got '{raw}'")
     if not (0.0 < value <= 8.0):
-        raise ValueError(f"SANITIZER_ENTROPY_THRESHOLD must be in range (0.0, 8.0], got {value}")
+        raise ValueError(f"{env_var} must be in range (0.0, 8.0], got {value}")
     return value
-
 def _load_min_token_length() -> int:
     """Load and validate minimum token length from environment."""
     raw = os.getenv('SANITIZER_MIN_TOKEN_LENGTH', '17')
