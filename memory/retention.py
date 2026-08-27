@@ -238,6 +238,7 @@ def main() -> None:
     Raises:
         RuntimeError: If required database password is missing or other errors occur.
     """
+    _load_config()
     parser = argparse.ArgumentParser(description="IOC Retention Manager")
     parser.add_argument("--db-url", required=True, help="Postgres connection string")
     parser.add_argument("--retention-days", type=int, default=90, help="Retention period in days (default: 90). Overrides RETENTION_DAYS env var.")
