@@ -521,13 +521,12 @@ def apply_auto_fix(file_path, issue, api_keys):
         raw = generate(surgical_prompt, api_keys, temperature=0.2)
         if raw:
             raw = strip_fences(raw)
-                # Growth guard: reject surgical fixes that bloat the target too much
-                # (30% growth or 500 chars, whichever is larger)
-                max_growth = max(int(len(focus_text) * 0.3), 500)
-                if len(raw) > len(focus_text) + max_growth:
-                    print(f"       SURGICAL fix grew too much ({len(raw)} vs {len(focus_text)} focus, max allowed {len(focus_text) + max_growth}) — falling back")
-                    surgical_fix = None  # force fallback
-                elif len(raw) > 80:
+            # Growth guard: reject surgical fixes that bloat the target too much
+            # (30% growth or 500 chars, whichever is larger)
+            max_growth = max(int(len(focus_text) * 0.3), 500)
+            if len(raw) > len(focus_text) + max_growth:
+                print(f"       SURGICAL fix grew too much ({len(raw)} vs {len(focus_text)} focus, max allowed {len(focus_text) + max_growth}) - falling back")
+            elif len(raw) > 80:
                 spliced = _apply_surgical_splice(original, primary, raw)
                 if spliced:
                     try:
