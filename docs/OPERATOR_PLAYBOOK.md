@@ -165,3 +165,11 @@ SAME shell before launching, or API keys arrive empty and every call returns 401
 
 ---
 *Addenda captured 2026-08-27 during hard-items triage session*
+
+### 8.8 Module-level __getattr__ does NOT work for internal references
+Defining __getattr__ in a module only intercepts EXTERNAL attribute access
+(e.g. `from module import X` or `module.X`). Bare-name references INSIDE the
+module's own functions (e.g. `if shutil.which(ZSTD_COMMAND)`) bypass __getattr__
+and raise NameError. To lazily provide module globals that internal code AND
+monkeypatch-based tests both use, prefer plain module-level names plus an
+explicit _load_config() called from entry points — not __getattr__.
