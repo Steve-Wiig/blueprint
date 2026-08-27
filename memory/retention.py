@@ -2,6 +2,7 @@ import argparse
 import subprocess
 import sys
 import os
+import shutil
 import datetime
 from datetime import timezone
 import psycopg2
@@ -20,12 +21,13 @@ to compressed JSONL files and drops the partitioned tables.
 Environment Variables:
     ARCHIVE_BASE: Base directory for archived partitions (default: /archive/iocs)
     CMR_MOUNT: Mount point for CMR storage (default: /mnt/cmr)
+    ZSTD_COMMAND: Path to zstd binary (default: zstd)
     PGPASSWORD: PostgreSQL password (alternative to password in connection string)
     RETENTION_DAYS: Retention period in days (default: 90)
 """
-
 ARCHIVE_BASE = os.environ.get('ARCHIVE_BASE', '/archive/iocs')
 CMR_MOUNT = os.environ.get('CMR_MOUNT', '/mnt/cmr')
+ZSTD_COMMAND = os.environ.get('ZSTD_COMMAND', 'zstd')
 
 
 def check_cmr_mount() -> None:
@@ -86,8 +88,12 @@ def archive_partition(conn: PgConnection, partition_name: str, dry_run: bool = F
         _query_template = "COPY (SELECT * FROM {table}) TO STDOUT WITH (FORMAT JSON);"
         query = _query_template.format(table=partition_name)
         
+        zstd_cmd = os.environ.get('ZSTD_COMMAND', 'zstd')
+        if not shutil.which(zstd_cmd):
+            raise RuntimeError(f"Required command '{zstd_cmd}' not found in PATH. Set ZSTD_COMMAND env var to override.")
+        
         with open(output_file, 'wb') as f:
-            zstd = subprocess.Popen(["zstd", "--rm"], stdin=subprocess.PIPE, stdout=f)
+            zstd = subprocess.Popen([zstd_cmd, "--rm"], stdin=subprocess.PIPE, stdout=f)
             try:
                 with conn.cursor() as cur:
                     cur.copy_expert(query, zstd.stdin)
@@ -142,7 +148,7 @@ def run_retention(db_url: str, retention_days: int = None, max_workers: int = 4,
         db_url: PostgreSQL connection string.
         retention_days: Number of days to retain partitions. Defaults to RETENTION_DAYS env var or 90.
         max_workers: Maximum number of parallel workers for archiving (default: 4).
-        dry_run: If True, log actions without executing them.
+        dry_run: If True, log actions without executing archive or DROP TABLE
         
     Raises:
         RuntimeError: If retention logic encounters an error.
