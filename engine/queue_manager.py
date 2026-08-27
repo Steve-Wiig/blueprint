@@ -36,6 +36,21 @@ SEVERITY_MEDIUM = 'medium'
 SEVERITY_LOW = 'low'
 SEVERITY_INFORMATIONAL = 'informational'
 
+import logging
+import sqlite3
+from typing import Optional
+from datetime import datetime, timezone
+logger = logging.getLogger(__name__)
+STATUS_PENDING = 'pending'
+STATUS_PROCESSING = 'processing'
+STATUS_COMPLETED = 'completed'
+STATUS_FAILED = 'failed'
+STATUS_SHED = 'shed'
+SEVERITY_CRITICAL = 'critical'
+SEVERITY_HIGH = 'high'
+SEVERITY_MEDIUM = 'medium'
+SEVERITY_LOW = 'low'
+SEVERITY_INFORMATIONAL = 'informational'
 class TriageQueueManager:
     """
     Manages a triage queue stored in SQLite.
@@ -88,6 +103,7 @@ class TriageQueueManager:
                 last_heartbeat_at TIMESTAMP,
                 shed_reason TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP,
                 last_modified_by TEXT
             );
 
@@ -397,6 +413,7 @@ class TriageQueueManager:
             Identifier of the entity performing the completion. Defaults to 'system'.
         """
         actor = changed_by or 'system'
+        now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
         # Fetch job details
         job = self.cursor.execute(
             "SELECT severity, attempts FROM triage_queue WHERE id = ?", (job_id,)
@@ -420,10 +437,11 @@ class TriageQueueManager:
                 """
                 UPDATE triage_queue
                 SET status = 'completed',
+                    completed_at = ?,
                     last_modified_by = ?
                 WHERE id = ?
                 """,
-                (actor, job_id),
+                (now, actor, job_id),
             )
             logger.info("Job %d completed successfully by %s", job_id, actor)
         else:
@@ -431,11 +449,12 @@ class TriageQueueManager:
                 """
                 UPDATE triage_queue
                 SET status = CASE WHEN attempts >= ? THEN 'failed' ELSE 'pending' END,
+                    completed_at = ?,
                     shed_reason = ?,
                     last_modified_by = ?
                 WHERE id = ?
                 """,
-                (self.max_attempts, reason or 'unspecified', actor, job_id),
+                (self.max_attempts, now, reason or 'unspecified', actor, job_id),
             )
             logger.warning("Job %d marked as failed by %s: %s", job_id, actor, reason or 'unspecified')
         self.conn.commit()
