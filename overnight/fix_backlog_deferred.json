@@ -1,35 +1,5 @@
 [
   {
-    "file": "tools/sanitization_entropy_check.py",
-    "issue": {
-      "category": "performance",
-      "severity": "medium",
-      "line_start": 75,
-      "line_end": 86,
-      "description": "calculate_entropy creates collections.Counter and log2_table for every call; for large tokens or many tokens this allocates O(n) memory and O(n) time per token",
-      "suggestion": "Cache log2_table per token length using functools.lru_cache; consider streaming entropy calculation for very long tokens; avoid Counter for single-pass frequency counting",
-      "impact": "medium",
-      "effort": "small"
-    },
-    "attempts": 6,
-    "deferred_reason": "failed 6 attempts"
-  },
-  {
-    "file": "tools/sanitization_entropy_check.py",
-    "issue": {
-      "category": "performance",
-      "severity": "low",
-      "line_start": 81,
-      "line_end": 83,
-      "description": "log2_table recreated for every calculate_entropy call; for repeated token lengths this is redundant computation",
-      "suggestion": "Add @functools.lru_cache(maxsize=128) to a helper _make_log2_table(length) function; or cache table in module-level dict keyed by length",
-      "impact": "low",
-      "effort": "trivial"
-    },
-    "attempts": 6,
-    "deferred_reason": "failed 6 attempts"
-  },
-  {
     "file": "engine/enrichment_scheduler.py",
     "issue": {
       "category": "maintainability",
@@ -360,21 +330,6 @@
       "line_end": 22,
       "description": "ExitCode enum uses explicit integer values. Using auto() would prevent duplicate values and improve maintainability.",
       "suggestion": "Change to: class ExitCode(Enum): SUCCESS = auto(); API_ERROR = auto(); ... and import auto from enum.",
-      "impact": "low",
-      "effort": "trivial"
-    },
-    "attempts": 6,
-    "deferred_reason": "failed 6 attempts"
-  },
-  {
-    "file": "tools/sanitization_entropy_check.py",
-    "issue": {
-      "category": "performance",
-      "severity": "low",
-      "line_start": 50,
-      "line_end": 95,
-      "description": "calculate_entropy uses collections.Counter and manual log2 table. For short tokens (<100 chars), math.log2 in loop is fast enough; the table optimization adds complexity without measurable benefit.",
-      "suggestion": "Simplify to: return -sum((c/len(data)) * math.log2(c/len(data)) for c in Counter(data).values()) if data else 0.0. Remove log2_table.",
       "impact": "low",
       "effort": "trivial"
     },
