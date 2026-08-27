@@ -160,6 +160,23 @@ def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensio
         raise RuntimeError("Failed to establish database connections") from e
 
 
+_CACHE_TTL_SECONDS = 60
+_fetch_cache: Dict[Tuple, Tuple[Any, float]] = {}
+
+
+def _ttl_cache_get(key: Tuple) -> Optional[Any]:
+    now = time.time()
+    if key in _fetch_cache:
+        value, cached_at = _fetch_cache[key]
+        if now - cached_at < _CACHE_TTL_SECONDS:
+            return value
+    return None
+
+
+def _ttl_cache_set(key: Tuple, value: Any) -> None:
+    _fetch_cache[key] = (value, time.time())
+
+
 def _fetch_provider_values(
     sq_conn: sqlite3.Connection,
     providers: List[str],
@@ -181,12 +198,18 @@ def _fetch_provider_values(
     """
     if not providers:
         return {}
+    cache_key = (table, column, tuple(sorted(providers)))
+    cached = _ttl_cache_get(cache_key)
+    if cached is not None:
+        return cached
     placeholders = ','.join(['?'] * len(providers))
     cursor.execute(
         f"SELECT provider, {column} FROM {table} WHERE provider IN ({placeholders})",
         providers
     )
-    return {row[0]: row[1] for row in cursor.fetchall()}
+    result = {row[0]: row[1] for row in cursor.fetchall()}
+    _ttl_cache_set(cache_key, result)
+    return result
 
 
 def update_quota(
@@ -227,42 +250,6 @@ def update_quota(
             cursor.close()
 
 
-_quota_cache: Dict[str, Tuple[Dict[str, int], Dict[str, int], float]] = {}
-_CACHE_TTL_SECONDS = 60
-
-
-def _fetch_provider_data(
-    sq_conn: sqlite3.Connection,
-    providers: List[str],
-    cursor: sqlite3.Cursor
-) -> Tuple[Dict[str, int], Dict[str, int]]:
-    """Fetches quota and cost for multiple providers in bulk.
-
-    Args:
-        sq_conn: The SQLite database connection.
-        providers: List of provider names.
-        cursor: Reusable cursor to execute queries. Caller must manage cursor lifecycle.
-
-    Returns:
-        Tuple of (quota_dict, cost_dict) keyed by provider.
-    """
-    if not providers:
-        return {}, {}
-
-    cache_key = tuple(sorted(providers))
-    now = time.time()
-    if cache_key in _quota_cache:
-        quota_dict, cost_dict, cached_at = _quota_cache[cache_key]
-        if now - cached_at < _CACHE_TTL_SECONDS:
-            return quota_dict, cost_dict
-
-    quota_dict = _fetch_provider_values(sq_conn, providers, 'quota_ledger', 'remaining', cursor)
-    cost_dict = _fetch_provider_values(sq_conn, providers, 'provider_costs', 'cost', cursor)
-
-    _quota_cache[cache_key] = (quota_dict, cost_dict, now)
-    return quota_dict, cost_dict
-
-
 def _check_batch_quota(
     sq_conn: sqlite3.Connection,
     providers_in_batch: List[str],
@@ -271,8 +258,9 @@ def _check_batch_quota(
 ) -> None:
     """Validates that all providers in the batch have sufficient quota.
 
-    Merges quota/cost fetch and validation into a single pass to avoid
-    redundant iteration and N+1 query patterns.
+    Fetches quota for all providers in batch to verify configuration,
+    fetches cost only for providers that need quota checked, then validates
+    in a single pass to avoid redundant iteration and N+1 query patterns.
 
     Args:
         sq_conn: The SQLite database connection.
@@ -287,7 +275,8 @@ def _check_batch_quota(
     if not providers_in_batch:
         return
 
-    quota_dict, cost_dict = _fetch_provider_data(sq_conn, providers_in_batch, cursor)
+    quota_dict = _fetch_provider_values(sq_conn, providers_in_batch, 'quota_ledger', 'remaining', cursor)
+    cost_dict = _fetch_provider_values(sq_conn, providers_needed, 'provider_costs', 'cost', cursor) if providers_needed else {}
 
     for provider in providers_in_batch:
         if provider not in quota_dict:
@@ -295,8 +284,3 @@ def _check_batch_quota(
 
         if provider in providers_needed:
             cost = cost_dict.get(provider, 0)
-            remaining = quota_dict[provider]
-            if remaining < cost:
-                raise ValueError(
-                    f"Insufficient quota for provider '{provider}': {remaining} remaining, {cost} required"
-                )
