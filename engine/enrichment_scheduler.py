@@ -4,10 +4,12 @@ import json
 import logging
 import signal
 import sqlite3
+import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Tuple, Dict, List, Optional, Any
+from functools import wraps
+from typing import Tuple, Dict, List, Optional, Any, Callable
 
 import psycopg2
 
@@ -184,6 +186,10 @@ def update_quota(
             cursor.close()
 
 
+_quota_cache: Dict[str, Tuple[Dict[str, int], Dict[str, int], float]] = {}
+_CACHE_TTL_SECONDS = 60
+
+
 def _fetch_provider_data(
     sq_conn: sqlite3.Connection,
     providers: List[str],
@@ -202,5 +208,54 @@ def _fetch_provider_data(
     if not providers:
         return {}, {}
 
+    cache_key = tuple(sorted(providers))
+    now = time.time()
+    if cache_key in _quota_cache:
+        quota_dict, cost_dict, cached_at = _quota_cache[cache_key]
+        if now - cached_at < _CACHE_TTL_SECONDS:
+            return quota_dict, cost_dict
+
     quota_dict = _fetch_provider_values(sq_conn, providers, 'quota_ledger', 'remaining', cursor)
-    cost_dict
+    cost_dict = _fetch_provider_values(sq_conn, providers, 'provider_costs', 'cost', cursor)
+
+    _quota_cache[cache_key] = (quota_dict, cost_dict, now)
+    return quota_dict, cost_dict
+
+
+def _check_batch_quota(
+    sq_conn: sqlite3.Connection,
+    providers_in_batch: List[str],
+    providers_needed: List[str],
+    cursor: Optional[sqlite3.Cursor] = None
+) -> None:
+    """Validates that all providers in the batch have sufficient quota.
+
+    Merges quota/cost fetch and validation into a single pass to avoid
+    redundant iteration and N+1 query patterns.
+
+    Args:
+        sq_conn: The SQLite database connection.
+        providers_in_batch: All providers referenced in the batch.
+        providers_needed: Subset of providers that actually need quota checked.
+        cursor: Optional cursor to reuse.
+
+    Raises:
+        ProviderNotConfiguredError: If a provider is not in quota_ledger.
+        ValueError: If a provider has insufficient quota.
+    """
+    if not providers_in_batch:
+        return
+
+    quota_dict, cost_dict = _fetch_provider_data(sq_conn, providers_in_batch, cursor)
+
+    for provider in providers_in_batch:
+        if provider not in quota_dict:
+            raise ProviderNotConfiguredError(f"Provider '{provider}' not configured in quota_ledger")
+
+        if provider in providers_needed:
+            cost = cost_dict.get(provider, 0)
+            remaining = quota_dict[provider]
+            if remaining < cost:
+                raise ValueError(
+                    f"Insufficient quota for provider '{provider}': {remaining} remaining, {cost} required"
+                )
