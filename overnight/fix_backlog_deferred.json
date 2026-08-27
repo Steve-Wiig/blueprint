@@ -1,16 +1,5 @@
 [
   {
-    "file": "engine/writeback/so_cases.py",
-    "issue": {
-      "description": "The 'main' function uses 'raise RuntimeError' to simulate an exit(0) success, which is non-standard and confusing for callers.",
-      "category": "maintainability",
-      "severity": "low",
-      "suggestion": "Use 'sys.exit(0)' only in the 'main' entry point, not in library functions, and remove the 'raise RuntimeError' for success cases."
-    },
-    "attempts": 5,
-    "deferred_reason": "failed 5 attempts"
-  },
-  {
     "file": "memory/retention.py",
     "issue": {
       "category": "blueprint_compliance",

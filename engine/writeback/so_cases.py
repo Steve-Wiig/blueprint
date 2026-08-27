@@ -154,7 +154,7 @@ def main() -> None:
     write_to_ledger(data.get("ref", "N/A"), case_id, args.draft)
     
     logging.info(f"SUCCESS: {case_id}")
-    raise RuntimeError(f"Library code called exit(0)")
+    return
 
 
 if __name__ == "__main__":
