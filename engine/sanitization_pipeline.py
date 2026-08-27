@@ -236,34 +236,32 @@ def apply_quarantine_policy(payload: str, field_path: Optional[str], metadata: D
         The payload, or "[QUARANTINED_REF]" if quarantine is triggered.
     """
     is_analytical = field_path in ANALYTICAL_FIELDS
-
-    if is_analytical:
-        # Fast pre-filter: skip quarantine scan for very large payloads
-        if len(payload) > MAX_QUARANTINE_PAYLOAD_LENGTH:
-            metadata["sanitization_action"] = "preserve_allowlisted"
-            metadata["quarantine_skipped_reason"] = "payload_too_large"
-            return payload
+    if not is_analytical:
+        return payload
         
-        tokens_checked = 0
-        for match in TOKEN_PATTERN.finditer(payload):
-            if tokens_checked >= MAX_QUARANTINE_TOKENS:
-                metadata["quarantine_skipped_reason"] = "max_tokens_reached"
-                break
+    if len(payload) > MAX_QUARANTINE_PAYLOAD_LENGTH:
+        metadata["sanitization_action"] = "preserve_allowlisted"
+        metadata["quarantine_skipped_reason"] = "payload_too_large"
+        return payload
+        
+    tokens_checked = 0
+    for match in TOKEN_PATTERN.finditer(payload):
+        if tokens_checked >= MAX_QUARANTINE_TOKENS:
+            metadata["quarantine_skipped_reason"] = "max_tokens_reached"
+            break
             
-            token = match.group()
-            tokens_checked += 1
+        token = match.group()
+        tokens_checked += 1
+        
+        if not _quick_diversity_check(token):
+            continue
             
-            # Fast pre-filter: check character diversity before expensive entropy calculation
-            if not _quick_diversity_check(token):
-                continue
-                
-            if _should_quarantine(token):
-                metadata["sanitization_action"] = "quarantine_ref"
-                metadata["quarantine_reason"] = "high_entropy_analytical_payload"
-                return "[QUARANTINED_REF]"
-
+        if _should_quarantine(token):
+            metadata["sanitization_action"] = "quarantine_ref"
+            metadata["quarantine_reason"] = "high_entropy_analytical_payload"
+            return "[QUARANTINED_REF]"
+            
     return payload
-
 def detect_high_entropy_tokens(payload: str, metadata: Dict[str, Any]) -> str:
     """Redacts high-entropy tokens inline using single-pass substitution.
 
