@@ -69,7 +69,13 @@ class TriageQueueManager:
         Threshold for backpressure on low‑priority jobs.
     """
 
-    def __init__(self, db_path: str = ":memory:") -> None:
+    def __init__(
+        self,
+        db_path: str = ":memory:",
+        lease_interval: int = 900,
+        max_attempts: int = 3,
+        emergency_depth: int = 1000,
+    ) -> None:
         """
         Initialize the queue manager.
 
@@ -78,14 +84,27 @@ class TriageQueueManager:
         db_path : str, optional
             Path to the SQLite database file. Defaults to
             "soc_triage.db". Use ":memory:" for an in‑memory database.
+        lease_interval : int, optional
+            Lease duration in seconds for a claimed job. Defaults to 900 (15 minutes).
+        max_attempts : int, optional
+            Maximum number of attempts before a job is marked failed. Defaults to 3.
+        emergency_depth : int, optional
+            Threshold for backpressure on low‑priority jobs. Defaults to 1000.
         """
         self.conn: sqlite3.Connection = sqlite3.connect(db_path)
         self.cursor: sqlite3.Cursor = self.conn.cursor()
         self._init_schema()
-        self.lease_interval: int = 900  # 15 minutes
-        self.max_attempts: int = 3
-        self.emergency_depth: int = 1000
-        logger.info("TriageQueueManager initialized with db_path=%s", db_path)
+        self.lease_interval: int = lease_interval
+        self.max_attempts: int = max_attempts
+        self.emergency_depth: int = emergency_depth
+        self._lease_modifier: str = f"+{self.lease_interval // 60} minutes"
+        logger.info(
+            "TriageQueueManager initialized with db_path=%s, lease_interval=%d, max_attempts=%d, emergency_depth=%d",
+            db_path,
+            self.lease_interval,
+            self.max_attempts,
+            self.emergency_depth,
+        )
 
     def _init_schema(self) -> None:
         """
@@ -288,12 +307,12 @@ class TriageQueueManager:
         # atomically claims it under SQLite's write lock (no race window).
         # RETURNING id gives us the claimed job without a second query.
         row = self.cursor.execute(
-            """
+            f"""
             UPDATE triage_queue
             SET status = 'processing',
                 started_at = CURRENT_TIMESTAMP,
                 attempts = attempts + 1,
-                lease_expires_at = datetime('now', '+15 minutes'),
+                lease_expires_at = datetime('now', '{self._lease_modifier}'),
                 last_modified_by = ?
             WHERE id = (
                 SELECT id FROM triage_queue
@@ -331,10 +350,10 @@ class TriageQueueManager:
             Identifier of the job to heartbeat.
         """
         self.cursor.execute(
-            """
+            f"""
             UPDATE triage_queue
             SET last_heartbeat_at = CURRENT_TIMESTAMP,
-                lease_expires_at = datetime('now', '+15 minutes')
+                lease_expires_at = datetime('now', '{self._lease_modifier}')
             WHERE id = ? AND status = 'processing'
             """,
             (job_id,),
