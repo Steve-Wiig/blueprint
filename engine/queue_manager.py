@@ -19,6 +19,23 @@ SEVERITY_LOW = 'low'
 SEVERITY_INFORMATIONAL = 'informational'
 
 
+import logging
+import sqlite3
+from typing import Optional
+from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
+STATUS_PENDING = 'pending'
+STATUS_PROCESSING = 'processing'
+STATUS_COMPLETED = 'completed'
+STATUS_FAILED = 'failed'
+STATUS_SHED = 'shed'
+SEVERITY_CRITICAL = 'critical'
+SEVERITY_HIGH = 'high'
+SEVERITY_MEDIUM = 'medium'
+SEVERITY_LOW = 'low'
+SEVERITY_INFORMATIONAL = 'informational'
+
 class TriageQueueManager:
     """
     Manages a triage queue stored in SQLite.
@@ -313,6 +330,8 @@ class TriageQueueManager:
         """
         Recover or fail jobs that have exceeded their lease without completion.
         """
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
         # Reset stale jobs that haven't exhausted attempts
         self.cursor.execute(
             """
@@ -322,10 +341,10 @@ class TriageQueueManager:
                 lease_expires_at = NULL,
                 last_modified_by = 'system'
             WHERE status = 'processing'
-              AND lease_expires_at < CURRENT_TIMESTAMP
+              AND lease_expires_at < ?
               AND attempts < ?
             """,
-            (self.max_attempts,),
+            (now, self.max_attempts),
         )
         reset_count = self.cursor.rowcount
 
@@ -334,10 +353,10 @@ class TriageQueueManager:
             """
             SELECT id, severity FROM triage_queue
             WHERE status = 'processing'
-              AND lease_expires_at < CURRENT_TIMESTAMP
+              AND lease_expires_at < ?
               AND attempts >= ?
             """,
-            (self.max_attempts,),
+            (now, self.max_attempts),
         ).fetchall()
 
         failed_count = 0
