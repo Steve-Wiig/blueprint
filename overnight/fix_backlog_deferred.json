@@ -120,36 +120,6 @@
     "deferred_reason": "failed 6 attempts"
   },
   {
-    "file": "engine/quota_ledger.py",
-    "issue": {
-      "category": "performance",
-      "severity": "low",
-      "line_start": 17,
-      "line_end": 17,
-      "description": "Global DB_PATH hinders parallel testing: all tests share same default path unless explicitly overridden",
-      "suggestion": "Remove module-level DB_PATH; require db_path parameter or use dependency injection pattern with a config class",
-      "impact": "low",
-      "effort": "small"
-    },
-    "attempts": 6,
-    "deferred_reason": "failed 6 attempts"
-  },
-  {
-    "file": "engine/quota_ledger.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 84,
-      "line_end": 153,
-      "description": "Inconsistent error handling: check_quota returns bool for business logic, record_usage returns None but raises on error; no unified pattern",
-      "suggestion": "Adopt consistent pattern: either raise exceptions for all failures (including quota exceeded) or use Result/Either types",
-      "impact": "low",
-      "effort": "medium"
-    },
-    "attempts": 6,
-    "deferred_reason": "failed 6 attempts"
-  },
-  {
     "file": "engine/sanitization_pipeline.py",
     "issue": {
       "category": "performance",
