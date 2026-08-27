@@ -22,6 +22,7 @@
     "calculate_entropy: do NOT add a log2 lookup table or lru_cache. Each unique character count is used once, so inline math.log2 is correct and faster. Simplify; do not over-engineer."
   ],
   "queue_manager.py": [
-    "reap_stale_jobs() and complete_job() ALREADY use datetime.now(timezone.utc) per AMEND-63 - do NOT 'fix' them for CURRENT_TIMESTAMP (that advisory is a phantom). claim_job() and heartbeat() intentionally use SQL-side CURRENT_TIMESTAMP/datetime('now') for atomic lease-expiry semantics; this is a deliberate correct choice, not a violation to auto-fix."
+    "reap_stale_jobs() and complete_job() ALREADY use datetime.now(timezone.utc) per AMEND-63 - do NOT 'fix' them for CURRENT_TIMESTAMP (that advisory is a phantom). claim_job() and heartbeat() intentionally use SQL-side CURRENT_TIMESTAMP/datetime('now') for atomic lease-expiry semantics; this is a deliberate correct choice, not a violation to auto-fix.",
+    "enqueue() SELECT-then-INSERT pattern is INTENTIONAL, not a performance bug. The counter is trigger-maintained (atomic), the if/else logic is clear, tests validate it, and enqueue is not a hot path. Combining into a single INSERT with nested CASE+subquery would reduce readability for no measurable win. Clarity > micro-optimization on non-hot paths."
   ]
 }
