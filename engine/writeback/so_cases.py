@@ -15,6 +15,27 @@ DRAFT_CASE_ID = 'DRAFT_ID_000'
 DEFAULT_LEDGER_PATH = 'handoffs_ledger.log'
 DEFAULT_TIMEOUT = 10
 ENV_TIMEOUT = 'SO_API_TIMEOUT'
+ENV_LEDGER_PATH = 'SO_LEDGER_PATH'
+
+# Resolved at runtime via _load_config()
+_LEDGER_PATH: str = DEFAULT_LEDGER_PATH
+
+
+def _load_config() -> None:
+    """Load configuration from environment variables."""
+    global _LEDGER_PATH
+    env_path = os.environ.get(ENV_LEDGER_PATH)
+    if env_path:
+        _LEDGER_PATH = os.path.abspath(env_path)
+    else:
+        # Use XDG_DATA_HOME or fallback to /var/log
+        xdg_data_home = os.environ.get('XDG_DATA_HOME')
+        if xdg_data_home:
+            base_dir = os.path.join(xdg_data_home, 'so-case-writeback')
+        else:
+            base_dir = '/var/log/so-case-writeback'
+        os.makedirs(base_dir, exist_ok=True)
+        _LEDGER_PATH = os.path.join(base_dir, DEFAULT_LEDGER_PATH)
 
 
 def configure_logging() -> None:
@@ -125,7 +146,7 @@ def write_to_ledger(payload_ref: str, case_id: str, draft_mode: bool = False) ->
         RuntimeError: If the ledger file cannot be written to.
     """
     try:
-        with open(DEFAULT_LEDGER_PATH, "a") as f:
+        with open(_LEDGER_PATH, "a") as f:
             f.write(f"{datetime.now(timezone.utc).isoformat()} | {payload_ref} | {case_id} | draft={draft_mode}\n")
     except IOError:
         raise RuntimeError(f"Library code called exit(2)")
@@ -133,6 +154,7 @@ def write_to_ledger(payload_ref: str, case_id: str, draft_mode: bool = False) ->
 
 def main() -> None:
     """Parses command line arguments and executes the case writeback process."""
+    _load_config()
     configure_logging()
     
     parser = argparse.ArgumentParser(description="SO Case Writeback Adapter")
