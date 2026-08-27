@@ -178,3 +178,27 @@ explicit _load_config() called from entry points — not __getattr__.
 A Python patch script inside a bash heredoc that contains triple-quoted strings
 with its own triple-quoted strings will silently mis-parse. Always write the
 patch to a temp file first (`cat > /tmp/patch.py << 'EOF'`) then execute it.
+
+---
+
+## 9. The Prompt Feedback Loop (lessons_learned.json)
+
+### 9.1 Why it exists
+By default the drain was STATELESS: every fix attempt used the same base prompt,
+so the LLMs kept rediscovering the same traps (retention.py failed 5x on the same
+monkeypatch issue). The playbook captured wisdom for humans but not for the models.
+
+### 9.2 How it works
+overnight/lessons_learned.json maps file-name substrings (plus a special "_global"
+key) to constraint strings. self_improver._lessons_block_for(file_path) matches the
+current file and injects a "KNOWN CONSTRAINTS" block into the fix prompt, so each
+attempt carries the accumulated architectural wisdom.
+
+### 9.3 Maintaining it
+After any manual architect fix or a repeatedly-deferred item, distill the lesson into
+a one-line imperative constraint and add it under the matching file key (or "_global"
+if universal). Example: "do NOT remove DB_PATH; tests patch engine.quota_ledger.DB_PATH."
+
+### 8.10 Stateless retry is the biggest hidden cost
+Retrying a deferred item without new context just re-fails the same way. Always add
+the discovered constraint to lessons_learned.json BEFORE re-queuing a deferred item.

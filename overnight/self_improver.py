@@ -328,6 +328,43 @@ def _looks_like_reasoning(text):
     return any(m in head for m in _REASONING_MARKERS)
 
 
+LESSONS_FILE = ROOT / "overnight" / "lessons_learned.json"
+_LESSONS_CACHE = None
+
+
+def _load_lessons():
+    """Load accumulated architectural lessons, cached after first read."""
+    global _LESSONS_CACHE
+    if _LESSONS_CACHE is None:
+        if LESSONS_FILE.exists():
+            try:
+                _LESSONS_CACHE = json.loads(LESSONS_FILE.read_text())
+            except Exception:
+                _LESSONS_CACHE = {}
+        else:
+            _LESSONS_CACHE = {}
+    return _LESSONS_CACHE
+
+
+def _lessons_block_for(file_path):
+    """Build a lessons context block for the given file, or empty string."""
+    lessons = _load_lessons()
+    if not lessons:
+        return ""
+    matched = list(lessons.get("_global", []))
+    name = str(file_path)
+    for key, items in lessons.items():
+        if key != "_global" and key in name:
+            matched.extend(items)
+    if not matched:
+        return ""
+    NL = chr(10)
+    body = NL.join("- " + item for item in matched)
+    header = "KNOWN CONSTRAINTS from prior architect review (MUST follow; "
+    header += "previous attempts that ignored these failed):"
+    return header + NL + body + NL + NL
+
+
 def apply_auto_fix(file_path, issue, api_keys):
     """Generate and apply a fix with test gating, crash-safe backup, and
     precise git error handling. Every exit path is deliberate."""
@@ -336,6 +373,8 @@ def apply_auto_fix(file_path, issue, api_keys):
     except Exception as e:
         print(f"       ❌ Cannot read {file_path.name}: {e}")
         return False
+
+    lessons_block = _lessons_block_for(file_path)
 
     prompt = (
         "You are a senior Python engineer. Fix the issue below in this file.\n"
@@ -348,6 +387,7 @@ def apply_auto_fix(file_path, issue, api_keys):
         "- The first non-empty line MUST be Python code.\n"
         "Preserve all unrelated behavior. Keep the module importable without "
         "side effects. Use datetime.now(timezone.utc), never utcnow().\n"
+        f"{lessons_block}"
         f"Issue: {issue.get('description', '')}\n"
         f"Category: {issue.get('category', '')}\n"
         f"Suggestion: {issue.get('suggestion', '')}\n\n"

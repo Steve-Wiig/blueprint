@@ -1,0 +1,24 @@
+{
+  "_global": [
+    "Module-level os.environ.get() reads: do NOT wrap them in a class with class attributes (those still evaluate at class-definition time). Instead keep plain module-level defaults and add a _load_config() function called from main().",
+    "Never fix a module-level name by globally string-replacing the bare identifier; it rewrites the symbol inside its own definition and docstrings. Anchor replacements on full unique lines.",
+    "Module-level __getattr__ only intercepts EXTERNAL attribute access; bare-name references inside the module's own functions bypass it and raise NameError. Do not use __getattr__ to provide module globals used internally.",
+    "sys.exit() is acceptable inside the if __name__ == '__main__' CLI entry point; library functions must raise RuntimeError instead of calling sys.exit.",
+    "Tests use monkeypatch.setattr on module globals. Do NOT remove a module-level global that tests patch; it breaks test isolation.",
+    "Avoid premature optimization: do not add caching, lru_cache, or lookup tables unless there is genuinely repeated computation. Prefer simpler code.",
+    "Use datetime.now(timezone.utc); never datetime.utcnow()."
+  ],
+  "retention.py": [
+    "ARCHIVE_BASE, CMR_MOUNT, ZSTD_COMMAND are monkeypatched by tests; keep them as module globals. Load env overrides via a _load_config() called only from main() so direct library calls keep monkeypatched values."
+  ],
+  "so_cases.py": [
+    "main() should return normally on success (not raise). Library functions create_case and write_to_ledger must raise RuntimeError on failure; tests assert on those exceptions."
+  ],
+  "quota_ledger.py": [
+    "init_db, check_quota, and record_usage already accept db_path for dependency injection; do NOT remove the DB_PATH default. Tests patch engine.quota_ledger.DB_PATH.",
+    "check_quota returning bool (query) and record_usage returning None (command) is intentional, idiomatic design. Do not unify by raising exceptions on quota exceeded."
+  ],
+  "sanitization_entropy_check.py": [
+    "calculate_entropy: do NOT add a log2 lookup table or lru_cache. Each unique character count is used once, so inline math.log2 is correct and faster. Simplify; do not over-engineer."
+  ]
+}
