@@ -498,6 +498,11 @@ def apply_auto_fix(file_path, issue, api_keys):
     # ---------- SURGICAL PATH (primary) ----------
     focus_text, targets = _extract_focus(file_path, issue)
     surgical_fix = None
+    # Skip surgical mode if focus is >60% of original (no meaningful reduction)
+    if focus_text and targets and len(focus_text) > int(0.6 * len(original)):
+        print(f"       SURGICAL skipped: focus is {100 * len(focus_text) // len(original)}% of original ({len(focus_text)} vs {len(original)}) - using whole-file")
+        focus_text = None  # force whole-file path
+        targets = None
     if focus_text and targets:
         primary = targets[0]
         surgical_prompt = (
