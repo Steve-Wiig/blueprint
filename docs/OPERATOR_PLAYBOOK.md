@@ -173,3 +173,8 @@ module's own functions (e.g. `if shutil.which(ZSTD_COMMAND)`) bypass __getattr__
 and raise NameError. To lazily provide module globals that internal code AND
 monkeypatch-based tests both use, prefer plain module-level names plus an
 explicit _load_config() called from entry points — not __getattr__.
+
+### 8.9 Heredocs with nested triple-quotes are brittle
+A Python patch script inside a bash heredoc that contains triple-quoted strings
+with its own triple-quoted strings will silently mis-parse. Always write the
+patch to a temp file first (`cat > /tmp/patch.py << 'EOF'`) then execute it.

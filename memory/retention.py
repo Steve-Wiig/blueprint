@@ -25,9 +25,20 @@ Environment Variables:
     PGPASSWORD: PostgreSQL password (alternative to password in connection string)
     RETENTION_DAYS: Retention period in days (default: 90)
 """
-ARCHIVE_BASE = os.environ.get('ARCHIVE_BASE', '/archive/iocs')
-CMR_MOUNT = os.environ.get('CMR_MOUNT', '/mnt/cmr')
-ZSTD_COMMAND = os.environ.get('ZSTD_COMMAND', 'zstd')
+# Module-level defaults (no I/O at import time, per blueprint v11.7).
+# Production use: call _load_config() from main() to read env vars.
+# Test use: monkeypatch ARCHIVE_BASE/CMR_MOUNT/ZSTD_COMMAND on the module.
+ARCHIVE_BASE = '/archive/iocs'
+CMR_MOUNT = '/mnt/cmr'
+ZSTD_COMMAND = 'zstd'
+
+
+def _load_config() -> None:
+    """Read environment variables and update module-level config globals."""
+    global ARCHIVE_BASE, CMR_MOUNT, ZSTD_COMMAND
+    ARCHIVE_BASE = os.environ.get('ARCHIVE_BASE', '/archive/iocs')
+    CMR_MOUNT = os.environ.get('CMR_MOUNT', '/mnt/cmr')
+    ZSTD_COMMAND = os.environ.get('ZSTD_COMMAND', 'zstd')
 
 
 def validate_commands() -> None:
