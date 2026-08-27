@@ -365,54 +365,215 @@ def _lessons_block_for(file_path):
     return header + NL + body + NL + NL
 
 
+LESSONS_FILE = ROOT / "overnight" / "lessons_learned.json"
+_LESSONS_CACHE = None
+
+
+def _load_lessons():
+    """Load accumulated architectural lessons, cached after first read."""
+    global _LESSONS_CACHE
+    if _LESSONS_CACHE is None:
+        if LESSONS_FILE.exists():
+            try:
+                _LESSONS_CACHE = json.loads(LESSONS_FILE.read_text())
+            except Exception:
+                _LESSONS_CACHE = {}
+        else:
+            _LESSONS_CACHE = {}
+    return _LESSONS_CACHE
+
+
+def _lessons_block_for(file_path):
+    """Build a lessons context block for the given file, or empty string."""
+    lessons = _load_lessons()
+    if not lessons:
+        return ""
+    matched = list(lessons.get("_global", []))
+    name = str(file_path)
+    for key, items in lessons.items():
+        if key != "_global" and key in name:
+            matched.extend(items)
+    if not matched:
+        return ""
+    NL = chr(10)
+    body = NL.join("- " + item for item in matched)
+    header = "KNOWN CONSTRAINTS from prior architect review (MUST follow; "
+    header += "previous attempts that ignored these failed):"
+    return header + NL + body + NL + NL
+
+
+def _extract_focus(file_path, issue):
+    """Extract imports + module-level constants + target function/class.
+    Returns (focus_text, [target_names]) or (None, None) if no clear target.
+    """
+    text = (issue.get("description", "") + " " + issue.get("suggestion", "")).lower()
+    try:
+        source = file_path.read_text()
+        tree = ast.parse(source)
+    except (SyntaxError, OSError):
+        return None, None
+
+    defs = [n for n in ast.iter_child_nodes(tree)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+    targets = [n for n in defs if n.name.lower() in text]
+    if not targets:
+        # Check for methods inside classes (e.g. __init__)
+        for cls in (n for n in defs if isinstance(n, ast.ClassDef)):
+            for m in ast.iter_child_nodes(cls):
+                if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef)) and m.name.lower() in text:
+                    # Include the whole class so indentation is preserved
+                    targets.append(cls)
+                    break
+    if not targets:
+        return None, None
+
+    pieces = []
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            seg = ast.get_source_segment(source, node)
+            if seg:
+                pieces.append(seg)
+        elif isinstance(node, ast.Assign):
+            # Module-level constant/globals
+            if all(isinstance(t, ast.Name) for t in node.targets):
+                seg = ast.get_source_segment(source, node)
+                if seg:
+                    pieces.append(seg)
+    for t in targets:
+        seg = ast.get_source_segment(source, t)
+        if seg:
+            pieces.append(seg)
+
+    focus = chr(10) + chr(10).join(pieces)
+    names = [t.name for t in targets]
+    return focus, names
+
+
+def _apply_surgical_splice(original_source, target_name, new_func_source):
+    """Replace the named function/class in the original. Returns new source or None."""
+    try:
+        tree = ast.parse(original_source)
+        ast.parse(new_func_source)  # model output must be valid Python
+    except SyntaxError:
+        return None
+
+    # Find the matching node anywhere in the tree (top-level or nested in class)
+    target_node = None
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == target_name:
+            target_node = node
+            break
+    
+    if target_node is None:
+        return None
+    
+    start_line = target_node.lineno - 1  # 0-indexed
+    end_line = target_node.end_lineno     # exclusive when slicing
+    # Handle decorators (they're part of the node's range in newer Pythons,
+    # but lineno is the 'def' line — use decorator_list if present)
+    if getattr(target_node, "decorator_list", None):
+        start_line = target_node.decorator_list[0].lineno - 1
+    orig_lines = original_source.splitlines(keepends=True)
+    new_lines = new_func_source.rstrip().splitlines(keepends=True)
+    # Ensure final newline if original had one
+    if orig_lines and orig_lines[-1].endswith(chr(10)) and new_lines:
+        if not new_lines[-1].endswith(chr(10)):
+            new_lines[-1] += chr(10)
+    spliced = orig_lines[:start_line] + new_lines + orig_lines[end_line:]
+    return "".join(spliced)
+
+
+
 def apply_auto_fix(file_path, issue, api_keys):
-    """Generate and apply a fix with test gating, crash-safe backup, and
-    precise git error handling. Every exit path is deliberate."""
+    """Generate and apply a fix with surgical-mode attempt + whole-file fallback.
+    Every exit path is deliberate; every failure rolls back cleanly."""
     try:
         original = file_path.read_text()
     except Exception as e:
-        print(f"       ❌ Cannot read {file_path.name}: {e}")
+        print(f"       X Cannot read {file_path.name}: {e}")
         return False
 
     lessons_block = _lessons_block_for(file_path)
 
-    prompt = (
-        "You are a senior Python engineer. Fix the issue below in this file.\n"
-        "Return ONLY the complete fixed file content.\n"
-        "STRICT OUTPUT RULES:\n"
-        "- Your response must be ONLY valid Python code. Nothing else.\n"
-        "- No markdown fences, no explanations, no comments about the change.\n"
-        "- No reasoning, analysis, planning, or thinking process.\n"
-        "- Do NOT start with Let me / Here / I will / First or any prose.\n"
-        "- The first non-empty line MUST be Python code.\n"
-        "Preserve all unrelated behavior. Keep the module importable without "
-        "side effects. Use datetime.now(timezone.utc), never utcnow().\n"
-        f"{lessons_block}"
-        f"Issue: {issue.get('description', '')}\n"
-        f"Category: {issue.get('category', '')}\n"
-        f"Suggestion: {issue.get('suggestion', '')}\n\n"
-        f"Current file content:\n{original[:12000]}\n"
-    )
-    print(f"       📝 Generating fix: {issue.get('description', '')[:80]}")
-    fix_code = generate(prompt, api_keys, temperature=0.2)
-    if not fix_code:
-        print(f"       ❌ Fix generation failed")
-        return False
-    fix_code = strip_fences(fix_code)
-    if len(fix_code) < 0.5 * len(original):
-        print(f"       ❌ Fix suspiciously short ({len(fix_code)} vs {len(original)} chars) — rejecting")
-        return False
-    # Syntax gate: a fix that isn't valid Python is never safe to write.
-    # Catches thinking-trace/prose corruption even for files no test imports
-    # (the pytest gate can't see those — this is how two files got corrupted).
-    try:
-        ast.parse(fix_code)
-    except SyntaxError as e:
-        print(f"       ❌ Fix is not valid Python ({e.msg}, line {e.lineno}) — rejecting")
-        return False
+    # ---------- SURGICAL PATH (primary) ----------
+    focus_text, targets = _extract_focus(file_path, issue)
+    surgical_fix = None
+    if focus_text and targets:
+        primary = targets[0]
+        surgical_prompt = (
+            "You are a senior Python engineer performing a SURGICAL fix.\n"
+            "You are shown ONLY imports, constants, and the target function/class.\n"
+            f"Fix ONLY the target '{primary}'. Return ONLY its complete fixed source.\n"
+            "STRICT OUTPUT RULES:\n"
+            "- Your response must be ONLY valid Python code (the function/class).\n"
+            "- No markdown fences, no prose, no explanations, no thinking.\n"
+            "- No extra imports outside the function body.\n"
+            "- Preserve the exact original indentation level and function signature.\n"
+            "- Do NOT return the whole file. Do NOT include any surrounding code.\n"
+            f"{lessons_block}"
+            f"Issue: {issue.get('description', '')}\n"
+            f"Category: {issue.get('category', '')}\n"
+            f"Suggestion: {issue.get('suggestion', '')}\n\n"
+            f"Context (imports + constants + target):\n{focus_text}\n"
+        )
+        print(f"       SURGICAL Generating fix for '{primary}' in {file_path.name} "
+              f"(focus: {len(focus_text)} chars vs {len(original)} original)")
+        raw = generate(surgical_prompt, api_keys, temperature=0.2)
+        if raw:
+            raw = strip_fences(raw)
+            if len(raw) > 80:
+                spliced = _apply_surgical_splice(original, primary, raw)
+                if spliced:
+                    try:
+                        ast.parse(spliced)
+                        surgical_fix = spliced
+                    except SyntaxError as e:
+                        print(f"       SURGICAL splice failed syntax ({e.msg}, line {e.lineno}) — falling back")
+                else:
+                    print(f"       SURGICAL splice could not locate/replace target — falling back")
+            else:
+                print(f"       SURGICAL response too short ({len(raw)} chars) — falling back")
+        else:
+            print(f"       SURGICAL generation failed — falling back")
 
-    # Backup exists ONLY during the pytest window; a leftover .orig_backup at
-    # next startup is proof of a crash mid-test (handled by main() recovery).
+    # ---------- WHOLE-FILE PATH (fallback) ----------
+    if surgical_fix is None:
+        prompt = (
+            "You are a senior Python engineer. Fix the issue below in this file.\n"
+            "Return ONLY the complete fixed file content.\n"
+            "STRICT OUTPUT RULES:\n"
+            "- Your response must be ONLY valid Python code. Nothing else.\n"
+            "- No markdown fences, no explanations, no comments about the change.\n"
+            "- No reasoning, analysis, planning, or thinking process.\n"
+            "- Do NOT start with Let me / Here / I will / First or any prose.\n"
+            "- The first non-empty line MUST be Python code.\n"
+            "Preserve all unrelated behavior. Keep the module importable without "
+            "side effects. Use datetime.now(timezone.utc), never utcnow().\n"
+            f"{lessons_block}"
+            f"Issue: {issue.get('description', '')}\n"
+            f"Category: {issue.get('category', '')}\n"
+            f"Suggestion: {issue.get('suggestion', '')}\n\n"
+            f"Current file content:\n{original[:12000]}\n"
+        )
+        print(f"       WHOLE-FILE Generating fix: {issue.get('description', '')[:80]}")
+        fix_code = generate(prompt, api_keys, temperature=0.2)
+        if not fix_code:
+            print(f"       X Fix generation failed")
+            return False
+        fix_code = strip_fences(fix_code)
+        if len(fix_code) < 0.5 * len(original):
+            print(f"       X Fix suspiciously short ({len(fix_code)} vs {len(original)} chars) — rejecting")
+            return False
+        try:
+            ast.parse(fix_code)
+        except SyntaxError as e:
+            print(f"       X Fix is not valid Python ({e.msg}, line {e.lineno}) — rejecting")
+            return False
+    else:
+        print(f"       + Surgical fix prepared (saved {len(original) - len(surgical_fix)} chars of generation)")
+        fix_code = surgical_fix
+
+    # ---------- SHARED SAFETY GATES (backup / test / commit / rollback) ----------
     backup = file_path.with_suffix(file_path.suffix + ".orig_backup")
     backup.write_text(original)
     file_path.write_text(fix_code)
@@ -426,12 +587,12 @@ def apply_auto_fix(file_path, issue, api_keys):
         )
         tests_passed = result.returncode == 0
     except subprocess.TimeoutExpired:
-        timed_out = True  # subprocess.run already killed the hung pytest child
+        timed_out = True
 
     if not tests_passed:
         file_path.write_text(original)
         backup.unlink(missing_ok=True)
-        print(f"       ❌ Tests {'timed out (120s)' if timed_out else 'failed'} — reverting")
+        print(f"       X Tests {'timed out (120s)' if timed_out else 'failed'} — reverting")
         return False
 
     backup.unlink(missing_ok=True)
@@ -439,15 +600,17 @@ def apply_auto_fix(file_path, issue, api_keys):
         subprocess.run(["git", "add", str(file_path)], cwd=ROOT, check=True, capture_output=True)
         subprocess.run(["git", "commit", "-m", f"Auto-fix: {file_path.name}"],
                        cwd=ROOT, check=True, capture_output=True)
-        print(f"       ✅ Fix committed")
+        print(f"       + Fix committed")
         return True
     except subprocess.CalledProcessError as e:
         err = (e.stdout or b"") + (e.stderr or b"")
         if b"nothing to commit" in err or b"no changes" in err:
-            print(f"       ⚠️  No-op fix (nothing changed) — treated as done")
+            print(f"       !  No-op fix (nothing changed) — treated as done")
             return True
-        print(f"       ❌ git failed: {err.decode(errors='replace')[:200]}")
+        print(f"       X git failed: {err.decode(errors='replace')[:200]}")
         return False
+
+
 MAX_AUTOFIX_PER_FILE = 6      # cap: no file gets more than this many auto-fixes
 COOLDOWN_COMMITS = 3           # skip a file if its last N commits are all auto-fixes
 
