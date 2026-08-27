@@ -130,7 +130,7 @@ def _fetch_provider_values(
     providers: List[str],
     table: str,
     column: str,
-    cursor: Optional[sqlite3.Cursor] = None
+    cursor: sqlite3.Cursor
 ) -> Dict[str, int]:
     """Fetch provider-value pairs from a table for the given providers.
 
@@ -139,7 +139,7 @@ def _fetch_provider_values(
         providers: List of provider names.
         table: The table to query.
         column: The column to retrieve.
-        cursor: Optional cursor to reuse. If not provided, a new one is created.
+        cursor: Reusable cursor to execute the query. Caller must manage cursor lifecycle.
 
     Returns:
         A dictionary mapping provider to the column value.
@@ -147,19 +147,11 @@ def _fetch_provider_values(
     if not providers:
         return {}
     placeholders = ','.join(['?'] * len(providers))
-    own_cursor = False
-    if cursor is None:
-        cursor = sq_conn.cursor()
-        own_cursor = True
-    try:
-        cursor.execute(
-            f"SELECT provider, {column} FROM {table} WHERE provider IN ({placeholders})",
-            providers
-        )
-        return {row[0]: row[1] for row in cursor.fetchall()}
-    finally:
-        if own_cursor:
-            cursor.close()
+    cursor.execute(
+        f"SELECT provider, {column} FROM {table} WHERE provider IN ({placeholders})",
+        providers
+    )
+    return {row[0]: row[1] for row in cursor.fetchall()}
 
 
 def update_quota(
@@ -207,14 +199,14 @@ _CACHE_TTL_SECONDS = 60
 def _fetch_provider_data(
     sq_conn: sqlite3.Connection,
     providers: List[str],
-    cursor: Optional[sqlite3.Cursor] = None
+    cursor: sqlite3.Cursor
 ) -> Tuple[Dict[str, int], Dict[str, int]]:
     """Fetches quota and cost for multiple providers in bulk.
 
     Args:
         sq_conn: The SQLite database connection.
         providers: List of provider names.
-        cursor: Optional cursor to reuse.
+        cursor: Reusable cursor to execute queries. Caller must manage cursor lifecycle.
 
     Returns:
         Tuple of (quota_dict, cost_dict) keyed by provider.
@@ -240,7 +232,7 @@ def _check_batch_quota(
     sq_conn: sqlite3.Connection,
     providers_in_batch: List[str],
     providers_needed: List[str],
-    cursor: Optional[sqlite3.Cursor] = None
+    cursor: sqlite3.Cursor
 ) -> None:
     """Validates that all providers in the batch have sufficient quota.
 
@@ -251,7 +243,7 @@ def _check_batch_quota(
         sq_conn: The SQLite database connection.
         providers_in_batch: All providers referenced in the batch.
         providers_needed: Subset of providers that actually need quota checked.
-        cursor: Optional cursor to reuse.
+        cursor: Reusable cursor to execute queries. Caller must manage cursor lifecycle.
 
     Raises:
         ProviderNotConfiguredError: If a provider is not in quota_ledger.
