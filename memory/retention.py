@@ -30,6 +30,20 @@ CMR_MOUNT = os.environ.get('CMR_MOUNT', '/mnt/cmr')
 ZSTD_COMMAND = os.environ.get('ZSTD_COMMAND', 'zstd')
 
 
+def validate_commands() -> None:
+    """
+    Verify that required external commands are available in PATH.
+    
+    Raises:
+        RuntimeError: If any required command is not found.
+    """
+    if not shutil.which(ZSTD_COMMAND):
+        raise RuntimeError(
+            f"Required command '{ZSTD_COMMAND}' not found in PATH. "
+            f"Set ZSTD_COMMAND environment variable to override."
+        )
+
+
 def check_cmr_mount() -> None:
     """
     Verify that the CMR mount point is available.
@@ -88,12 +102,8 @@ def archive_partition(conn: PgConnection, partition_name: str, dry_run: bool = F
         _query_template = "COPY (SELECT * FROM {table}) TO STDOUT WITH (FORMAT JSON);"
         query = _query_template.format(table=partition_name)
         
-        zstd_cmd = os.environ.get('ZSTD_COMMAND', 'zstd')
-        if not shutil.which(zstd_cmd):
-            raise RuntimeError(f"Required command '{zstd_cmd}' not found in PATH. Set ZSTD_COMMAND env var to override.")
-        
         with open(output_file, 'wb') as f:
-            zstd = subprocess.Popen([zstd_cmd, "--rm"], stdin=subprocess.PIPE, stdout=f)
+            zstd = subprocess.Popen([ZSTD_COMMAND, "--rm"], stdin=subprocess.PIPE, stdout=f)
             try:
                 with conn.cursor() as cur:
                     cur.copy_expert(query, zstd.stdin)
@@ -153,6 +163,7 @@ def run_retention(db_url: str, retention_days: int = None, max_workers: int = 4,
     Raises:
         RuntimeError: If retention logic encounters an error.
     """
+    validate_commands()
     check_cmr_mount()
     try:
         conn = psycopg2.connect(db_url)
