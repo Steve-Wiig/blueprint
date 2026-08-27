@@ -1,8 +1,11 @@
 import re
 import sys
 import argparse
+import logging
+import logging.handlers
 from pathlib import Path
 from typing import Pattern
+from datetime import datetime, timezone
 
 # LOCAL-SOC-SLM Blueprint v11.6.0 - Credential Sanitization Tool
 # Appendix O.16 & Section 34.1 Compliance
@@ -38,6 +41,44 @@ class ScanExit(RuntimeError):
     def __init__(self, exit_code: int, message: str = "") -> None:
         super().__init__(message or f"scan completed with exit code {exit_code}")
         self.exit_code = exit_code
+
+
+def _configure_logging() -> logging.Logger:
+    """
+    Configure structured logging for audit trails per Blueprint v11.8.
+
+    Returns:
+        Configured logger instance.
+    """
+    logger = logging.getLogger("credential_sanitizer")
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+
+    if logger.handlers:
+        return logger
+
+    formatter = logging.Formatter(
+        fmt='{"timestamp": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "message": "%(message)s"}',
+        datefmt="%Y-%m-%dT%H:%M:%S.%fZ"
+    )
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    log_file = Path("credential_sanitizer_audit.log")
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_file, maxBytes=10_485_760, backupCount=5, encoding="utf-8"
+    )
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    return logger
+
+
+LOGGER = _configure_logging()
 
 
 def scan_text(text: str) -> list[tuple[str, str]]:
@@ -162,13 +203,13 @@ def run_dry_run() -> bool:
     Returns:
         True if all payloads are detected, False otherwise.
     """
-    print("Running dry-run with test payloads...")
+    LOGGER.info("Running dry-run with test payloads...")
     for payload in _generate_dry_run_payloads():
         result = scan_text(payload)
         if not result:
-            print(f"FAIL: Dry-run payload missed: {payload}")
+            LOGGER.error("FAIL: Dry-run payload missed: %s", payload)
             return False
-    print("PASS: Dry-run successful.")
+    LOGGER.info("PASS: Dry-run successful.")
     return True
 
 
@@ -228,19 +269,19 @@ Examples:
                 violations = scan_file(path_str)
                 if violations:
                     for v_type, val in violations:
-                        print(f"FAIL: Found {v_type} in {path_str}")
+                        LOGGER.error("FAIL: Found %s in %s", v_type, path_str)
                     exit_code = 1
             elif path.is_dir():
                 violations = scan_directory(path_str, recursive=args.recursive)
                 if violations:
                     for file_path, v_type, val in violations:
-                        print(f"FAIL: Found {v_type} in {file_path}")
+                        LOGGER.error("FAIL: Found %s in %s", v_type, file_path)
                     exit_code = 1
             else:
-                print(f"CONFIG ERROR: Path does not exist: {path_str}")
+                LOGGER.error("CONFIG ERROR: Path does not exist: %s", path_str)
                 raise ScanExit(2)
         except (OSError, UnicodeDecodeError) as e:
-            print(f"CONFIG ERROR: Could not read {path_str}: {e}")
+            LOGGER.error("CONFIG ERROR: Could not read %s: %s", path_str, e)
             raise ScanExit(2)
             
     raise ScanExit(exit_code)
