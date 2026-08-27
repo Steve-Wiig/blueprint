@@ -74,7 +74,12 @@ TEST_PAYLOADS: Dict[str, str] = {
 
 
 class Sanitizer:
-    """Encapsulates secret detection patterns and redaction logic for isolated testing."""
+    """Encapsulates secret detection patterns and redaction logic for isolated testing.
+
+    This is the primary API for sanitization. Instantiate with custom patterns
+    or use defaults. All methods are instance methods to enable parallel use
+    with different configurations and facilitate unit testing.
+    """
 
     def __init__(self, patterns: Optional[Dict[str, PatternConfig]] = None):
         """Initialize sanitizer with custom or default patterns.
@@ -155,7 +160,6 @@ class Sanitizer:
             return CheckResult.INTERNAL_ERROR
         except Exception:
             return CheckResult.PAYLOAD_MISSING
-
 
 _default_sanitizer: Optional[Sanitizer] = None
 
