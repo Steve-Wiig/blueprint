@@ -1,0 +1,92 @@
+[
+  {
+    "file": "memory/retention.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 33,
+      "line_end": 68,
+      "description": "archive_partition function does too much: creates dirs, runs subprocess, drops table. Hard to test and reuse.",
+      "suggestion": "Split into: create_archive_dir(), export_partition_to_jsonl(), compress_file(), drop_partition().",
+      "impact": "low",
+      "effort": "medium"
+    },
+    "attempts": 5,
+    "deferred_reason": "failed 5 attempts"
+  },
+  {
+    "file": "tools/embedding_prefix_check.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "medium",
+      "line_start": 31,
+      "line_end": 31,
+      "description": "Module-level mutable global 'calls' list violates v11.7 'No module-level side effects' rule",
+      "suggestion": "Move calls list inside run_verification function or encapsulate in a verification context class",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 5,
+    "deferred_reason": "failed 5 attempts"
+  },
+  {
+    "file": "tools/embedding_prefix_check.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "medium",
+      "line_start": 35,
+      "line_end": 50,
+      "description": "fake_encode function defined at module level with dependency on global 'calls' list; pollutes production namespace despite being test-only utility",
+      "suggestion": "Move fake_encode inside run_verification as a local function, or create a test-specific module. For CI tool, define it locally within the verification function",
+      "impact": "medium",
+      "effort": "small"
+    },
+    "attempts": 5,
+    "deferred_reason": "failed 5 attempts"
+  },
+  {
+    "file": "tools/hash_chain_concurrency_check.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "medium",
+      "line_start": 158,
+      "line_end": 158,
+      "description": "Uses `sys.exit(main())` in `__main__` block. Blueprint AMEND-64 prohibits sys.exit() in library code, requiring RuntimeError instead. While this is a CLI script, the blueprint classifies it as library code.",
+      "suggestion": "Replace with `raise RuntimeError(main())` or restructure to return exit code and let caller handle exit. For CLI scripts, consider if this rule applies.",
+      "impact": "medium",
+      "effort": "trivial"
+    },
+    "attempts": 5,
+    "deferred_reason": "failed 5 attempts"
+  },
+  {
+    "file": "tools/hash_chain_concurrency_check.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 67,
+      "line_end": 90,
+      "description": "Worker function mutates shared `results` list via side effect instead of returning value. Makes testing harder and obscures data flow.",
+      "suggestion": "Return the index from worker and collect via `future.result()`: `results = [f.result() for f in futures]`.",
+      "impact": "low",
+      "effort": "small"
+    },
+    "attempts": 5,
+    "deferred_reason": "failed 5 attempts"
+  },
+  {
+    "file": "engine/slm_triage_worker.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "medium",
+      "line_start": 26,
+      "line_end": 65,
+      "description": "get_db() handles connection, schema migration, index management, and data migration. Violates single responsibility; hard to test and debug.",
+      "suggestion": "Split into: connect_db(), migrate_schema(), create_indexes(). Call migration once at startup, not per connection.",
+      "impact": "medium",
+      "effort": "medium"
+    },
+    "attempts": 5,
+    "deferred_reason": "failed 5 attempts"
+  }
+]
