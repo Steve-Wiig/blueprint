@@ -54,7 +54,7 @@ def _release_lock(cur: Optional[psycopg2.extensions.cursor], lock_id: int) -> No
             pass
 
 
-def _get_chain_tail(cur: psycopg2.extensions.cursor) -> Tuple[int, str]:
+def get_last_chain_state(cur: psycopg2.extensions.cursor) -> Tuple[int, str]:
     cur.execute(
         """
         SELECT COALESCE((
@@ -70,7 +70,7 @@ def _get_chain_tail(cur: psycopg2.extensions.cursor) -> Tuple[int, str]:
     return row[0], row[1]
 
 
-def _create_pending_cursor(conn: psycopg2.extensions.connection) -> psycopg2.extensions.cursor:
+def create_pending_cursor(conn: psycopg2.extensions.connection) -> psycopg2.extensions.cursor:
     pending_cur = conn.cursor(name="pending_cursor", withhold=True)
     pending_cur.execute(
         """
@@ -83,7 +83,7 @@ def _create_pending_cursor(conn: psycopg2.extensions.connection) -> psycopg2.ext
     return pending_cur
 
 
-def _fetch_pending_batches(
+def fetch_pending_batches(
     pending_cur: psycopg2.extensions.cursor,
     batch_size: int,
 ) -> Generator[List[Tuple], None, None]:
@@ -94,7 +94,7 @@ def _fetch_pending_batches(
         yield pending_rows
 
 
-def _compute_chain_links(
+def compute_chain_hashes(
     batch: List[Tuple],
     last_seq: int,
     prev_hash: str,
@@ -119,7 +119,7 @@ def _compute_chain_links(
     return rows_to_insert, last_seq, prev_hash
 
 
-def _insert_batch(cur: psycopg2.extensions.cursor, rows_to_insert: List[Tuple]) -> None:
+def insert_chain_links(cur: psycopg2.extensions.cursor, rows_to_insert: List[Tuple]) -> None:
     insert_query = """
         INSERT INTO audit_chain
         (chain_seq, table_name, row_id, row_ts, canonical_payload_sha256,
@@ -145,34 +145,32 @@ def _close_connection_safely(conn: Optional[psycopg2.extensions.connection]) -> 
             pass
 
 
-def seal_audit_chain(
-    db_config: Dict[str, Any],
+def seal_audit_chain_with_connection(
+    conn: psycopg2.extensions.connection,
     lock_id: int = DEFAULT_LOCK_ID,
     batch_size: int = DEFAULT_BATCH_SIZE,
 ) -> None:
-    conn = None
     cur = None
     pending_cur = None
     lock_acquired = False
     last_seq = 0
     pending_count = 0
     try:
-        conn = psycopg2.connect(**db_config)
         cur = conn.cursor()
 
         _acquire_lock(cur, lock_id)
         lock_acquired = True
 
-        last_seq, prev_hash = _get_chain_tail(cur)
+        last_seq, prev_hash = get_last_chain_state(cur)
 
-        pending_cur = _create_pending_cursor(conn)
+        pending_cur = create_pending_cursor(conn)
 
-        for batch in _fetch_pending_batches(pending_cur, batch_size):
+        for batch in fetch_pending_batches(pending_cur, batch_size):
             pending_count = len(batch)
-            rows_to_insert, last_seq, prev_hash = _compute_chain_links(
+            rows_to_insert, last_seq, prev_hash = compute_chain_hashes(
                 batch, last_seq, prev_hash
             )
-            _insert_batch(cur, rows_to_insert)
+            insert_chain_links(cur, rows_to_insert)
             conn.commit()
 
     except Exception as e:
@@ -193,6 +191,18 @@ def seal_audit_chain(
         _release_lock(cur, lock_id) if lock_acquired else None
         _close_cursor_safely(pending_cur)
         _close_cursor_safely(cur)
+
+
+def seal_audit_chain(
+    db_config: Dict[str, Any],
+    lock_id: int = DEFAULT_LOCK_ID,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+) -> None:
+    conn = None
+    try:
+        conn = psycopg2.connect(**db_config)
+        seal_audit_chain_with_connection(conn, lock_id, batch_size)
+    finally:
         _close_connection_safely(conn)
 
 
