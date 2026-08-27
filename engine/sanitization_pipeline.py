@@ -128,6 +128,9 @@ ALLOWLIST_PATTERNS_COMPILED: AllowlistPatternDict = {
 # Pre-compiled token pattern for entropy analysis (uses configurable MIN_TOKEN_LENGTH)
 TOKEN_PATTERN: Pattern[str] = re.compile(rf'[a-zA-Z0-9+/=]{{{MIN_TOKEN_LENGTH},}}')
 
+import functools
+
+@functools.lru_cache(maxsize=1024)
 def calculate_entropy(data: str) -> float:
     """Calculates the Shannon entropy of a given string.
 
@@ -151,7 +154,6 @@ def calculate_entropy(data: str) -> float:
         p_x = count / length
         entropy += -p_x * math.log(p_x, 2)
     return entropy
-
 def _check_allowlist(token: str) -> bool:
     """Checks if a token matches any allowlisted pattern.
 
