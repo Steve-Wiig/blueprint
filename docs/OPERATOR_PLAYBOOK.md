@@ -119,3 +119,49 @@ The code the AI writes is the output. The architecture and safety discipline are
 
 ---
 v1.0 — LOCAL-SOC-SLM overnight pipeline operator lessons
+
+---
+
+## 8. Session Addenda — Additional Failure Modes (discovered while operating the drain)
+
+### 8.1 Duplicate advisories in the backlog
+The backlog can contain TWIN copies of the same advisory. Clearing by list index
+removes one copy and leaves the twin, which the drain keeps retrying (burning quota).
+Always clear by description-substring match, never by index.
+
+### 8.2 Queue-file race condition
+The drain holds the backlog in memory and rewrites the JSON after each item. Editing
+fix_backlog.json or fix_backlog_deferred.json while the drain runs gets OVERWRITTEN on
+its next save. Queue surgery requires: stop drain -> edit -> commit -> relaunch.
+
+### 8.3 The config-class trap (does NOT fix module-level side effects)
+Wrapping os.environ.get() in a class with class attributes still evaluates the calls at
+class-definition time, which is still module load. To make env reads truly lazy, use a
+cached function:
+
+    from functools import lru_cache
+
+    @lru_cache(maxsize=1)
+    def _config():
+        return {"archive_base": os.environ.get("ARCHIVE_BASE", "/archive/iocs")}
+
+### 8.4 Global identifier replacement corrupts definitions
+str.replace("ARCHIVE_BASE", "Cfg.ARCHIVE_BASE") rewrites the symbol inside its OWN
+definition and inside docstrings, producing a NameError on import. NEVER globally replace
+a bare identifier. Anchor replacements on full, unique lines or statements.
+
+### 8.5 Reuse proven entry points, don't reinvent
+A custom wrapper that hand-rolled budget/key init crashed silently where the battle-tested
+--drain-backlog CLI worked. Prefer the CLI paths that already ran successfully overnight.
+
+### 8.6 Silent background crashes
+An empty log usually means the job crashed during startup AND stdout was buffered. Launch
+with PYTHONUNBUFFERED=1, then sleep a few seconds and tail to confirm it entered its main
+loop before walking away.
+
+### 8.7 .env is not the shell environment
+nohup subshells do not inherit .env automatically. Run 'set -a; source .env; set +a' in the
+SAME shell before launching, or API keys arrive empty and every call returns 401.
+
+---
+*Addenda captured 2026-08-27 during hard-items triage session*
