@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import signal
 import sqlite3
 import time
@@ -10,7 +11,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from enum import Enum
 from functools import wraps
-from typing import Tuple, Dict, List, Optional, Any, Callable
+from typing import Tuple, Dict, List, Optional, Any, Callable, Union
 
 import psycopg2
 
@@ -58,22 +59,56 @@ class MockEnrichmentProvider(EnrichmentProvider):
         return {"status": "enriched", "data": f"mock_data_for_{ioc}"}
 
 
-def sanitize(data: Dict[str, Any], sensitive_patterns: Optional[List] = None) -> Dict[str, Any]:
+_HIGH_ENTROPY_PATTERN = re.compile(r'[A-Za-z0-9+/=]{32,}')
+_DEFAULT_SENSITIVE_PATTERNS = [
+    'secret', 'token', 'password', 'key', 'api_key', 'apikey',
+    'access_token', 'refresh_token', 'client_secret', 'private_key',
+    _HIGH_ENTROPY_PATTERN
+]
+_ENV_SENSITIVE_PATTERNS = 'SENSITIVE_PATTERNS'
+
+
+def _load_sensitive_patterns_from_env() -> List[Union[str, re.Pattern]]:
+    """Load sensitive patterns from environment variable.
+
+    The environment variable should contain a JSON array of strings.
+    Strings starting with 'regex:' are compiled as regex patterns.
+
+    Returns:
+        List of pattern strings and compiled regex patterns.
+    """
+    env_value = os.getenv(_ENV_SENSITIVE_PATTERNS)
+    if not env_value:
+        return []
+    try:
+        patterns = json.loads(env_value)
+        result = []
+        for pat in patterns:
+            if isinstance(pat, str) and pat.startswith('regex:'):
+                result.append(re.compile(pat[6:]))
+            else:
+                result.append(pat)
+        return result
+    except (json.JSONDecodeError, re.error) as e:
+        logger.warning("Failed to parse SENSITIVE_PATTERNS env var: %s", e)
+        return []
+
+
+def sanitize(data: Dict[str, Any], sensitive_patterns: Optional[List[Union[str, re.Pattern]]] = None) -> Dict[str, Any]:
     """Recursively sanitize a dictionary by redacting sensitive fields.
 
     Args:
         data: The dictionary to sanitize.
         sensitive_patterns: List of substring patterns or compiled regex objects
-            to detect sensitive keys. If None, uses default organizational patterns.
+            to detect sensitive keys. If None, uses default organizational patterns
+            plus any patterns loaded from the SENSITIVE_PATTERNS environment variable.
 
     Returns:
         A new dictionary with sensitive values redacted.
     """
     if sensitive_patterns is None:
-        sensitive_patterns = [
-            'secret', 'token', 'password', 'key', 'api_key', 'apikey',
-            'access_token', 'refresh_token', 'client_secret', 'private_key'
-        ]
+        sensitive_patterns = _DEFAULT_SENSITIVE_PATTERNS.copy()
+        sensitive_patterns.extend(_load_sensitive_patterns_from_env())
 
     def _is_sensitive(key: str) -> bool:
         for pat in sensitive_patterns:
