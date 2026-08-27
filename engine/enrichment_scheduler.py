@@ -2,15 +2,15 @@ import argparse
 import hashlib
 import json
 import logging
-import re
 import signal
 import sqlite3
 import time
+import re
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from enum import Enum
 from functools import wraps
-from typing import Tuple, Dict, List, Optional, Any, Callable, Pattern, Union
+from typing import Tuple, Dict, List, Optional, Any, Callable
 
 import psycopg2
 
@@ -58,52 +58,38 @@ class MockEnrichmentProvider(EnrichmentProvider):
         return {"status": "enriched", "data": f"mock_data_for_{ioc}"}
 
 
-_DEFAULT_SENSITIVE_PATTERNS: List[Union[str, Pattern]] = [
-    'secret', 'token', 'password', 'key', 'api_key', 'apikey',
-    'access_token', 'refresh_token', 'client_secret', 'private_key',
-    re.compile(r'[A-Za-z0-9+/]{40,}={0,2}'),  # Base64-like high entropy
-    re.compile(r'[A-Fa-f0-9]{32,}'),  # Hex high entropy
-    re.compile(r'sk-[A-Za-z0-9]{32,}'),  # OpenAI-style keys
-    re.compile(r'gh[pousr]_[A-Za-z0-9]{36,}'),  # GitHub tokens
-    re.compile(r'xox[baprs]-[A-Za-z0-9-]{10,}'),  # Slack tokens
-]
-
-
-def sanitize(
-    data: Dict[str, Any],
-    sensitive_patterns: Optional[List[Union[str, Pattern]]] = None
-) -> Dict[str, Any]:
+def sanitize(data: Dict[str, Any], sensitive_patterns: Optional[List] = None) -> Dict[str, Any]:
     """Recursively sanitize a dictionary by redacting sensitive fields.
 
     Args:
         data: The dictionary to sanitize.
-        sensitive_patterns: Optional list of patterns (strings or compiled regexes)
-            to match against keys. Defaults to built-in patterns including
-            high-entropy token detection regexes.
+        sensitive_patterns: List of substring patterns or compiled regex objects
+            to detect sensitive keys. If None, uses default organizational patterns.
 
     Returns:
         A new dictionary with sensitive values redacted.
     """
     if sensitive_patterns is None:
-        sensitive_patterns = _DEFAULT_SENSITIVE_PATTERNS
+        sensitive_patterns = [
+            'secret', 'token', 'password', 'key', 'api_key', 'apikey',
+            'access_token', 'refresh_token', 'client_secret', 'private_key'
+        ]
 
-    compiled_patterns: List[Pattern] = []
-    string_patterns: List[str] = []
-    for pattern in sensitive_patterns:
-        if isinstance(pattern, str):
-            string_patterns.append(pattern.lower())
-        else:
-            compiled_patterns.append(pattern)
+    def _is_sensitive(key: str) -> bool:
+        for pat in sensitive_patterns:
+            if isinstance(pat, re.Pattern):
+                if pat.search(key):
+                    return True
+            else:
+                if pat in key.lower():
+                    return True
+        return False
 
     def _sanitize(obj: Any) -> Any:
         if isinstance(obj, dict):
             result = {}
             for k, v in obj.items():
-                key_lower = k.lower()
-                is_sensitive = any(p in key_lower for p in string_patterns)
-                if not is_sensitive:
-                    is_sensitive = any(p.search(k) for p in compiled_patterns)
-                if is_sensitive:
+                if _is_sensitive(k):
                     result[k] = "***REDACTED***"
                 else:
                     result[k] = _sanitize(v)
