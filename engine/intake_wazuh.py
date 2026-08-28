@@ -7,16 +7,39 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
-DB_PATH = os.getenv('TRIAGE_DB_PATH', '/var/lib/local-soc/triage_queue.db')
-LOG_FILE = os.getenv('TRIAGE_LOG_FILE', '/var/log/local-soc/intake.log')
+try:
+    from platformdirs import user_data_dir, user_log_dir
+    HAS_PLATFORMDIRS = True
+except ImportError:
+    HAS_PLATFORMDIRS = False
 
-logging.basicConfig(filename=LOG_FILE, level=logging.INFO)
+DB_PATH = os.getenv('TRIAGE_DB_PATH', './data/triage_queue.db')
+LOG_FILE = os.getenv('TRIAGE_LOG_FILE', './logs/intake.log')
+
+_connection: sqlite3.Connection | None = None
 
 STATUS_PENDING = 'pending'
 
 ALLOWED_PAYLOAD_KEYS = {'agent', 'rule_id', 'description', 'src_ip', 'dst_ip'}
 
-_connection: sqlite3.Connection | None = None
+def _load_config() -> None:
+    global DB_PATH, LOG_FILE
+    if HAS_PLATFORMDIRS:
+        data_dir = user_data_dir('local-soc', 'local-soc')
+        log_dir = user_log_dir('local-soc', 'local-soc')
+    else:
+        data_dir = os.path.dirname(DB_PATH) or '.'
+        log_dir = os.path.dirname(LOG_FILE) or '.'
+    
+    os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(log_dir, exist_ok=True)
+    
+    if not os.path.isabs(DB_PATH):
+        DB_PATH = os.path.join(data_dir, os.path.basename(DB_PATH))
+    if not os.path.isabs(LOG_FILE):
+        LOG_FILE = os.path.join(log_dir, os.path.basename(LOG_FILE))
+    
+    logging.basicConfig(filename=LOG_FILE, level=logging.INFO)
 
 def _get_connection() -> sqlite3.Connection:
     global _connection
@@ -65,6 +88,7 @@ def _init_triage_table(conn: sqlite3.Connection) -> None:
         if cursor.fetchone() is None:
             conn.execute(f"CREATE INDEX {index_name} ON triage_queue({cols})")
     conn.commit()
+
 def _audit_log(conn: sqlite3.Connection, event_type: str, alert_id: str, details: dict[str, Any]) -> None:
     conn.execute(
         "INSERT INTO audit_log (event_type, alert_id, timestamp, details) VALUES (?, ?, ?, ?)",
@@ -142,6 +166,7 @@ def intake_adapter(raw_payload: str) -> int:
         raise RuntimeError("Library code called exit(1)")
 
 if __name__ == "__main__":
+    _load_config()
     try:
         input_data = sys.stdin.read()
         status_code = intake_adapter(input_data)
