@@ -114,7 +114,6 @@ def verify_sanitization(payload: Any, context: str = "payload") -> None:
                 f"(pattern: {pattern.pattern}, match: {match.group()[:50]})"
             )
 
-
 def build_payload(raw_data: Any, mode: str) -> Any:
     """Build and sanitize the case payload for TheHive API.
 
