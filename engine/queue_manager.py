@@ -2,6 +2,7 @@ from pathlib import Path
 import logging
 import sqlite3
 from typing import Optional
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -19,54 +20,6 @@ SEVERITY_MEDIUM = 'medium'
 SEVERITY_LOW = 'low'
 SEVERITY_INFORMATIONAL = 'informational'
 
-
-import logging
-import sqlite3
-from typing import Optional
-from datetime import datetime, timezone
-
-logger = logging.getLogger(__name__)
-STATUS_PENDING = 'pending'
-STATUS_PROCESSING = 'processing'
-STATUS_COMPLETED = 'completed'
-STATUS_FAILED = 'failed'
-STATUS_SHED = 'shed'
-SEVERITY_CRITICAL = 'critical'
-SEVERITY_HIGH = 'high'
-SEVERITY_MEDIUM = 'medium'
-SEVERITY_LOW = 'low'
-SEVERITY_INFORMATIONAL = 'informational'
-
-import logging
-import sqlite3
-from typing import Optional
-from datetime import datetime, timezone
-logger = logging.getLogger(__name__)
-STATUS_PENDING = 'pending'
-STATUS_PROCESSING = 'processing'
-STATUS_COMPLETED = 'completed'
-STATUS_FAILED = 'failed'
-STATUS_SHED = 'shed'
-SEVERITY_CRITICAL = 'critical'
-SEVERITY_HIGH = 'high'
-SEVERITY_MEDIUM = 'medium'
-SEVERITY_LOW = 'low'
-SEVERITY_INFORMATIONAL = 'informational'
-import logging
-import sqlite3
-from typing import Optional
-from datetime import datetime, timezone
-logger = logging.getLogger(__name__)
-STATUS_PENDING = 'pending'
-STATUS_PROCESSING = 'processing'
-STATUS_COMPLETED = 'completed'
-STATUS_FAILED = 'failed'
-STATUS_SHED = 'shed'
-SEVERITY_CRITICAL = 'critical'
-SEVERITY_HIGH = 'high'
-SEVERITY_MEDIUM = 'medium'
-SEVERITY_LOW = 'low'
-SEVERITY_INFORMATIONAL = 'informational'
 class TriageQueueManager:
     """
     Manages a triage queue stored in SQLite.
@@ -356,55 +309,31 @@ class TriageQueueManager:
         job_id : int
             Identifier of the job to complete.
         success : bool, optional
-            Whether the job succeeded. Defaults to True.
-        reason : Optional[str], optional
-            Reason for failure if success is False.
-        changed_by : Optional[str], optional
-            Identifier of the entity performing the completion. Defaults to 'system'.
+            Whether the job completed successfully. Defaults to True.
+        reason : str, optional
+            Reason for completion or failure.
+        changed_by : str, optional
+            Identifier of the user or system that changed the job status.
         """
-        actor = changed_by or 'system'
-        now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
-        # Fetch job details
-        job = self.cursor.execute(
-            "SELECT severity, attempts FROM triage_queue WHERE id = ?", (job_id,)
-        ).fetchone()
-        if not job:
-            logger.warning("Job %d not found for completion", job_id)
-            return
-        severity, attempts = job
-        if success:
-            new_status = 'completed'
-        else:
-            new_status = 'failed' if attempts >= self.max_attempts else 'pending'
-
-        # Validate approval for critical jobs
-        if severity == 'critical' and new_status in ('completed', 'failed'):
-            if not self._check_approval(job_id, new_status):
-                raise RuntimeError(f"Approval required for critical job {job_id} to transition to {new_status}")
-
-        if success:
+        status = STATUS_COMPLETED if success else STATUS_FAILED
+        self.cursor.execute(
+            """
+            UPDATE triage_queue
+            SET status = ?,
+                completed_at = CURRENT_TIMESTAMP,
+                last_modified_by = COALESCE(?, 'system')
+            WHERE id = ?
+            """,
+            (status, changed_by, job_id),
+        )
+        if reason:
             self.cursor.execute(
                 """
                 UPDATE triage_queue
-                SET status = 'completed',
-                    completed_at = ?,
-                    last_modified_by = ?
+                SET fail_reason = ?
                 WHERE id = ?
                 """,
-                (now, actor, job_id),
+                (reason, job_id),
             )
-            logger.info("Job %d completed successfully by %s", job_id, actor)
-        else:
-            self.cursor.execute(
-                """
-                UPDATE triage_queue
-                SET status = CASE WHEN attempts >= ? THEN 'failed' ELSE 'pending' END,
-                    completed_at = ?,
-                    shed_reason = ?,
-                    last_modified_by = ?
-                WHERE id = ?
-                """,
-                (self.max_attempts, now, reason or 'unspecified', actor, job_id),
-            )
-            logger.warning("Job %d marked as failed by %s: %s", job_id, actor, reason or 'unspecified')
         self.conn.commit()
+        logger.info("Job %d marked as %s", job_id, status)
