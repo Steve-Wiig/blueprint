@@ -94,7 +94,6 @@ def _load_sensitive_patterns_from_env() -> List[Union[str, re.Pattern]]:
         logger.warning("Failed to parse SENSITIVE_PATTERNS env var: %s", e)
         return []
 
-
 def sanitize(data: Dict[str, Any], sensitive_patterns: Optional[List[Union[str, re.Pattern]]] = None) -> Dict[str, Any]:
     """Recursively sanitize a dictionary by redacting sensitive fields.
 
