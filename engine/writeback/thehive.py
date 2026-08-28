@@ -236,7 +236,6 @@ def main() -> Union[str, int]:
     except RuntimeError:
         return 1
 
-
 def run_sanitization_tests() -> bool:
     """Run unit tests for sanitization verification.
 
