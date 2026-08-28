@@ -168,26 +168,25 @@ class APIBudgetManager:
         if provider != 'groq':
             return self.can_proceed(provider)
         
-        self.load_data()
         now = datetime.now()
-        calls = self.data.get(provider, [])
+        calls = list(self._usage.get(provider, deque()))
         limits = self.get_limits_for_model(model)
         
         # Check per-minute
         minute_cutoff = now - timedelta(minutes=1)
-        minute_calls = [c for c in calls if datetime.fromisoformat(c) > minute_cutoff]
+        minute_calls = [c for c in calls if c > minute_cutoff]
         if len(minute_calls) >= limits['per_minute']:
             return False
         
         # Check per-hour
         hour_cutoff = now - timedelta(hours=1)
-        hour_calls = [c for c in calls if datetime.fromisoformat(c) > hour_cutoff]
+        hour_calls = [c for c in calls if c > hour_cutoff]
         if len(hour_calls) >= limits['per_hour']:
             return False
         
         # Check per-day
         day_cutoff = now - timedelta(hours=24)
-        day_calls = [c for c in calls if datetime.fromisoformat(c) > day_cutoff]
+        day_calls = [c for c in calls if c > day_cutoff]
         if len(day_calls) >= limits['per_day']:
             return False
         
@@ -237,8 +236,7 @@ class APIBudgetManager:
         """Exact seconds until a slot frees in a sliding window (0.0 if open)."""
         now = datetime.now()
         cutoff = now - timedelta(seconds=window_seconds)
-        stamps = [datetime.fromisoformat(c) for c in self.data.get(provider, [])
-                  if datetime.fromisoformat(c) > cutoff]
+        stamps = [ts for ts in self._usage.get(provider, deque()) if ts > cutoff]
         if len(stamps) < max_calls:
             return 0.0
         oldest = min(stamps)

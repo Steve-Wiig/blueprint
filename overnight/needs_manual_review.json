@@ -15,36 +15,6 @@
     "deferred_reason": "failed 5 attempts"
   },
   {
-    "file": "tools/embedding_prefix_check.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "medium",
-      "line_start": 31,
-      "line_end": 31,
-      "description": "Module-level mutable global 'calls' list violates v11.7 'No module-level side effects' rule",
-      "suggestion": "Move calls list inside run_verification function or encapsulate in a verification context class",
-      "impact": "medium",
-      "effort": "small"
-    },
-    "attempts": 5,
-    "deferred_reason": "failed 5 attempts"
-  },
-  {
-    "file": "tools/embedding_prefix_check.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 35,
-      "line_end": 50,
-      "description": "fake_encode function defined at module level with dependency on global 'calls' list; pollutes production namespace despite being test-only utility",
-      "suggestion": "Move fake_encode inside run_verification as a local function, or create a test-specific module. For CI tool, define it locally within the verification function",
-      "impact": "medium",
-      "effort": "small"
-    },
-    "attempts": 5,
-    "deferred_reason": "failed 5 attempts"
-  },
-  {
     "file": "tools/hash_chain_concurrency_check.py",
     "issue": {
       "category": "blueprint_compliance",
@@ -88,5 +58,215 @@
     },
     "attempts": 5,
     "deferred_reason": "failed 5 attempts"
+  },
+  {
+    "file": "engine/enrichment_scheduler.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 1,
+      "line_end": 20,
+      "description": "Imports psycopg2 at module level - hard dependency even if only SQLite is used in tests, violates dependency isolation",
+      "suggestion": "Move psycopg2 import inside get_db_connections or behind try/except with helpful error message. Allows testing with only sqlite3.",
+      "impact": "low",
+      "effort": "trivial"
+    },
+    "attempts": 7,
+    "deferred_reason": "failed 7 attempts"
+  },
+  {
+    "file": "engine/hash_chain_sealer.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 17,
+      "line_end": 38,
+      "description": "Custom JsonFormatter duplicates functionality available in python-json-logger or structlog. Adds maintenance burden and potential bugs (e.g., missing standard fields).",
+      "suggestion": "Replace with: import pythonjsonlogger.jsonlogger.JsonFormatter or structlog. Configure via dictConfig. Remove custom class.",
+      "impact": "low",
+      "effort": "small"
+    },
+    "attempts": 7,
+    "deferred_reason": "failed 7 attempts"
+  },
+  {
+    "file": "engine/queue_manager.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "medium",
+      "line_start": 40,
+      "line_end": 42,
+      "description": "lease_interval, max_attempts, emergency_depth hardcoded in __init__; prevents environment-specific tuning and testing",
+      "suggestion": "Add optional parameters to __init__ with defaults; load from config object or environment variables",
+      "impact": "medium",
+      "effort": "trivial"
+    },
+    "attempts": 7,
+    "deferred_reason": "failed 7 attempts"
+  },
+  {
+    "file": "engine/queue_manager.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 47,
+      "line_end": 124,
+      "description": "Large raw SQL script in _init_schema() makes schema migrations difficult; no version tracking",
+      "suggestion": "Extract schema to separate .sql files; add schema_version table and migration runner for future changes",
+      "impact": "low",
+      "effort": "medium"
+    },
+    "attempts": 7,
+    "deferred_reason": "failed 7 attempts"
+  },
+  {
+    "file": "engine/queue_manager.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 1,
+      "line_end": 15,
+      "description": "Status and severity constants defined as module-level strings; no enum type safety or IDE autocomplete",
+      "suggestion": "Convert to Python enum.Enum classes (Status, Severity) for type checking and autocomplete",
+      "impact": "low",
+      "effort": "small"
+    },
+    "attempts": 7,
+    "deferred_reason": "failed 7 attempts"
+  },
+  {
+    "file": "engine/queue_manager.py",
+    "issue": {
+      "category": "performance",
+      "severity": "low",
+      "line_start": 169,
+      "line_end": 200,
+      "description": "enqueue() executes SELECT on counter table then INSERT; could combine with trigger logic to avoid round-trip",
+      "suggestion": "Remove explicit counter SELECT; rely on trigger-maintained counter for depth check via subquery in INSERT",
+      "impact": "low",
+      "effort": "medium"
+    },
+    "attempts": 7,
+    "deferred_reason": "failed 7 attempts"
+  },
+  {
+    "file": "engine/sanitization_pipeline.py",
+    "issue": {
+      "category": "performance",
+      "severity": "medium",
+      "line_start": 192,
+      "line_end": 215,
+      "description": "apply_quarantine_policy() iterates all token matches with finditer() even for non-analytical fields. The is_analytical check at line 195 happens after payload length check at line 198, wasting cycles on large non-analytical payloads.",
+      "suggestion": "Move is_analytical check to line 193 (before any processing). Return early if not analytical. Also consider compiling TOKEN_PATTERN with re.DOTALL if newlines should be included in tokens.",
+      "impact": "medium",
+      "effort": "trivial"
+    },
+    "attempts": 7,
+    "deferred_reason": "failed 7 attempts"
+  },
+  {
+    "file": "engine/sanitization_pipeline.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 8,
+      "line_end": 10,
+      "description": "Type aliases RegexPatternDict, CompiledRegexDict, AllowlistPatternDict defined but never used in type annotations. Code uses explicit Dict[str, Pattern[str]] instead, creating inconsistency and dead code.",
+      "suggestion": "Either use the aliases consistently (e.g., REGEX_RULES: RegexPatternDict = {...}) or remove the unused aliases.",
+      "impact": "low",
+      "effort": "trivial"
+    },
+    "attempts": 7,
+    "deferred_reason": "failed 7 attempts"
+  },
+  {
+    "file": "engine/sanitization_pipeline.py",
+    "issue": {
+      "category": "performance",
+      "severity": "low",
+      "line_start": 217,
+      "line_end": 233,
+      "description": "detect_high_entropy_tokens() calls _should_quarantine() which calls calculate_entropy() and _check_allowlist() for every token match. No caching of entropy/allowlist results for repeated tokens in same payload.",
+      "suggestion": "Add LRU cache to calculate_entropy and _check_allowlist (functools.lru_cache(maxsize=1024)). Since tokens repeat in logs, this avoids redundant computation.",
+      "impact": "low",
+      "effort": "small"
+    },
+    "attempts": 7,
+    "deferred_reason": "failed 7 attempts"
+  },
+  {
+    "file": "engine/sanitization_pipeline.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "informational",
+      "line_start": 12,
+      "line_end": 64,
+      "description": "Configuration validation functions (_load_entropy_threshold, etc.) are repetitive boilerplate. Each does: get env, parse, validate range, raise ValueError. Could be consolidated into a generic validator.",
+      "suggestion": "Create a generic _load_config(name, default, parser, validator) function. Reduces ~50 lines of duplicate code and ensures consistent error messages.",
+      "impact": "low",
+      "effort": "small"
+    },
+    "attempts": 7,
+    "deferred_reason": "failed 7 attempts"
+  },
+  {
+    "file": "engine/slm_triage_worker.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "informational",
+      "line_start": 148,
+      "line_end": 151,
+      "description": "Verdict inserted into verdicts table (append-only) - compliant with Section 30. However, triage_queue updates are in-place mutations without audit trail.",
+      "suggestion": "Consider adding audit log table for status transitions (pending->processing->completed/failed) with timestamps and worker ID for traceability.",
+      "impact": "low",
+      "effort": "medium"
+    },
+    "attempts": 7,
+    "deferred_reason": "failed 7 attempts"
+  },
+  {
+    "file": "memory/embeddings.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 27,
+      "line_end": 40,
+      "description": "__init__ doesn't validate that loaded model actually produces DIMENSION-sized embeddings. Could warn or error early.",
+      "suggestion": "After loading model, test encode a dummy string and verify dimension matches self.DIMENSION",
+      "impact": "low",
+      "effort": "small"
+    },
+    "attempts": 7,
+    "deferred_reason": "failed 7 attempts"
+  },
+  {
+    "file": "memory/retention.py",
+    "issue": {
+      "category": "performance",
+      "severity": "low",
+      "line_start": 96,
+      "line_end": 102,
+      "description": "Fetches all partition names then filters in Python. Could push date filtering into SQL for efficiency.",
+      "suggestion": "Modify query to compute partition date and compare in WHERE clause, reducing data transfer.",
+      "impact": "low",
+      "effort": "small"
+    },
+    "attempts": 7,
+    "deferred_reason": "failed 7 attempts"
+  },
+  {
+    "file": "tools/queue_backpressure_check.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "informational",
+      "line_start": 17,
+      "line_end": 22,
+      "description": "ExitCode enum uses explicit integer values. Using auto() would prevent duplicate values and improve maintainability.",
+      "suggestion": "Change to: class ExitCode(Enum): SUCCESS = auto(); API_ERROR = auto(); ... and import auto from enum.",
+      "impact": "low",
+      "effort": "trivial"
+    },
+    "attempts": 7,
+    "deferred_reason": "failed 7 attempts"
   }
 ]

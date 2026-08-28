@@ -6,7 +6,9 @@
     "sys.exit() is acceptable inside the if __name__ == '__main__' CLI entry point; library functions must raise RuntimeError instead of calling sys.exit.",
     "Tests use monkeypatch.setattr on module globals. Do NOT remove a module-level global that tests patch; it breaks test isolation.",
     "Avoid premature optimization: do not add caching, lru_cache, or lookup tables unless there is genuinely repeated computation. Prefer simpler code.",
-    "Use datetime.now(timezone.utc); never datetime.utcnow()."
+    "Use datetime.now(timezone.utc); never datetime.utcnow().",
+    "pfsense_alias.py is a CLI tool. Print statements to stdout are intentional and required for shell scripting integration. Do not replace with logger.info.",
+    "Files ending in _check.py are test/verification scripts. Module-level globals, hardcoded values, and simple structures are acceptable. Do not flag them for architectural refactoring."
   ],
   "retention.py": [
     "ARCHIVE_BASE, CMR_MOUNT, ZSTD_COMMAND are monkeypatched by tests; keep them as module globals. Load env overrides via a _load_config() called only from main() so direct library calls keep monkeypatched values."
