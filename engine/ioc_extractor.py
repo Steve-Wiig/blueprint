@@ -27,22 +27,19 @@ class IOCType(Enum):
     EMAIL = "email"
 
 
-_COMBINED_RE = re.compile(
-    r"(?P<ipv4>\b(?:\d{1,3}\.){3}\d{1,3}\b)"
-    r"|(?P<domain>\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b)"
-    r"|(?P<url>https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+)"
-    r"|(?P<sha256>\b[a-fA-F0-9]{64}\b)"
-    r"|(?P<email>\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b)",
-    re.IGNORECASE,
-)
+_IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+_DOMAIN_RE = re.compile(r"\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b", re.IGNORECASE)
+_URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
+_SHA256_RE = re.compile(r"\b[a-fA-F0-9]{64}\b")
+_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 
-_GROUP_TO_IOC = {
-    "ipv4": IOCType.IPV4,
-    "domain": IOCType.DOMAIN,
-    "url": IOCType.URL,
-    "sha256": IOCType.SHA256,
-    "email": IOCType.EMAIL,
-}
+_IOC_PATTERNS = [
+    (IOCType.IPV4, _IPV4_RE),
+    (IOCType.DOMAIN, _DOMAIN_RE),
+    (IOCType.URL, _URL_RE),
+    (IOCType.SHA256, _SHA256_RE),
+    (IOCType.EMAIL, _EMAIL_RE),
+]
 
 
 def _extract_alert_id(alert_json: Dict[str, Any]) -> str:
@@ -64,12 +61,9 @@ def extract_iocs_from_text(text: str) -> Dict[IOCType, set]:
         Dictionary mapping IOCType to set of matched values.
     """
     matches_by_type: Dict[IOCType, set] = {ioc_type: set() for ioc_type in IOCType}
-    for match in _COMBINED_RE.finditer(text):
-        group_name = match.lastgroup
-        if group_name:
-            ioc_type = _GROUP_TO_IOC[group_name]
-            value = match.group(group_name)
-            matches_by_type[ioc_type].add(value)
+    for ioc_type, pattern in _IOC_PATTERNS:
+        for match in pattern.finditer(text):
+            matches_by_type[ioc_type].add(match.group(0))
     return matches_by_type
 
 
