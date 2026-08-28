@@ -197,12 +197,15 @@ def run_retention(db_url: str, retention_days: int = None, max_workers: int = 4,
             cutoff_date = cutoff.date()
             cur.execute("""
                 SELECT relname FROM pg_class 
-                WHERE relname ~ '^iocs_\d{4}_\d{2}_\d{2}$'
+                WHERE relname LIKE 'iocs_%' 
                 AND relkind = 'r'
                 AND relnamespace = 'public'::regnamespace
                 AND to_date(substring(relname from 6), 'YYYY_MM_DD') < %s;
             """, (cutoff_date,))
-            partitions_to_archive = [row[0] for row in cur.fetchall()]
+            partitions_to_archive = [
+                row[0] for row in cur.fetchall()
+                if isinstance(row[0], str) and row[0].startswith('iocs_')
+            ]
         
         conn.close()
         
