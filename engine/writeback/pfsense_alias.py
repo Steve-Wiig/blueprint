@@ -110,7 +110,6 @@ def rollback_plan() -> None:
     """Prints instructions for rolling back pending alias proposals."""
     print(f"{MSG_ROLLBACK_REFERENCE}: To revert, execute 'DELETE FROM {TABLE_ALIAS_PROPOSALS} WHERE status = \"{PROPOSAL_STATUS_PENDING}\"' in sqlite3.")
 
-
 def rollback_execute(approved: bool = False) -> int:
     """Executes rollback of pending alias proposals.
 
