@@ -22,6 +22,9 @@ STATUS_PENDING = 'pending'
 
 ALLOWED_PAYLOAD_KEYS = {'agent', 'rule_id', 'description', 'src_ip', 'dst_ip'}
 
+EXIT_PARSE_ERROR = 2
+EXIT_GENERAL_ERROR = 1
+
 def _load_config() -> None:
     global DB_PATH, LOG_FILE
     if HAS_PLATFORMDIRS:
@@ -173,9 +176,9 @@ if __name__ == "__main__":
         sys.exit(0)
     except RuntimeError as e:
         if "exit(2)" in str(e):
-            sys.exit(2)
-        sys.exit(1)
+            sys.exit(EXIT_PARSE_ERROR)
+        sys.exit(EXIT_GENERAL_ERROR)
     except json.JSONDecodeError:
-        sys.exit(2)
+        sys.exit(EXIT_PARSE_ERROR)
     except Exception:
-        sys.exit(1)
+        sys.exit(EXIT_GENERAL_ERROR)
