@@ -56,6 +56,15 @@ def _release_lock(cur: Optional[psycopg2.extensions.cursor], lock_id: int) -> No
 
 
 def get_last_chain_state(cur: psycopg2.extensions.cursor) -> Tuple[int, str]:
+    """Retrieve the latest chain sequence number and hash from audit_chain.
+
+    Args:
+        cur: Database cursor for executing the query.
+
+    Returns:
+        A tuple of (chain_seq, row_hash). Returns (0, GENESIS_HASH) if the
+        audit_chain table is empty.
+    """
     cur.execute(
         """
         SELECT chain_seq, row_hash
@@ -71,6 +80,17 @@ def get_last_chain_state(cur: psycopg2.extensions.cursor) -> Tuple[int, str]:
 
 
 def create_pending_cursor(conn: psycopg2.extensions.connection) -> psycopg2.extensions.cursor:
+    """Create a server-side cursor for unprocessed handoffs.
+
+    The cursor selects handoffs that have not yet been added to audit_chain,
+    ordered by timestamp then ID.
+
+    Args:
+        conn: Database connection used to create the cursor.
+
+    Returns:
+        A named, holdable cursor positioned at the first pending handoff.
+    """
     pending_cur = conn.cursor(name="pending_cursor", withhold=True)
     pending_cur.execute(
         """
@@ -87,6 +107,16 @@ def fetch_pending_batches(
     pending_cur: psycopg2.extensions.cursor,
     batch_size: int,
 ) -> Generator[List[Tuple], None, None]:
+    """Yield batches of pending handoff rows from the cursor.
+
+    Args:
+        pending_cur: Server-side cursor returned by create_pending_cursor.
+        batch_size: Maximum number of rows per batch.
+
+    Yields:
+        Lists of tuples (id, ts, payload_sha256) for each batch. Stops when
+        the cursor is exhausted.
+    """
     while True:
         pending_rows = pending_cur.fetchmany(batch_size)
         if not pending_rows:
@@ -99,6 +129,20 @@ def compute_chain_hashes(
     last_seq: int,
     prev_hash: str,
 ) -> Tuple[List[Tuple], int, str]:
+    """Compute chain hashes for a batch of handoff rows.
+
+    Each row's hash incorporates the sequence number, previous row's hash,
+    and the payload SHA256, forming a tamper-evident chain.
+
+    Args:
+        batch: List of (row_id, row_ts, payload_sha256) tuples.
+        last_seq: The last used chain sequence number.
+        prev_hash: The hash of the previous row in the chain (or GENESIS_HASH).
+
+    Returns:
+        A tuple of (rows_to_insert, new_last_seq, new_prev_hash) where
+        rows_to_insert contains tuples ready for insertion into audit_chain.
+    """
     rows_to_insert = []
     for row_id, row_ts, payload_sha in batch:
         last_seq += 1
@@ -123,6 +167,14 @@ def compute_chain_hashes(
 
 
 def insert_chain_links(cur: psycopg2.extensions.cursor, rows_to_insert: List[Tuple]) -> None:
+    """Insert computed chain links into audit_chain using bulk insert.
+
+    Args:
+        cur: Database cursor for executing the insert.
+        rows_to_insert: List of tuples matching audit_chain columns:
+            (chain_seq, table_name, row_id, row_ts, canonical_payload_sha256,
+             previous_hash, row_hash).
+    """
     insert_query = """
         INSERT INTO audit_chain
         (chain_seq, table_name, row_id, row_ts, canonical_payload_sha256,
@@ -153,6 +205,21 @@ def seal_audit_chain_with_connection(
     lock_id: int = DEFAULT_LOCK_ID,
     batch_size: int = DEFAULT_BATCH_SIZE,
 ) -> None:
+    """Seal the audit chain using an existing database connection.
+
+    Acquires an advisory lock, reads the last chain state, processes all
+    pending handoffs in batches, computes chain hashes, and inserts them
+    into audit_chain. Commits after each batch.
+
+    Args:
+        conn: Open psycopg2 connection (caller manages lifecycle).
+        lock_id: PostgreSQL advisory lock ID to serialize concurrent sealers.
+        batch_size: Number of handoffs to process per batch.
+
+    Raises:
+        RuntimeError: If any error occurs during sealing; the transaction
+            is rolled back before raising.
+    """
     @contextlib.contextmanager
     def _lock_context(cursor: psycopg2.extensions.cursor, lock_id: int) -> Iterator[None]:
         _acquire_lock(cursor, lock_id)
@@ -213,6 +280,20 @@ def seal_audit_chain(
     lock_id: int = DEFAULT_LOCK_ID,
     batch_size: int = DEFAULT_BATCH_SIZE,
 ) -> None:
+    """Open a connection and seal the audit chain.
+
+    Convenience wrapper that creates a connection from db_config, calls
+    seal_audit_chain_with_connection, and ensures the connection is closed.
+
+    Args:
+        db_config: Dictionary of psycopg2 connection parameters (dbname, user,
+            password, host, port).
+        lock_id: PostgreSQL advisory lock ID to serialize concurrent sealers.
+        batch_size: Number of handoffs to process per batch.
+
+    Raises:
+        RuntimeError: Propagated from seal_audit_chain_with_connection on failure.
+    """
     conn = None
     try:
         conn = psycopg2.connect(**db_config)
@@ -222,6 +303,18 @@ def seal_audit_chain(
 
 
 def load_config() -> Dict[str, Any]:
+    """Load configuration from environment variables.
+
+    Required: SOC_DBNAME, SOC_USER.
+    Optional: SOC_PASSWORD, SOC_HOST, SOC_PORT, SOC_BATCH_SIZE.
+
+    Returns:
+        Dictionary with keys 'db_config' (connection params dict) and
+        'batch_size' (int).
+
+    Raises:
+        RuntimeError: If required environment variables are missing.
+    """
     required_vars = ["SOC_DBNAME", "SOC_USER"]
     missing = [var for var in required_vars if not os.getenv(var)]
     if missing:
