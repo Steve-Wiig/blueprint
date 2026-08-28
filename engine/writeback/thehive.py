@@ -359,8 +359,21 @@ def main() -> Union[str, int]:
         - 4: Sanitization verification failed
     """
     args = parse_args()
-    return _default_adapter.main(args)
 
+    # Handle --test-sanitization CLI entry point for external test suite
+    if getattr(args, 'test_sanitization', False):
+        try:
+            from tests.test_thehive_writeback import run_sanitization_tests
+            success = run_sanitization_tests()
+            return 0 if success else 1
+        except ImportError:
+            print("ERROR: Test module not found. Run tests via pytest.", file=sys.stderr)
+            return 1
+        except Exception as e:
+            print(f"ERROR: Test execution failed: {e}", file=sys.stderr)
+            return 1
+
+    return _default_adapter.main(args)
 
 def run_sanitization_tests() -> bool:
     """Run unit tests for sanitization verification.
