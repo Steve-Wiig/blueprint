@@ -227,7 +227,6 @@ def check_approval_gate(key: str) -> bool:
     return not key.startswith("wazuh-internal-")
 
 
-@functools.lru_cache(maxsize=128)
 def validate_approval_token(token: str) -> bool:
     """Validates an approval token against the approval_tokens table.
 
@@ -250,7 +249,6 @@ def validate_approval_token(token: str) -> bool:
         return result is not None
     except sqlite3.Error:
         return False
-
 
 def parse_args() -> argparse.Namespace:
     """Parses command line arguments.
