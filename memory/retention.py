@@ -1,3 +1,4 @@
+from typing import Tuple
 import argparse
 import subprocess
 import sys
@@ -83,25 +84,51 @@ def check_cmr_mount() -> None:
         pass
 
 
+
+def _get_archive_paths(partition_name: str) -> Tuple[Path, Path]:
+    """Calculate the archive directory and output file path for a partition."""
+    date_part = partition_name.replace('iocs_', '')
+    archive_dir = Path(ARCHIVE_BASE) / date_part[:7]
+    output_file = archive_dir / f"{partition_name}.jsonl.zst"
+    return archive_dir, output_file
+
+def _stream_and_compress(conn: PgConnection, partition_name: str, output_file: Path) -> None:
+    """Stream partition data from Postgres and compress it with zstd."""
+    query = f"COPY (SELECT * FROM {partition_name}) TO STDOUT WITH (FORMAT JSON);"
+    with open(output_file, 'wb') as f:
+        zstd = subprocess.Popen([ZSTD_COMMAND, "--rm"], stdin=subprocess.PIPE, stdout=f)
+        try:
+            with conn.cursor() as cur:
+                cur.copy_expert(query, zstd.stdin)
+        finally:
+            zstd.stdin.close()
+            zstd.wait()
+            if zstd.returncode != 0:
+                raise Exception("zstd compression failed")
+
+def _drop_partition_table(conn: PgConnection, partition_name: str) -> None:
+    """Drop the partition table from the database."""
+    with conn.cursor() as cur:
+        cur.execute(f"DROP TABLE {partition_name};")
+    conn.commit()
+
 def archive_partition(conn: PgConnection, partition_name: str, dry_run: bool = False) -> None:
     """
     Archive a partition table to a compressed JSONL file and drop the table.
-    
+
     Uses psycopg2.copy_expert for efficient streaming without subprocess overhead.
-    
+
     Args:
         conn: Active PostgreSQL connection.
         partition_name: Name of the partition table to archive (format: iocs_YYYY_MM_DD).
         dry_run: If True, log actions without executing them.
-        
+
     Raises:
         RuntimeError: If the archiving process fails.
         Exception: If any error occurs during archiving.
     """
     try:
-        date_part = partition_name.replace('iocs_', '')
-        archive_dir = Path(ARCHIVE_BASE) / date_part[:7]
-        output_file = archive_dir / f"{partition_name}.jsonl.zst"
+        archive_dir, output_file = _get_archive_paths(partition_name)
 
         if dry_run:
             sys.stdout.write(f"[DRY-RUN] Would archive {partition_name} to {output_file}\n")
@@ -109,24 +136,8 @@ def archive_partition(conn: PgConnection, partition_name: str, dry_run: bool = F
             return
 
         archive_dir.mkdir(parents=True, exist_ok=True)
-
-        _query_template = "COPY (SELECT * FROM {table}) TO STDOUT WITH (FORMAT JSON);"
-        query = _query_template.format(table=partition_name)
-        
-        with open(output_file, 'wb') as f:
-            zstd = subprocess.Popen([ZSTD_COMMAND, "--rm"], stdin=subprocess.PIPE, stdout=f)
-            try:
-                with conn.cursor() as cur:
-                    cur.copy_expert(query, zstd.stdin)
-            finally:
-                zstd.stdin.close()
-                zstd.wait()
-                if zstd.returncode != 0:
-                    raise Exception("zstd compression failed")
-
-        with conn.cursor() as cur:
-            cur.execute(f"DROP TABLE {partition_name};")
-        conn.commit()
+        _stream_and_compress(conn, partition_name, output_file)
+        _drop_partition_table(conn, partition_name)
     except Exception as e:
         sys.stderr.write(f"Archive failed for {partition_name}: {e}\n")
         raise RuntimeError(f"Archive failed for {partition_name}: {e}") from e
