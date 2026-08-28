@@ -341,12 +341,13 @@ def _load_config() -> Dict[str, Any]:
     return {"db_config": db_config, "batch_size": batch_size}
 
 def configure_logging() -> None:
+    root_logger = logging.getLogger()
+    if root_logger.handlers:
+        return
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(JsonFormatter())
-    root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
     root_logger.addHandler(handler)
-
 
 def main() -> None:
     configure_logging()
