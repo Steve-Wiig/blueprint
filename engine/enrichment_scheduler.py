@@ -14,7 +14,10 @@ from enum import Enum
 from functools import wraps
 from typing import Tuple, Dict, List, Optional, Any, Callable, Union
 
-import psycopg2
+try:
+    import psycopg2
+except ImportError:
+    psycopg2 = None
 
 
 logger = logging.getLogger(__name__)
@@ -148,7 +151,7 @@ def sanitize(data: Dict[str, Any], sensitive_patterns: Optional[List[Union[str, 
     return _sanitize(data)
 
 
-def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensions.connection, sqlite3.Connection]:
+def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[Any, sqlite3.Connection]:
     """Establishes connections to PostgreSQL and SQLite databases.
 
     Note: This function must NOT be called at module level as it would create
@@ -163,6 +166,8 @@ def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensio
         A tuple containing the PostgreSQL connection and the SQLite connection.
     """
     try:
+        if psycopg2 is None:
+            raise ImportError("psycopg2 is not installed. Install it with: pip install psycopg2-binary")
         pg_conn = psycopg2.connect(pg_dsn)
         sq_conn = sqlite3.connect(sqlite_path)
         return pg_conn, sq_conn
