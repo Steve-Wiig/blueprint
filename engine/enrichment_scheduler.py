@@ -165,10 +165,15 @@ def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensio
         pg_conn = psycopg2.connect(pg_dsn)
         sq_conn = sqlite3.connect(sqlite_path)
         return pg_conn, sq_conn
+    except psycopg2.OperationalError as e:
+        logger.exception("PostgreSQL connection error")
+        raise RuntimeError("Failed to connect to PostgreSQL") from e
+    except sqlite3.OperationalError as e:
+        logger.exception("SQLite connection error")
+        raise RuntimeError("Failed to connect to SQLite") from e
     except Exception as e:
-        logger.exception("Connection error")
+        logger.exception("Unexpected connection error")
         raise RuntimeError("Failed to establish database connections") from e
-
 
 _CACHE_TTL_SECONDS = 60
 _fetch_cache: Dict[Tuple, Tuple[Any, float]] = {}
