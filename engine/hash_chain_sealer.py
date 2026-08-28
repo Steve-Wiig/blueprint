@@ -3,8 +3,9 @@ import os
 import hashlib
 import logging
 import json
+import contextlib
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Tuple, Optional, Generator
+from typing import Dict, Any, List, Tuple, Optional, Generator, Iterator
 
 import psycopg2
 from psycopg2.extras import execute_values
@@ -67,6 +68,7 @@ def get_last_chain_state(cur: psycopg2.extensions.cursor) -> Tuple[int, str]:
     if row is None:
         return 0, GENESIS_HASH
     return row[0], row[1]
+
 
 def create_pending_cursor(conn: psycopg2.extensions.connection) -> psycopg2.extensions.cursor:
     pending_cur = conn.cursor(name="pending_cursor", withhold=True)
@@ -146,9 +148,6 @@ def _close_connection_safely(conn: Optional[psycopg2.extensions.connection]) -> 
             pass
 
 
-import contextlib
-from typing import Iterator, Tuple, List, Any
-
 def seal_audit_chain_with_connection(
     conn: psycopg2.extensions.connection,
     lock_id: int = DEFAULT_LOCK_ID,
@@ -207,6 +206,7 @@ def seal_audit_chain_with_connection(
         if conn:
             conn.rollback()
         raise RuntimeError(f"Sealer failed: {e}") from e
+
 
 def seal_audit_chain(
     db_config: Dict[str, Any],
