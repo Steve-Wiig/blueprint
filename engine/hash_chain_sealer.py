@@ -146,33 +146,52 @@ def _close_connection_safely(conn: Optional[psycopg2.extensions.connection]) -> 
             pass
 
 
+import contextlib
+from typing import Iterator, Tuple, List, Any
+
 def seal_audit_chain_with_connection(
     conn: psycopg2.extensions.connection,
     lock_id: int = DEFAULT_LOCK_ID,
     batch_size: int = DEFAULT_BATCH_SIZE,
 ) -> None:
-    cur = None
-    pending_cur = None
-    lock_acquired = False
-    last_seq = 0
-    pending_count = 0
-    try:
-        cur = conn.cursor()
+    @contextlib.contextmanager
+    def _lock_context(cursor: psycopg2.extensions.cursor, lock_id: int) -> Iterator[None]:
+        _acquire_lock(cursor, lock_id)
+        try:
+            yield
+        finally:
+            _release_lock(cursor, lock_id)
 
-        _acquire_lock(cur, lock_id)
-        lock_acquired = True
-
-        last_seq, prev_hash = get_last_chain_state(cur)
-
-        pending_cur = create_pending_cursor(conn)
-
-        for batch in fetch_pending_batches(pending_cur, batch_size):
-            pending_count = len(batch)
-            rows_to_insert, last_seq, prev_hash = compute_chain_hashes(
-                batch, last_seq, prev_hash
+    def _process_batches(
+        cursor: psycopg2.extensions.cursor,
+        pending_cursor: psycopg2.extensions.cursor,
+        batch_size: int,
+        last_seq: int,
+        prev_hash: str,
+    ) -> Tuple[int, str]:
+        current_seq = last_seq
+        current_hash = prev_hash
+        for batch in fetch_pending_batches(pending_cursor, batch_size):
+            rows_to_insert, current_seq, current_hash = compute_chain_hashes(
+                batch, current_seq, current_hash
             )
-            insert_chain_links(cur, rows_to_insert)
+            insert_chain_links(cursor, rows_to_insert)
             conn.commit()
+        return current_seq, current_hash
+
+    last_seq = 0
+    prev_hash = GENESIS_HASH
+    pending_count = 0
+
+    try:
+        with conn.cursor() as cur:
+            with _lock_context(cur, lock_id):
+                last_seq, prev_hash = get_last_chain_state(cur)
+
+                with create_pending_cursor(conn) as pending_cur:
+                    last_seq, prev_hash = _process_batches(
+                        cur, pending_cur, batch_size, last_seq, prev_hash
+                    )
 
     except Exception as e:
         logger.error(
@@ -188,11 +207,6 @@ def seal_audit_chain_with_connection(
         if conn:
             conn.rollback()
         raise RuntimeError(f"Sealer failed: {e}") from e
-    finally:
-        _release_lock(cur, lock_id) if lock_acquired else None
-        _close_cursor_safely(pending_cur)
-        _close_cursor_safely(cur)
-
 
 def seal_audit_chain(
     db_config: Dict[str, Any],
