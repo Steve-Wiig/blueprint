@@ -8,6 +8,7 @@ import sqlite3
 import time
 import re
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from enum import Enum
 from functools import wraps
@@ -177,6 +178,37 @@ def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensio
         raise RuntimeError("Failed to establish database connections") from e
 
 
+@contextmanager
+def initialize_connections(pg_dsn: str, sqlite_path: str):
+    """Context manager for database connections.
+
+    This is the recommended way to establish database connections.
+    It ensures connections are properly closed even if an exception occurs.
+
+    Args:
+        pg_dsn: The Data Source Name for the PostgreSQL database.
+        sqlite_path: The file path to the SQLite database. Use ':memory:' for in‑memory DB.
+
+    Yields:
+        A tuple containing the PostgreSQL connection and the SQLite connection.
+
+    Example:
+        with initialize_connections(pg_dsn, sqlite_path) as (pg_conn, sq_conn):
+            # Use connections here
+            pass
+    """
+    pg_conn = None
+    sq_conn = None
+    try:
+        pg_conn, sq_conn = get_db_connections(pg_dsn, sqlite_path)
+        yield pg_conn, sq_conn
+    finally:
+        if sq_conn:
+            sq_conn.close()
+        if pg_conn:
+            pg_conn.close()
+
+
 class TTLCache:
     """Thread-unsafe TTL cache for fetch operations.
 
@@ -329,3 +361,28 @@ def _check_batch_quota(
 
         if provider in providers_needed:
             cost = cost_dict.get(provider, 0)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Demonstrate proper database connection initialization.")
+    parser.add_argument('--pg-dsn', default=os.getenv('PG_DSN', 'postgresql://user:pass@localhost/db'),
+                        help='PostgreSQL DSN (default: PG_DSN env var or localhost)')
+    parser.add_argument('--sqlite-path', default=os.getenv('SQLITE_PATH', ':memory:'),
+                        help='SQLite database path (default: SQLITE_PATH env var or :memory:)')
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO)
+
+    logger.info("Demonstrating correct usage pattern for database connections")
+    logger.info("Using PG_DSN: %s", args.pg_dsn)
+    logger.info("Using SQLite path: %s", args.sqlite_path)
+
+    try:
+        with initialize_connections(args.pg_dsn, args.sqlite_path) as (pg_conn, sq_conn):
+            logger.info("Successfully established database connections")
+            logger.info("PostgreSQL connection: %s", pg_conn)
+            logger.info("SQLite connection: %s", sq_conn)
+            # Perform database operations here
+    except RuntimeError as e:
+        logger.error("Failed to establish connections: %s", e)
+        raise SystemExit(1)
