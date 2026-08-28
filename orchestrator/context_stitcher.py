@@ -219,14 +219,17 @@ def set_default_pool_factory(factory: Callable[[], psycopg2.pool.ThreadedConnect
 
 def reset_default_pool() -> None:
     """Reset the default pool (useful for testing)."""
-    global _DEFAULT_POOL
-    if _DEFAULT_POOL is not None:
+    global _DEFAULT_POOL, _DEFAULT_POOL_FACTORY
+    pool = globals().get('_DEFAULT_POOL')
+    if pool is not None:
         try:
-            _DEFAULT_POOL.closeall()
+            pool.closeall()
         except Exception:
             pass
         _DEFAULT_POOL = None
-
+    factory = globals().get('_DEFAULT_POOL_FACTORY')
+    if factory is not None:
+        _DEFAULT_POOL_FACTORY = None
 
 if __name__ == "__main__":
     pass
