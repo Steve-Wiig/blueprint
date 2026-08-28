@@ -345,18 +345,19 @@ def log_handoff(log_path: Path, case_id: str, mode: str) -> None:
     _default_adapter.log_handoff(log_path, case_id, mode)
 
 
-def main() -> Union[str, int]:
+def main() -> str:
     """Main entry point for TheHive case writeback adapter (module-level backward compatibility).
 
     Parses arguments, validates input, creates case in TheHive,
     and logs the handoff result.
 
     Returns:
-        Case ID string on success, or integer exit code on failure:
-        - 1: Missing required fields or TheHive API error
-        - 2: Invalid JSON in case-data
-        - 3: Network/request exception
-        - 4: Sanitization verification failed
+        Case ID string on success.
+
+    Raises:
+        ValidationError: Missing required fields, invalid JSON, or sanitization failed.
+        TheHiveAPIError: TheHive API returned an error.
+        NetworkError: Network/request exception occurred.
     """
     args = parse_args()
 
@@ -365,16 +366,41 @@ def main() -> Union[str, int]:
         try:
             from tests.test_thehive_writeback import run_sanitization_tests
             success = run_sanitization_tests()
-            return 0 if success else 1
-        except ImportError:
-            print("ERROR: Test module not found. Run tests via pytest.", file=sys.stderr)
-            return 1
+            if not success:
+                raise ValidationError("Sanitization tests failed")
+            return "test-success"
+        except ImportError as e:
+            raise RuntimeError("Test module not found. Run tests via pytest.") from e
         except Exception as e:
-            print(f"ERROR: Test execution failed: {e}", file=sys.stderr)
-            return 1
+            raise RuntimeError(f"Test execution failed: {e}") from e
 
-    return _default_adapter.main(args)
+    # Import custom exceptions (defined elsewhere in the codebase)
+    try:
+        from engine.exceptions import ValidationError, TheHiveAPIError, NetworkError
+    except ImportError:
+        # Fallback definitions if not available
+        class ValidationError(Exception):
+            pass
+        class TheHiveAPIError(Exception):
+            pass
+        class NetworkError(Exception):
+            pass
 
+    result = _default_adapter.main(args)
+    if isinstance(result, str):
+        return result
+
+    # Map legacy integer error codes to specific exceptions
+    if result == 1:
+        raise TheHiveAPIError("Missing required fields or TheHive API error")
+    elif result == 2:
+        raise ValidationError("Invalid JSON in case-data")
+    elif result == 3:
+        raise NetworkError("Network/request exception")
+    elif result == 4:
+        raise ValidationError("Sanitization verification failed")
+    else:
+        raise RuntimeError(f"Unknown error code: {result}")
 def run_sanitization_tests() -> bool:
     """Run unit tests for sanitization verification.
 
