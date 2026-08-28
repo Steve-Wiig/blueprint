@@ -92,12 +92,14 @@ def _init_triage_table(conn: sqlite3.Connection) -> None:
             conn.execute(f"CREATE INDEX {index_name} ON triage_queue({cols})")
     conn.commit()
 
-def _audit_log(conn: sqlite3.Connection, event_type: str, alert_id: str, details: dict[str, Any]) -> None:
+def _audit_log(conn: sqlite3.Connection, event_type: str, alert_id: str, details: dict[str, Any], correlation_id: str | None = None) -> None:
+    audit_details = dict(details)
+    if correlation_id is not None:
+        audit_details['correlation_id'] = correlation_id
     conn.execute(
         "INSERT INTO audit_log (event_type, alert_id, timestamp, details) VALUES (?, ?, ?, ?)",
-        (event_type, alert_id, datetime.now(timezone.utc).isoformat(), json.dumps(details))
+        (event_type, alert_id, datetime.now(timezone.utc).isoformat(), json.dumps(audit_details))
     )
-
 def sanitize_payload(data: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
     def validate_payload(data: dict[str, Any]) -> dict[str, Any]:
         return {k: data.get(k) for k in ALLOWED_PAYLOAD_KEYS if k in data}
