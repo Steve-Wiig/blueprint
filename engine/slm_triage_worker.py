@@ -28,8 +28,44 @@ class WorkerConfig:
     base_delay: float
 
 
+def _ensure_priority_column(conn: sqlite3.Connection) -> bool:
+    """Add priority column and backfill if it doesn't exist."""
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(triage_queue)")
+    columns = [row[1] for row in cursor.fetchall()]
+    
+    if 'priority' not in columns:
+        cursor.execute("ALTER TABLE triage_queue ADD COLUMN priority INTEGER DEFAULT ?", (DEFAULT_PRIORITY,))
+        cursor.execute("""
+            UPDATE triage_queue
+            SET priority = CASE severity
+                WHEN 'critical' THEN 1
+                WHEN 'high' THEN 2
+                WHEN 'medium' THEN 3
+                WHEN 'low' THEN 4
+                ELSE 5
+            END
+            WHERE priority IS NULL OR priority = ?
+        """, (DEFAULT_PRIORITY,))
+        return True
+    return False
+
+def _ensure_claim_index(conn: sqlite3.Connection, priority_added: bool) -> None:
+    """Create or recreate the claim index if schema changed or missing."""
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_triage_claim'")
+    index_exists = cursor.fetchone() is not None
+
+    if priority_added or not index_exists:
+        cursor.execute("DROP INDEX IF EXISTS idx_triage_claim")
+        cursor.execute("""
+            CREATE INDEX idx_triage_claim
+            ON triage_queue(status, priority, created_at)
+            WHERE status = 'pending'
+        """)
+
 def get_db(db_path: str) -> sqlite3.Connection:
-    """Establishes a connection to the SQLite database.
+    """Establishes a connection to the SQLite database and ensures schema is up to date.
 
     Args:
         db_path: The file path to the SQLite database.
@@ -43,47 +79,16 @@ def get_db(db_path: str) -> sqlite3.Connection:
     try:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
-        
-        cursor = conn.cursor()
-        
-        # Ensure priority column exists
-        cursor.execute("PRAGMA table_info(triage_queue)")
-        columns = [row[1] for row in cursor.fetchall()]
-        priority_column_added = False
-        if 'priority' not in columns:
-            cursor.execute("ALTER TABLE triage_queue ADD COLUMN priority INTEGER DEFAULT ?", (DEFAULT_PRIORITY,))
-            # Populate priority for existing rows based on severity using single CASE statement
-            cursor.execute("""
-                UPDATE triage_queue 
-                SET priority = CASE severity 
-                    WHEN 'critical' THEN 1 
-                    WHEN 'high' THEN 2 
-                    WHEN 'medium' THEN 3 
-                    WHEN 'low' THEN 4 
-                    ELSE 5 
-                END 
-                WHERE priority IS NULL OR priority = ?
-            """, (DEFAULT_PRIORITY,))
-            priority_column_added = True
-        
-        # Create claim index using priority if it doesn't exist
-        # Only recreate if we just added the priority column (schema migration) or index is missing
-        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_triage_claim'")
-        index_exists = cursor.fetchone() is not None
-        
-        if priority_column_added or not index_exists:
-            cursor.execute("DROP INDEX IF EXISTS idx_triage_claim")
-            cursor.execute("""
-                CREATE INDEX idx_triage_claim 
-                ON triage_queue(status, priority, created_at) 
-                WHERE status = 'pending'
-            """)
+
+        priority_added = _ensure_priority_column(conn)
+        _ensure_claim_index(conn, priority_added)
         
         conn.commit()
         return conn
     except Exception as e:
         logger.error(f"DB_ERROR: {e}")
         raise RuntimeError(f"Failed to connect to database: {e}")
+
 
 def heartbeat(conn: sqlite3.Connection, job_id: int, lease_interval: int) -> None:
     """Updates the heartbeat and lease expiry for a specific job.
