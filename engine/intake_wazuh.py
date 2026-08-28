@@ -86,52 +86,47 @@ def sanitize_payload(data: dict[str, Any]) -> tuple[dict[str, Any] | None, str |
         return alert_record, None
     except Exception as e:
         return None, str(e)
-def intake_adapter(raw_payload: str) -> int:
-    """
-    Process and intake a raw payload into the triage queue.
 
-    Args:
-        raw_payload: str - JSON string containing alert data to be sanitized and stored.
-
-    Returns:
-        int: HTTP status code 202 indicating the payload was accepted for processing.
-
-    Raises:
-        RuntimeError: If the raw payload cannot be decoded from JSON, or if sanitization fails.
-    """
+def parse_and_validate(raw_payload: str) -> dict[str, Any]:
     try:
         data = json.loads(raw_payload)
     except json.JSONDecodeError:
         raise RuntimeError("Library code called exit(2)")
-
-    sanitized, err = sanitize_payload(data)
     
+    sanitized, err = sanitize_payload(data)
     if err:
         logging.error(f"Sanitization failed: {err}")
         raise RuntimeError("Library code called exit(1)")
+    
+    return sanitized
 
+def persist_alert(conn: sqlite3.Connection, alert_record: dict[str, Any]) -> None:
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO triage_queue (
+            id, severity, payload, status, created_at, attempts
+        ) VALUES (?, ?, ?, ?, ?, 0)
+    """, (
+        alert_record['id'],
+        alert_record['severity'],
+        json.dumps(alert_record['payload']),
+        STATUS_PENDING,
+        alert_record['timestamp']
+    ))
+
+def audit_alert(conn: sqlite3.Connection, alert_id: str, details: dict[str, Any]) -> None:
+    _audit_log(conn, 'intake', alert_id, details)
+
+def intake_adapter(raw_payload: str) -> int:
+    alert_record = parse_and_validate(raw_payload)
     conn = _get_connection()
     try:
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            INSERT INTO triage_queue (
-                id, severity, payload, status, created_at, attempts
-            ) VALUES (?, ?, ?, ?, ?, 0)
-        """, (
-            sanitized['id'],
-            sanitized['severity'],
-            json.dumps(sanitized['payload']),
-            STATUS_PENDING,
-            sanitized['timestamp']
-        ))
-        
-        _audit_log(conn, 'intake', sanitized['id'], {
-            'severity': sanitized['severity'],
-            'payload': sanitized['payload'],
+        persist_alert(conn, alert_record)
+        audit_alert(conn, alert_record['id'], {
+            'severity': alert_record['severity'],
+            'payload': alert_record['payload'],
             'status': STATUS_PENDING
         })
-        
         conn.commit()
         return 202
     except sqlite3.Error as e:
