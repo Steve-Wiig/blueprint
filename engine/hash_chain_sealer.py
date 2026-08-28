@@ -100,8 +100,11 @@ def compute_chain_hashes(
     rows_to_insert = []
     for row_id, row_ts, payload_sha in batch:
         last_seq += 1
-        canonical_data = f"{last_seq}{prev_hash}{payload_sha}".encode("utf-8")
-        row_hash = hashlib.sha256(canonical_data).hexdigest()
+        hasher = hashlib.sha256()
+        hasher.update(str(last_seq).encode("utf-8"))
+        hasher.update(prev_hash.encode("utf-8"))
+        hasher.update(payload_sha.encode("utf-8"))
+        row_hash = hasher.hexdigest()
         rows_to_insert.append(
             (
                 last_seq,
