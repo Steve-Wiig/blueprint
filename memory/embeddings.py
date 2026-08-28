@@ -37,8 +37,13 @@ class EmbeddingService:
         """
         try:
             self.model = SentenceTransformer(model_name)
-        except Exception:
-            raise RuntimeError(f"Library code called exit(3)")
+            actual_dim = self.model.get_sentence_embedding_dimension()
+            if actual_dim != self.DIMENSION:
+                raise ValueError(f"Model '{model_name}' produces {actual_dim}-dim embeddings, expected {self.DIMENSION}")
+        except ValueError:
+            raise  # Re-raise dimension mismatch errors directly
+        except Exception as e:
+            raise RuntimeError(f"Failed to load embedding model: {e}")
 
     def _apply_prefix(self, text: str, prefix: str) -> str:
         """Apply prefix idempotently to text.

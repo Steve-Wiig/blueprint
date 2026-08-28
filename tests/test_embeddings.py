@@ -9,7 +9,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # CRITICAL: Mock sentence_transformers at sys.modules level BEFORE import.
 # This prevents the real SentenceTransformer from loading model weights.
-sys.modules['sentence_transformers'] = MagicMock()
+_mock_st = MagicMock()
+_mock_st.SentenceTransformer.return_value.get_sentence_embedding_dimension.return_value = 768
+sys.modules['sentence_transformers'] = _mock_st
 
 from memory.embeddings import EmbeddingService
 
