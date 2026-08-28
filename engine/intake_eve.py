@@ -68,6 +68,9 @@ def init_db() -> None:
         RuntimeError: If database initialization fails.
     """
     try:
+        db_dir = os.path.dirname(DB_PATH)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
         with get_connection() as conn:
             with transaction(conn) as cursor:
                 cursor.execute(
@@ -100,7 +103,6 @@ def init_db() -> None:
     except Exception as e:
         logger.error(f"Database initialization error: {e}")
         raise RuntimeError("Library code called exit(2)")
-
 
 def _log_audit(event_id: int, old_status: Optional[str], new_status: str, actor: str = "system") -> None:
     """Logs a status change to the audit_log table.
