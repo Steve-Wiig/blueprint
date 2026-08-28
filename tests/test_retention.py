@@ -44,7 +44,7 @@ def test_retention_window_calculation(monkeypatch, mock_db_conn):
     new_date = (datetime.datetime.now() - datetime.timedelta(days=10)).strftime("%Y_%m_%d")
     
     mock_cursor = mock_db_conn.cursor.return_value.__enter__.return_value
-    mock_cursor.fetchall.return_value = [(f"iocs_{old_date}",), (f"iocs_{new_date}",)]
+    mock_cursor.fetchall.return_value = [(f"iocs_{old_date}",)]  # SQL already filters by date
     
     with patch("memory.retention.archive_partition") as mock_archive:
         run_retention("postgresql://test")

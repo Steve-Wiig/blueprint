@@ -197,22 +197,12 @@ def run_retention(db_url: str, retention_days: int = None, max_workers: int = 4,
             cutoff_date = cutoff.date()
             cur.execute("""
                 SELECT relname FROM pg_class 
-                WHERE relname LIKE 'iocs_%' 
+                WHERE relname ~ '^iocs_\d{4}_\d{2}_\d{2}$'
                 AND relkind = 'r'
                 AND relnamespace = 'public'::regnamespace
                 AND to_date(substring(relname from 6), 'YYYY_MM_DD') < %s;
             """, (cutoff_date,))
-            partitions = [row[0] for row in cur.fetchall()]
-            
-            partitions_to_archive = []
-            for part in partitions:
-                try:
-                    part_date = datetime.datetime.strptime(part.replace('iocs_', ''), '%Y_%m_%d')
-                    part_date = part_date.replace(tzinfo=timezone.utc)
-                    if part_date < cutoff:
-                        partitions_to_archive.append(part)
-                except ValueError:
-                    continue
+            partitions_to_archive = [row[0] for row in cur.fetchall()]
         
         conn.close()
         
