@@ -147,6 +147,7 @@ def sanitize(data: Dict[str, Any], sensitive_patterns: Optional[List[Union[str, 
 
     return _sanitize(data)
 
+
 def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensions.connection, sqlite3.Connection]:
     """Establishes connections to PostgreSQL and SQLite databases.
 
@@ -175,21 +176,50 @@ def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensio
         logger.exception("Unexpected connection error")
         raise RuntimeError("Failed to establish database connections") from e
 
-_CACHE_TTL_SECONDS = 60
-_fetch_cache: Dict[Tuple, Tuple[Any, float]] = {}
+
+class TTLCache:
+    """Thread-unsafe TTL cache for fetch operations.
+
+    Encapsulates cache storage and TTL configuration to avoid module-level
+    mutable state. Provides clear() method for test isolation.
+    """
+
+    def __init__(self, ttl_seconds: int = 60) -> None:
+        self._ttl_seconds = ttl_seconds
+        self._cache: Dict[Tuple, Tuple[Any, float]] = {}
+
+    def get(self, key: Tuple) -> Optional[Any]:
+        now = time.time()
+        if key in self._cache:
+            value, cached_at = self._cache[key]
+            if now - cached_at < self._ttl_seconds:
+                return value
+        return None
+
+    def set(self, key: Tuple, value: Any) -> None:
+        self._cache[key] = (value, time.time())
+
+    def clear(self) -> None:
+        """Clear all cached entries. Useful for test isolation."""
+        self._cache.clear()
+
+    @property
+    def ttl_seconds(self) -> int:
+        return self._ttl_seconds
+
+    @ttl_seconds.setter
+    def ttl_seconds(self, value: int) -> None:
+        self._ttl_seconds = value
 
 
-def _ttl_cache_get(key: Tuple) -> Optional[Any]:
-    now = time.time()
-    if key in _fetch_cache:
-        value, cached_at = _fetch_cache[key]
-        if now - cached_at < _CACHE_TTL_SECONDS:
-            return value
-    return None
+# Module-level cache instance for backward compatibility with tests that patch globals.
+# Tests can monkeypatch this instance or its methods.
+_fetch_cache = TTLCache(ttl_seconds=60)
 
 
-def _ttl_cache_set(key: Tuple, value: Any) -> None:
-    _fetch_cache[key] = (value, time.time())
+def clear_cache() -> None:
+    """Clear the fetch cache. Provided for test isolation."""
+    _fetch_cache.clear()
 
 
 def _fetch_provider_values(
@@ -214,7 +244,7 @@ def _fetch_provider_values(
     if not providers:
         return {}
     cache_key = (table, column, tuple(sorted(providers)))
-    cached = _ttl_cache_get(cache_key)
+    cached = _fetch_cache.get(cache_key)
     if cached is not None:
         return cached
     placeholders = ','.join(['?'] * len(providers))
@@ -223,7 +253,7 @@ def _fetch_provider_values(
         providers
     )
     result = {row[0]: row[1] for row in cursor.fetchall()}
-    _ttl_cache_set(cache_key, result)
+    _fetch_cache.set(cache_key, result)
     return result
 
 
