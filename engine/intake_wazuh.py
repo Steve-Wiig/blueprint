@@ -51,12 +51,20 @@ def _init_triage_table(conn: sqlite3.Connection) -> None:
             attempts INTEGER NOT NULL DEFAULT 0
         )
     """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_triage_status ON triage_queue(status)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_triage_severity ON triage_queue(severity)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_triage_created_at ON triage_queue(created_at)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_triage_status_severity ON triage_queue(status, severity)")
+    index_defs = [
+        ('idx_triage_status', 'status'),
+        ('idx_triage_severity', 'severity'),
+        ('idx_triage_created_at', 'created_at'),
+        ('idx_triage_status_severity', 'status, severity')
+    ]
+    for index_name, cols in index_defs:
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
+            (index_name,)
+        )
+        if cursor.fetchone() is None:
+            conn.execute(f"CREATE INDEX {index_name} ON triage_queue({cols})")
     conn.commit()
-
 def _audit_log(conn: sqlite3.Connection, event_type: str, alert_id: str, details: dict[str, Any]) -> None:
     conn.execute(
         "INSERT INTO audit_log (event_type, alert_id, timestamp, details) VALUES (?, ?, ?, ?)",
