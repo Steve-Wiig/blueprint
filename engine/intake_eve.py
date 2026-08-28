@@ -14,6 +14,20 @@ logger = logging.getLogger(__name__)
 T = TypeVar('T')
 
 
+def configure_logging() -> None:
+    """Configure file logging to LOG_PATH if not already configured."""
+    if not logger.handlers:
+        log_dir = os.path.dirname(LOG_PATH)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+        file_handler = logging.FileHandler(LOG_PATH)
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        ))
+        logger.addHandler(file_handler)
+        logger.setLevel(logging.INFO)
+
+
 @contextmanager
 def get_connection() -> Generator[sqlite3.Connection, None, None]:
     """Context manager for database connections with automatic cleanup."""
@@ -380,46 +394,9 @@ def fail_event(cursor: sqlite3.Cursor, event_id: int, reason: str) -> bool:
     old_status = row[0] if row else None
     
     cursor.execute(
-        """
-        UPDATE triage_queue
-        SET status = 'failed',
-            failure_reason = ?,
-            attempts = attempts + 1
-        WHERE id = ?
-        """,
+        "UPDATE triage_queue SET status = 'failed', failure_reason = ? WHERE id = ? AND status = 'processing'",
         (reason, event_id),
     )
     if cursor.rowcount > 0:
         _log_audit(event_id, old_status, "failed", "fail")
     return cursor.rowcount > 0
-
-
-@execute_in_transaction
-def requeue_stale_events(cursor: sqlite3.Cursor, threshold_seconds: int = 300) -> int:
-    """Requeues events with expired leases back to pending status.
-
-    Args:
-        threshold_seconds: Lease age threshold in seconds.
-
-    Returns:
-        The number of events requeued.
-    """
-    cursor.execute(
-        "SELECT id FROM triage_queue WHERE status = 'processing' AND lease_expires_at < datetime('now', ?)",
-        (f"-{threshold_seconds} seconds",),
-    )
-    event_ids = [row[0] for row in cursor.fetchall()]
-    
-    cursor.execute(
-        """
-        UPDATE triage_queue
-        SET status = 'pending',
-            lease_expires_at = NULL,
-            last_heartbeat_at = NULL
-        WHERE status = 'processing' AND lease_expires_at < datetime('now', ?)
-        """,
-        (f"-{threshold_seconds} seconds",),
-    )
-    for event_id in event_ids:
-        _log_audit(event_id, "processing", "pending", "requeue_stale")
-    return len(event_ids)
