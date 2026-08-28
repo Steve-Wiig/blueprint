@@ -711,3 +711,18 @@ from aiolimiter import AsyncLimiter
 from dataclasses import dataclass
 from typing import Optional, List
 from
+
+## Recent Architectural Updates (v11.9.x)
+
+### Environment Variables
+The `TriageQueueManager` is now fully configurable via environment variables. If not provided, it falls back to safe defaults:
+- `QUEUE_LEASE_INTERVAL`: Lease duration in seconds (default: `900`)
+- `QUEUE_MAX_ATTEMPTS`: Max retry attempts before marking failed (default: `3`)
+- `QUEUE_EMERGENCY_DEPTH`: Backpressure threshold for low-priority jobs (default: `1000`)
+- `RETENTION_DAYS`: Days to retain partition data before archiving (default: `90`)
+
+### Optional Dependencies
+- **`psycopg2`** (or `psycopg2-binary`) is now an **optional** dependency. It is only required if you are actively using PostgreSQL features (e.g., `enrichment_scheduler.py` or `retention.py`). The codebase will load and run in SQLite-only environments without it.
+
+### Schema Management
+- The database initialization schema has been extracted from Python code into `engine/schema.sql` for better version control and readability.
