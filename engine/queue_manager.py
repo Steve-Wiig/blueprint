@@ -1,5 +1,6 @@
 from pathlib import Path
 import logging
+import os
 import sqlite3
 from typing import Optional
 from datetime import datetime, timezone
@@ -41,9 +42,9 @@ class TriageQueueManager:
     def __init__(
         self,
         db_path: str = ":memory:",
-        lease_interval: int = 900,
-        max_attempts: int = 3,
-        emergency_depth: int = 1000,
+        lease_interval: Optional[int] = None,
+        max_attempts: Optional[int] = None,
+        emergency_depth: Optional[int] = None,
     ) -> None:
         """
         Initialize the queue manager.
@@ -63,9 +64,9 @@ class TriageQueueManager:
         self.conn: sqlite3.Connection = sqlite3.connect(db_path)
         self.cursor: sqlite3.Cursor = self.conn.cursor()
         self._init_schema()
-        self.lease_interval: int = lease_interval
-        self.max_attempts: int = max_attempts
-        self.emergency_depth: int = emergency_depth
+        self.lease_interval: int = lease_interval if lease_interval is not None else int(os.getenv("QUEUE_LEASE_INTERVAL", "900"))
+        self.max_attempts: int = max_attempts if max_attempts is not None else int(os.getenv("QUEUE_MAX_ATTEMPTS", "3"))
+        self.emergency_depth: int = emergency_depth if emergency_depth is not None else int(os.getenv("QUEUE_EMERGENCY_DEPTH", "1000"))
         self._lease_modifier: str = f"+{self.lease_interval // 60} minutes"
         logger.info(
             "TriageQueueManager initialized with db_path=%s, lease_interval=%d, max_attempts=%d, emergency_depth=%d",
