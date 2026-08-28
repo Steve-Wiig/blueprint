@@ -302,7 +302,7 @@ def seal_audit_chain(
         _close_connection_safely(conn)
 
 
-def load_config() -> Dict[str, Any]:
+def _load_config() -> Dict[str, Any]:
     """Load configuration from environment variables.
 
     Required: SOC_DBNAME, SOC_USER.
@@ -339,7 +339,6 @@ def load_config() -> Dict[str, Any]:
             pass
 
     return {"db_config": db_config, "batch_size": batch_size}
-
 
 def configure_logging() -> None:
     handler = logging.StreamHandler(sys.stderr)
