@@ -124,6 +124,10 @@ def _log_audit(event_id: int, old_status: Optional[str], new_status: str, actor:
         logger.error(f"Audit log error: {e}")
 
 
+import math
+import hashlib
+from typing import Any, Dict, List
+
 def sanitize_event(event: Dict[str, Any]) -> Dict[str, Any]:
     """Filters and sanitizes an event dictionary to include only allowed keys.
 
@@ -133,6 +137,34 @@ def sanitize_event(event: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         A dictionary containing only the allowed keys with sanitized values.
     """
+    def shannon_entropy(data: str) -> float:
+        if not data:
+            return 0.0
+        entropy = 0.0
+        for x in range(256):
+            p_x = data.count(chr(x)) / len(data)
+            if p_x > 0:
+                entropy += -p_x * math.log2(p_x)
+        return entropy
+
+    def is_high_entropy(value: str, threshold: float = 3.5, min_length: int = 20) -> bool:
+        return len(value) >= min_length and shannon_entropy(value) >= threshold
+
+    def redact_value(value: str) -> str:
+        return hashlib.sha256(value.encode()).hexdigest()[:16]
+
+    def sanitize_recursive(obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return {k: sanitize_recursive(v) for k, v in obj.items() if not k.startswith("_")}
+        elif isinstance(obj, list):
+            return [sanitize_recursive(v) for v in obj if v is not None]
+        elif isinstance(obj, str):
+            if is_high_entropy(obj):
+                return f"[REDACTED:{redact_value(obj)}]"
+            return obj
+        else:
+            return obj
+
     allowed_keys = {
         "timestamp",
         "event_type",
@@ -157,17 +189,10 @@ def sanitize_event(event: Dict[str, Any]) -> Dict[str, Any]:
     sanitized = {}
     for key in allowed_keys:
         if key in event:
-            value = event[key]
-            if isinstance(value, dict):
-                sanitized[key] = {k: v for k, v in value.items() if not k.startswith("_")}
-            elif isinstance(value, list):
-                sanitized[key] = [v for v in value if v is not None]
-            else:
-                sanitized[key] = value
+            sanitized[key] = sanitize_recursive(event[key])
     if "severity" not in sanitized:
         sanitized["severity"] = "unknown"
     return sanitized
-
 
 @execute_in_transaction
 def enqueue_event(cursor: sqlite3.Cursor, event: Dict[str, Any]) -> None:
