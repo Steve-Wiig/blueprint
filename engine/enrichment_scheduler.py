@@ -110,14 +110,25 @@ def sanitize(data: Dict[str, Any], sensitive_patterns: Optional[List[Union[str, 
         sensitive_patterns = _DEFAULT_SENSITIVE_PATTERNS.copy()
         sensitive_patterns.extend(_load_sensitive_patterns_from_env())
 
+    string_patterns = [p for p in sensitive_patterns if isinstance(p, str)]
+    regex_patterns = [p for p in sensitive_patterns if isinstance(p, re.Pattern)]
+
+    cache_key = tuple(string_patterns)
+    if not hasattr(sanitize, '_string_regex_cache') or sanitize._string_regex_cache.get('key') != cache_key:
+        if string_patterns:
+            compiled = re.compile('|'.join(map(re.escape, string_patterns)), re.IGNORECASE)
+        else:
+            compiled = None
+        sanitize._string_regex_cache = {'key': cache_key, 'regex': compiled}
+    compiled_string_regex = sanitize._string_regex_cache['regex']
+
     def _is_sensitive(key: str) -> bool:
-        for pat in sensitive_patterns:
-            if isinstance(pat, re.Pattern):
-                if pat.search(key):
-                    return True
-            else:
-                if pat in key.lower():
-                    return True
+        key_lower = key.lower()
+        if compiled_string_regex and compiled_string_regex.search(key_lower):
+            return True
+        for pat in regex_patterns:
+            if pat.search(key):
+                return True
         return False
 
     def _sanitize(obj: Any) -> Any:
@@ -135,7 +146,6 @@ def sanitize(data: Dict[str, Any], sensitive_patterns: Optional[List[Union[str, 
             return obj
 
     return _sanitize(data)
-
 
 def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[psycopg2.extensions.connection, sqlite3.Connection]:
     """Establishes connections to PostgreSQL and SQLite databases.
