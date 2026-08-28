@@ -1,6 +1,5 @@
 from pathlib import Path
 import logging
-import os
 import sqlite3
 from typing import Optional
 from datetime import datetime, timezone
@@ -20,6 +19,17 @@ SEVERITY_HIGH = 'high'
 SEVERITY_MEDIUM = 'medium'
 SEVERITY_LOW = 'low'
 SEVERITY_INFORMATIONAL = 'informational'
+
+SEVERITY_LEVELS = (
+    SEVERITY_CRITICAL,
+    SEVERITY_HIGH,
+    SEVERITY_MEDIUM,
+    SEVERITY_LOW,
+    SEVERITY_INFORMATIONAL,
+)
+
+_SEVERITY_CHECK_SQL = "CHECK (severity IN (" + ", ".join(f"'{s}'" for s in SEVERITY_LEVELS) + "))"
+
 
 class TriageQueueManager:
     """
@@ -42,9 +52,9 @@ class TriageQueueManager:
     def __init__(
         self,
         db_path: str = ":memory:",
-        lease_interval: Optional[int] = None,
-        max_attempts: Optional[int] = None,
-        emergency_depth: Optional[int] = None,
+        lease_interval: int = 900,
+        max_attempts: int = 3,
+        emergency_depth: int = 1000,
     ) -> None:
         """
         Initialize the queue manager.
@@ -64,9 +74,9 @@ class TriageQueueManager:
         self.conn: sqlite3.Connection = sqlite3.connect(db_path)
         self.cursor: sqlite3.Cursor = self.conn.cursor()
         self._init_schema()
-        self.lease_interval: int = lease_interval if lease_interval is not None else int(os.getenv("QUEUE_LEASE_INTERVAL", "900"))
-        self.max_attempts: int = max_attempts if max_attempts is not None else int(os.getenv("QUEUE_MAX_ATTEMPTS", "3"))
-        self.emergency_depth: int = emergency_depth if emergency_depth is not None else int(os.getenv("QUEUE_EMERGENCY_DEPTH", "1000"))
+        self.lease_interval: int = lease_interval
+        self.max_attempts: int = max_attempts
+        self.emergency_depth: int = emergency_depth
         self._lease_modifier: str = f"+{self.lease_interval // 60} minutes"
         logger.info(
             "TriageQueueManager initialized with db_path=%s, lease_interval=%d, max_attempts=%d, emergency_depth=%d",
@@ -80,8 +90,67 @@ class TriageQueueManager:
         """
         Create the necessary tables, indexes, and triggers for the queue.
         """
-        schema_path = Path(__file__).parent / "schema.sql"
-        self.cursor.executescript(schema_path.read_text())
+        schema_sql = f"""
+        CREATE TABLE IF NOT EXISTS triage_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            severity TEXT NOT NULL {_SEVERITY_CHECK_SQL},
+            payload_ref TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'shed')),
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            started_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            lease_expires_at TIMESTAMP,
+            last_heartbeat_at TIMESTAMP,
+            shed_reason TEXT,
+            fail_reason TEXT,
+            last_modified_by TEXT NOT NULL DEFAULT 'system'
+        );
+
+        CREATE TABLE IF NOT EXISTS triage_queue_counters (
+            name TEXT PRIMARY KEY,
+            value INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS triage_queue_approvals (
+            job_id INTEGER NOT NULL,
+            target_status TEXT NOT NULL CHECK (target_status IN ('completed', 'failed')),
+            approved_by TEXT NOT NULL,
+            approved_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (job_id, target_status),
+            FOREIGN KEY (job_id) REFERENCES triage_queue (id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_triage_queue_status_severity_created
+            ON triage_queue (status, severity, created_at);
+
+        CREATE INDEX IF NOT EXISTS idx_triage_queue_lease_expires
+            ON triage_queue (lease_expires_at) WHERE status = 'processing';
+
+        CREATE TRIGGER IF NOT EXISTS trg_triage_queue_pending_inc
+        AFTER INSERT ON triage_queue
+        WHEN NEW.status = 'pending'
+        BEGIN
+            UPDATE triage_queue_counters SET value = value + 1 WHERE name = 'pending_count';
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_triage_queue_pending_dec
+        AFTER UPDATE OF status ON triage_queue
+        WHEN OLD.status = 'pending' AND NEW.status != 'pending'
+        BEGIN
+            UPDATE triage_queue_counters SET value = value - 1 WHERE name = 'pending_count';
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_triage_queue_pending_dec_on_delete
+        AFTER DELETE ON triage_queue
+        WHEN OLD.status = 'pending'
+        BEGIN
+            UPDATE triage_queue_counters SET value = value - 1 WHERE name = 'pending_count';
+        END;
+
+        INSERT OR IGNORE INTO triage_queue_counters (name, value) VALUES ('pending_count', 0);
+        """
+        self.cursor.executescript(schema_sql)
         self.conn.commit()
         logger.debug("Database schema initialized")
 
