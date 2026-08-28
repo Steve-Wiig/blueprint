@@ -4,6 +4,7 @@ import psycopg2.pool
 import sys
 import hashlib
 import json
+import struct
 from datetime import datetime, timezone, timedelta
 from typing import TypedDict, Optional, Callable
 from xml.sax.saxutils import escape
@@ -91,8 +92,8 @@ class MemoryMetadata(TypedDict):
 
 def _compute_query_hash(query_embedding: list[float]) -> str:
     """Compute a deterministic SHA256 hash of the query embedding for audit logging."""
-    embedding_str = ",".join(f"{x:.8f}" for x in query_embedding)
-    return hashlib.sha256(embedding_str.encode()).hexdigest()
+    embedding_bytes = struct.pack(f"{len(query_embedding)}d", *query_embedding)
+    return hashlib.sha256(embedding_bytes).hexdigest()
 
 
 def _log_audit(
