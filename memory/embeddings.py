@@ -83,9 +83,7 @@ class EmbeddingService:
                 processed = self._apply_prefix(texts, prefix)
             else:
                 processed = [self._apply_prefix(text, prefix) for text in texts]
-            embeddings = self.model.encode(processed)
-            if embeddings.dtype != np.float32:
-                embeddings = embeddings.astype(np.float32, copy=False)
+            embeddings = self.model.encode(processed, convert_to_numpy=True, output_value='float32')
             return embeddings
         except Exception:
             raise RuntimeError(f"Library code called exit(1)")
