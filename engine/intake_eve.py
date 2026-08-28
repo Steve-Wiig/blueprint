@@ -261,7 +261,6 @@ def process_eve_file(filepath: str) -> int:
         raise RuntimeError("Library code called exit(2)")
 
 
-@execute_with_connection
 def get_pending_events(conn: sqlite3.Connection, limit: int = 100) -> List[Dict[str, Any]]:
     """Retrieves pending events from the triage_queue.
 
@@ -274,12 +273,11 @@ def get_pending_events(conn: sqlite3.Connection, limit: int = 100) -> List[Dict[
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, payload, severity, attempts FROM triage_queue WHERE status = 'pending' LIMIT ?",
+        "SELECT id, payload, severity, attempts FROM triage_queue WHERE status = 'pending' ORDER BY created_at ASC LIMIT ?",
         (limit,),
     )
     rows = cursor.fetchall()
     return [dict(row) for row in rows]
-
 
 @execute_in_transaction
 def lease_event(cursor: sqlite3.Cursor, event_id: int, ttl_seconds: int = 300) -> bool:
