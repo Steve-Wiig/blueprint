@@ -261,11 +261,12 @@ class TriageQueueManager:
         # The subquery finds the highest-priority pending job, and the UPDATE
         # atomically claims it under SQLite's write lock (no race window).
         # RETURNING id gives us the claimed job without a second query.
+        now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
         row = self.cursor.execute(
             f"""
             UPDATE triage_queue
             SET status = 'processing',
-                started_at = CURRENT_TIMESTAMP,
+                started_at = ?,
                 attempts = attempts + 1,
                 lease_expires_at = datetime('now', '{self._lease_modifier}'),
                 last_modified_by = ?
@@ -283,7 +284,7 @@ class TriageQueueManager:
             )
             RETURNING id
             """,
-            (worker_id,)
+            (now, worker_id)
         ).fetchone()
 
         if not row:
@@ -304,14 +305,15 @@ class TriageQueueManager:
         job_id : int
             Identifier of the job to heartbeat.
         """
+        now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
         self.cursor.execute(
             f"""
             UPDATE triage_queue
-            SET last_heartbeat_at = CURRENT_TIMESTAMP,
+            SET last_heartbeat_at = ?,
                 lease_expires_at = datetime('now', '{self._lease_modifier}')
             WHERE id = ? AND status = 'processing'
             """,
-            (job_id,),
+            (now, job_id),
         )
         self.conn.commit()
         logger.debug("Heartbeat updated for job %d", job_id)
@@ -386,15 +388,16 @@ class TriageQueueManager:
             Identifier of the user or system that changed the job status.
         """
         status = STATUS_COMPLETED if success else STATUS_FAILED
+        now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
         self.cursor.execute(
             """
             UPDATE triage_queue
             SET status = ?,
-                completed_at = CURRENT_TIMESTAMP,
+                completed_at = ?,
                 last_modified_by = COALESCE(?, 'system')
             WHERE id = ?
             """,
-            (status, changed_by, job_id),
+            (status, now, changed_by, job_id),
         )
         if reason:
             self.cursor.execute(
