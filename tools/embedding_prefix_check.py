@@ -14,12 +14,13 @@ The module provides:
 - Constants defining the required prefixes and dimension
 
 Example:
-    >>> from typing import Callable
-    >>> def my_encoder(text: str) -> list[float]:
-    ...     return [0.1] * 768
-    >>> svc = EmbeddingService(my_encoder)
+    >>> svc = EmbeddingService(lambda t: [0.0]*768)
     >>> doc_vec = svc.embed_document("alert summary")
+    >>> len(doc_vec)
+    768
     >>> query_vec = svc.embed_query("similar alerts")
+    >>> len(query_vec)
+    768
 """
 
 import sys
