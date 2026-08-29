@@ -171,7 +171,7 @@ def archive_partition_with_connection(db_url: str, partition_name: str, dry_run:
         conn.close()
 
 
-def get_partitions_to_archive(db_url: str, retention_days: int) -> List[str]:
+def get_partitions_to_archive(db_url: str, retention_days: int, conn: PgConnection = None) -> List[str]:
     """
     Get list of partitions older than retention_days.
     
@@ -180,6 +180,7 @@ def get_partitions_to_archive(db_url: str, retention_days: int) -> List[str]:
     Args:
         db_url: PostgreSQL connection string.
         retention_days: Retention period in days.
+        conn: Optional existing database connection to reuse.
         
     Returns:
         List of partition names to archive.
@@ -189,7 +190,10 @@ def get_partitions_to_archive(db_url: str, retention_days: int) -> List[str]:
     """
     validate_commands()
     check_cmr_mount()
-    conn = psycopg2.connect(db_url)
+    own_conn = False
+    if conn is None:
+        conn = psycopg2.connect(db_url)
+        own_conn = True
     try:
         cutoff = datetime.datetime.now(timezone.utc) - datetime.timedelta(days=retention_days)
         
@@ -208,8 +212,8 @@ def get_partitions_to_archive(db_url: str, retention_days: int) -> List[str]:
             ]
         return partitions_to_archive
     finally:
-        conn.close()
-
+        if own_conn:
+            conn.close()
 
 def execute_archive_plan(db_url: str, partitions: List[str], max_workers: int, dry_run: bool) -> None:
     """
