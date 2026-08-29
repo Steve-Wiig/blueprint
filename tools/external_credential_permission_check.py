@@ -59,6 +59,7 @@ def validate_config(config: dict) -> None:
             if not isinstance(cfg[key], str) or not cfg[key].startswith("/"):
                 raise ValueError(f"Service '{service}' {key} must be a path starting with '/'")
 
+
 def load_config(config_path: str | None = None) -> dict:
     path = config_path or os.getenv("CONFIG_FILE", DEFAULT_CONFIG_PATH)
     try:
@@ -163,6 +164,7 @@ def main() -> int:
                 results.append((service, False))
 
     return process_results(results)
+
 
 if __name__ == "__main__":
     sys.exit(main())
