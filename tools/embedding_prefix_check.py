@@ -262,6 +262,9 @@ def main() -> int:
     """
     Parse arguments and run the CI gate verification.
 
+    This is the CLI entry point for the embedding contract verification tool.
+    Intended for direct script execution and CI/CD pipeline integration.
+
     Returns:
         0 if all checks pass, 1 if any check fails.
     """
@@ -315,7 +318,6 @@ def main() -> int:
         query_prefix=query_prefix,
         dim=dim,
     )
-
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
