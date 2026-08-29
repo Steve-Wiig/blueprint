@@ -145,11 +145,15 @@ def sanitize(data: Dict[str, Any], sensitive_patterns: Optional[List[Union[str, 
             return result
         elif isinstance(obj, list):
             return [_sanitize(item) for item in obj]
+        elif isinstance(obj, str):
+            for pat in regex_patterns:
+                if pat.search(obj):
+                    return "***REDACTED***"
+            return obj
         else:
             return obj
 
     return _sanitize(data)
-
 
 def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple["psycopg2.extensions.connection", sqlite3.Connection]:
     """Establishes connections to PostgreSQL and SQLite databases.
