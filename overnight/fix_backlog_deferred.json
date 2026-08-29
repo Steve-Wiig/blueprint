@@ -1,1 +1,181 @@
-[]
+[
+  {
+    "file": "memory/retention.py",
+    "issue": {
+      "category": "performance",
+      "severity": "medium",
+      "line_start": 145,
+      "line_end": 156,
+      "description": "Inefficient partition filtering: fetches all iocs_* tables from pg_class, then re-filters in Python with duplicate date parsing. SQL already computes to_date() but results discarded.",
+      "suggestion": "Move all filtering to SQL: SELECT relname FROM pg_class WHERE relname ~ '^iocs_\\d{4}_\\d{2}_\\d{2}$' AND to_date(substring(relname from 6), 'YYYY_MM_DD') < %s. Remove Python-side loop.",
+      "impact": "medium",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "memory/retention.py",
+    "issue": {
+      "category": "performance",
+      "severity": "medium",
+      "line_start": 167,
+      "line_end": 175,
+      "description": "Creates new PostgreSQL connection per partition in parallel workers. High overhead for many partitions. No connection pooling.",
+      "suggestion": "Use psycopg2.pool.ThreadedConnectionPool or pass a connection factory. Reuse connections within worker threads. Limit pool size to max_workers.",
+      "impact": "medium",
+      "effort": "medium"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "memory/retention.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 130,
+      "line_end": 185,
+      "description": "run_retention() does too much: validation, mount check, DB query, partition filtering, dry-run logging, parallel execution. Violates single responsibility.",
+      "suggestion": "Split into: get_partitions_to_archive(), execute_archive_plan(), run_retention() as orchestrator. Improves testability and readability.",
+      "impact": "low",
+      "effort": "medium"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/dynamic_vram_budget_check.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "medium",
+      "line_start": 143,
+      "line_end": 143,
+      "description": "Module-level sys.exit() call in __main__ block violates 'No sys.exit()/exit() in library code \u2014 use raise RuntimeError() [AMEND-64]' and 'No module-level side effects (file I/O, network, exit calls) [v11.7]'. While acceptable for standalone CLI scripts, the blueprint prohibits this pattern.",
+      "suggestion": "Wrap CLI entry in a function and let the caller handle exit, or raise RuntimeError with exit code as attribute for the wrapper to handle.",
+      "impact": "medium",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/dynamic_vram_budget_check.py",
+    "issue": {
+      "category": "performance",
+      "severity": "low",
+      "line_start": 38,
+      "line_end": 47,
+      "description": "get_gpu_info() parses entire nvidia-smi XML output even though only fb_memory_usage is needed. For systems with many GPUs, this wastes CPU and memory parsing unused data.",
+      "suggestion": "Use nvidia-smi --query-gpu=memory.total,memory.used --format=csv,noheader,nounits for lighter output, or use pynvml library for direct API access.",
+      "impact": "low",
+      "effort": "medium"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/hash_chain_concurrency_check.py",
+    "issue": {
+      "category": "blueprint_compliance",
+      "severity": "medium",
+      "line_start": 168,
+      "line_end": 168,
+      "description": "sys.exit() used in library code violates AMEND-64; should raise RuntimeError instead",
+      "suggestion": "Replace sys.exit(main()) with: try: raise RuntimeError(main()) except RuntimeError as e: sys.exit(e.args[0]) if isinstance(e.args[0], int) else 1",
+      "impact": "medium",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/hash_chain_concurrency_check.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 77,
+      "line_end": 100,
+      "description": "worker function lacks return type annotation and mutates external list; functional style with return value would be cleaner",
+      "suggestion": "Change signature to return Optional[int] and let executor.collect() gather results: def worker(ledger) -> Optional[int]: ... return idx",
+      "impact": "low",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/payload_ref_integrity_check.py",
+    "issue": {
+      "description": "The 'computed_hash' variable is calculated but never used, leading to unnecessary performance overhead and confusing code.",
+      "category": "performance",
+      "severity": "low",
+      "suggestion": "Remove the unused hash calculation or integrate it into the integrity verification logic."
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/sanitization_entropy_check.py",
+    "issue": {
+      "description": "The entropy calculation is performed on every token regardless of length, which is inefficient for short tokens that cannot mathematically exceed the threshold.",
+      "category": "performance",
+      "severity": "low",
+      "suggestion": "Add a guard clause to skip entropy calculation for tokens shorter than 23 characters, as they cannot mathematically reach an entropy of 4.5."
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/sanitization_entropy_check.py",
+    "issue": {
+      "description": "The script uses sys.exit() in the __main__ block, which is acceptable for a script but violates the spirit of the blueprint if this file is intended to be imported as a library.",
+      "category": "blueprint_compliance",
+      "severity": "low",
+      "suggestion": "Refactor the __main__ block to call a function that returns an exit code, and keep the sys.exit() call strictly at the entry point level."
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/sanitization_entropy_check.py",
+    "issue": {
+      "description": "The code lacks type hints for function arguments and return values, reducing maintainability and clarity.",
+      "category": "maintainability",
+      "severity": "low",
+      "suggestion": "Add PEP 484 type hints to all functions, especially for the tokenization and entropy calculation logic."
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/vector_partition_index_check.py",
+    "issue": {
+      "category": "performance",
+      "severity": "low",
+      "line_start": 265,
+      "line_end": 268,
+      "description": "_check_json_parsing re-opens and re-parses file on every call; called once in main flow but available for repeated calls",
+      "suggestion": "Accept pre-parsed data as required parameter; remove default None and re-parse logic",
+      "impact": "low",
+      "effort": "small"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  },
+  {
+    "file": "tools/wiki_sanitization_check.py",
+    "issue": {
+      "category": "maintainability",
+      "severity": "low",
+      "line_start": 14,
+      "line_end": 24,
+      "description": "ALLOWLIST_SHA256 and ALLOWLIST_UUID are separate sets but combined into ALLOWLIST; no documentation on why these specific hashes/UUIDs are allowed",
+      "suggestion": "Add comments explaining each allowlist entry origin; consider loading from external config file for maintainability",
+      "impact": "low",
+      "effort": "trivial"
+    },
+    "attempts": 3,
+    "deferred_reason": "failed 3 attempts"
+  }
+]
