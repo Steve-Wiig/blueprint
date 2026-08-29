@@ -91,9 +91,9 @@ class PartitionConfig(TypedDict):
 
 def reset_defaults_cache() -> None:
     """Reset the defaults cache for testing purposes."""
-    global _DEFAULTS_CACHE
-    _DEFAULTS_CACHE = {}
-
+    # Global cache removed; configuration is now passed explicitly.
+    # This function is kept for API compatibility and is a no-op.
+    pass
 def _load_defaults_config() -> Dict[str, Any]:
     """
     Load default configuration from JSON file with caching.
