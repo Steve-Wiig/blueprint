@@ -43,7 +43,6 @@ class ScanExit(SystemExit):
         self.exit_code = exit_code
         self.message = message or f"scan completed with exit code {exit_code}"
         self.args = (self.message,)
-
 def _configure_logging() -> logging.Logger:
     """
     Configure structured logging for audit trails per Blueprint v11.8.
