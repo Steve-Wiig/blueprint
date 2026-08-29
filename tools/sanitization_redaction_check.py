@@ -126,8 +126,10 @@ class Sanitizer:
     or use defaults. All methods are instance methods to enable parallel use
     with different configurations and facilitate unit testing.
 
-    Thread-safety: Pattern updates via recompile() are thread-safe. Concurrent
-    reads (redact, run_sanitization_check) are safe against concurrent updates.
+    Thread-safety: Pattern updates via add_pattern(), update_pattern(), remove_pattern(),
+    or recompile() are thread-safe. Concurrent reads (redact, run_sanitization_check)
+    are safe against concurrent updates. Direct mutation of _patterns is NOT thread-safe;
+    always use the provided methods to modify patterns.
     """
 
     def __init__(self, patterns: Optional[Dict[str, PatternConfig]] = None, redaction_token: str = '[REDACTED]'):
@@ -167,6 +169,63 @@ class Sanitizer:
                     del self._compiled_patterns[k]
 
             self._pattern_hashes = new_hashes
+
+    def add_pattern(self, key: str, pattern: str, redaction_type: str) -> None:
+        """Add a new pattern and recompile atomically.
+
+        Args:
+            key: Unique identifier for the pattern.
+            pattern: Regex pattern string.
+            redaction_type: Either "full" or "group".
+
+        Raises:
+            ValueError: If key already exists or redaction_type is invalid.
+        """
+        if key in self._patterns:
+            raise ValueError(f"Pattern '{key}' already exists. Use update_pattern() to modify.")
+        if redaction_type not in ("full", "group"):
+            raise ValueError("redaction_type must be 'full' or 'group'")
+        with self._lock:
+            self._patterns[key] = {"pattern": pattern, "redaction_type": redaction_type}
+            self.recompile()
+
+    def update_pattern(self, key: str, pattern: Optional[str] = None, redaction_type: Optional[str] = None) -> None:
+        """Update an existing pattern and recompile atomically.
+
+        Args:
+            key: Identifier of the pattern to update.
+            pattern: New regex pattern string (optional).
+            redaction_type: New redaction type (optional).
+
+        Raises:
+            KeyError: If key does not exist.
+            ValueError: If redaction_type is invalid.
+        """
+        if key not in self._patterns:
+            raise KeyError(f"Pattern '{key}' not found")
+        if redaction_type is not None and redaction_type not in ("full", "group"):
+            raise ValueError("redaction_type must be 'full' or 'group'")
+        with self._lock:
+            if pattern is not None:
+                self._patterns[key]["pattern"] = pattern
+            if redaction_type is not None:
+                self._patterns[key]["redaction_type"] = redaction_type
+            self.recompile()
+
+    def remove_pattern(self, key: str) -> None:
+        """Remove a pattern and recompile atomically.
+
+        Args:
+            key: Identifier of the pattern to remove.
+
+        Raises:
+            KeyError: If key does not exist.
+        """
+        if key not in self._patterns:
+            raise KeyError(f"Pattern '{key}' not found")
+        with self._lock:
+            del self._patterns[key]
+            self.recompile()
 
     def redact(self, pattern_key: str, text: str, redaction_token: Optional[str] = None) -> str:
         """Redact sensitive pattern in text, preserving prefix for query/header patterns.
