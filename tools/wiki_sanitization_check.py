@@ -137,13 +137,17 @@ def scan_file(file_path: str) -> list[tuple[str, str]]:
     return scan_text(content)
 
 
+import os
+from pathlib import Path
+from typing import Pattern
+
 def scan_directory(dir_path: str, recursive: bool = True) -> list[tuple[str, str, str]]:
     """
     Scan a directory for credential violations.
 
     Args:
         dir_path: Path to the directory to scan.
-        recursive: If True, scan recursively using rglob. If False, scan only top-level files.
+        recursive: If True, scan recursively using os.walk with pruning. If False, scan only top-level files.
 
     Returns:
         List of tuples containing (file_path, pattern_name, matched_value) for each violation.
@@ -157,23 +161,31 @@ def scan_directory(dir_path: str, recursive: bool = True) -> list[tuple[str, str
     if not path.is_dir():
         raise OSError(f"Path is not a directory: {dir_path}")
     
-    if recursive:
-        exclude_dirs = {'.git', '__pycache__', 'node_modules'}
-        files = (f for f in path.rglob("*") if not any(part in exclude_dirs for part in f.parts))
-    else:
-        files = path.glob("*")
+    exclude_dirs = {'.git', '__pycache__', 'node_modules', '.venv', 'venv', 'env', 'dist', 'build', '.pytest_cache', '.mypy_cache'}
     
-    for file_path in files:
-        if file_path.is_file():
-            try:
-                violations = scan_file(str(file_path))
-                for v_type, val in violations:
-                    found.append((str(file_path), v_type, val))
-            except (OSError, UnicodeDecodeError):
-                continue
+    if recursive:
+        for root, dirs, files in os.walk(path):
+            # Prune excluded directories in-place to avoid descending into them
+            dirs[:] = [d for d in dirs if d not in exclude_dirs]
+            for file_name in files:
+                file_path = Path(root) / file_name
+                try:
+                    violations = scan_file(str(file_path))
+                    for v_type, val in violations:
+                        found.append((str(file_path), v_type, val))
+                except (OSError, UnicodeDecodeError):
+                    continue
+    else:
+        for file_path in path.iterdir():
+            if file_path.is_file():
+                try:
+                    violations = scan_file(str(file_path))
+                    for v_type, val in violations:
+                        found.append((str(file_path), v_type, val))
+                except (OSError, UnicodeDecodeError):
+                    continue
     
     return found
-
 
 def _generate_dry_run_payloads() -> list[str]:
     """
