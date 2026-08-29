@@ -146,7 +146,7 @@ def rollback_execute(approved: bool = False) -> int:
 def main() -> None:
     """Parses command line arguments and executes the alias proposal workflow.
 
-    Raises RuntimeError on success or if an invalid mode is provided.
+    Raises RuntimeError if an invalid mode is provided.
     """
     parser = argparse.ArgumentParser(description="pfSense Alias Writeback Adapter")
     parser.add_argument("--name", required=True, help="Alias name")
@@ -161,15 +161,12 @@ def main() -> None:
     if args.mode == 'proposal':
         store_proposal(args.name, args.ip)
         rollback_plan()
-        raise RuntimeError("Operation completed successfully")
     elif args.mode == 'rollback':
         if not args.approved:
             raise RuntimeError("Rollback requires --approved flag for confirmation")
         rollback_execute(approved=True)
-        raise RuntimeError("Rollback completed successfully")
     else:
         raise RuntimeError("Invalid operation mode")
-
 
 if __name__ == "__main__":
     main()
