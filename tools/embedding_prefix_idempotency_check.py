@@ -165,7 +165,6 @@ def _validate(prefixes: Dict[str, str]) -> bool:
         return False
     return True
 
-
 def _load_cases(prefixes: Dict[str, str], dry_run: bool):
     doc_prefix = prefixes["document"]
     query_prefix = prefixes["query"]
