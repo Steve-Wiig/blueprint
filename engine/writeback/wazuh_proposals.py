@@ -182,6 +182,16 @@ def init_db() -> None:
     if _db_initialized:
         return
     try:
+        # Determine cross-platform data directory (platformdirs preferred, fallback to ./data)
+        try:
+            import platformdirs
+            data_dir = platformdirs.user_data_dir("wazuh-slm", "wazuh")
+        except ImportError:
+            data_dir = os.path.join(os.path.dirname(__file__), "data")
+        os.makedirs(data_dir, exist_ok=True)
+        db_path = os.path.join(data_dir, "proposals.db")
+        os.environ["WAZUH_DB_PATH"] = db_path
+
         conn = _get_connection()
         cursor = conn.cursor()
         cursor.execute('''CREATE TABLE IF NOT EXISTS proposals 
@@ -237,7 +247,6 @@ def init_db() -> None:
             _schedule_audit_flush()
     except sqlite3.Error as e:
         raise ProposalStorageError(f"Database initialization failed: {e}")
-
 
 def check_approval_gate(key: str) -> bool:
     """Validates if a key is permitted for a proposal.
