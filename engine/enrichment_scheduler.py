@@ -151,7 +151,7 @@ def sanitize(data: Dict[str, Any], sensitive_patterns: Optional[List[Union[str, 
     return _sanitize(data)
 
 
-def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[Any, sqlite3.Connection]:
+def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple["psycopg2.extensions.connection", sqlite3.Connection]:
     """Establishes connections to PostgreSQL and SQLite databases.
 
     Note: This function must NOT be called at module level as it would create
@@ -180,7 +180,6 @@ def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple[Any, sqlite3.Conn
     except Exception as e:
         logger.exception("Unexpected connection error")
         raise RuntimeError("Failed to establish database connections") from e
-
 
 @contextmanager
 def initialize_connections(pg_dsn: str, sqlite_path: str):
