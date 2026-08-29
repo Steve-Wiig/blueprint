@@ -120,8 +120,7 @@ def init_db() -> None:
                 )
     except Exception as e:
         logger.error(f"Database initialization error: {e}")
-        raise RuntimeError("Library code called exit(2)")
-
+        raise RuntimeError(f"Database initialization failed: {e}")
 def _log_audit(event_id: int, old_status: Optional[str], new_status: str, actor: str = "system") -> None:
     """Logs a status change to the audit_log table.
 
