@@ -25,8 +25,7 @@ ALLOWED_PAYLOAD_KEYS = {'agent', 'rule_id', 'description', 'src_ip', 'dst_ip'}
 EXIT_PARSE_ERROR = 2
 EXIT_GENERAL_ERROR = 1
 
-def _load_config() -> None:
-    global DB_PATH, LOG_FILE
+def _load_config() -> dict[str, str]:
     if HAS_PLATFORMDIRS:
         data_dir = user_data_dir('local-soc', 'local-soc')
         log_dir = user_log_dir('local-soc', 'local-soc')
@@ -37,13 +36,20 @@ def _load_config() -> None:
     os.makedirs(data_dir, exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
     
-    if not os.path.isabs(DB_PATH):
-        DB_PATH = os.path.join(data_dir, os.path.basename(DB_PATH))
-    if not os.path.isabs(LOG_FILE):
-        LOG_FILE = os.path.join(log_dir, os.path.basename(LOG_FILE))
+    resolved_db_path = DB_PATH
+    resolved_log_file = LOG_FILE
     
-    logging.basicConfig(filename=LOG_FILE, level=logging.INFO)
-
+    if not os.path.isabs(resolved_db_path):
+        resolved_db_path = os.path.join(data_dir, os.path.basename(resolved_db_path))
+    if not os.path.isabs(resolved_log_file):
+        resolved_log_file = os.path.join(log_dir, os.path.basename(resolved_log_file))
+    
+    logging.basicConfig(filename=resolved_log_file, level=logging.INFO)
+    
+    return {
+        'db_path': resolved_db_path,
+        'log_file': resolved_log_file,
+    }
 def _get_connection() -> sqlite3.Connection:
     global _connection
     if _connection is None:
