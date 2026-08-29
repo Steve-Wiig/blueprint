@@ -280,4 +280,4 @@ def main() -> int:
 
     return result
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())
