@@ -39,7 +39,16 @@ def _load_config():
     schema_path = project_root / 'config' / 'memory_schema.json'
     ledger_path = project_root / 'logs' / 'migration_ledger.log'
 
+    env_schema = os.environ.get("SCHEMA_PATH")
+    if env_schema:
+        schema_path = Path(env_schema).resolve()
+
+    env_ledger = os.environ.get("LEDGER_PATH")
+    if env_ledger:
+        ledger_path = Path(env_ledger).resolve()
+
     return Config(project_root=project_root, schema_path=schema_path, ledger_path=ledger_path)
+
 def validate_schema(schema_data: dict) -> tuple[bool, str]:
     """Validates schema structure against blueprint v11.6.0 requirements.
 
@@ -74,18 +83,18 @@ def main() -> int:
     Returns:
         int: Exit code (0=success, 1=validation failure, 2=config missing).
     """
-    _load_config()
+    config = _load_config()
     
     parser = argparse.ArgumentParser(description="Memory Schema Migration Check")
     parser.add_argument("--dry-run", action="store_true", help="Validate without applying")
     args: argparse.Namespace = parser.parse_args()
 
-    if not SCHEMA_PATH.exists():
-        print(f"CONFIG ERROR: {SCHEMA_PATH} not found")
+    if not config.schema_path.exists():
+        print(f"CONFIG ERROR: {config.schema_path} not found")
         return 2
 
     try:
-        with open(SCHEMA_PATH, 'r') as f:
+        with open(config.schema_path, 'r') as f:
             schema = json.load(f)
     except json.JSONDecodeError as e:
         print(f"FAIL: Invalid JSON at line {e.lineno}, column {e.colno}: {e.msg}")
@@ -102,8 +111,8 @@ def main() -> int:
         return 0
 
     # Append audit entry to migration ledger (append-only per Section 30)
-    LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(LEDGER_PATH, 'a') as f:
+    config.ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(config.ledger_path, 'a') as f:
         f.write(f"{datetime.now(timezone.utc).isoformat()} | Schema valid | Schema {SCHEMA_VERSION_REQUIRED} verified\n")
 
     print(f"PASS: Schema {SCHEMA_VERSION_REQUIRED} verified and ledger updated.")
