@@ -200,6 +200,5 @@ def main() -> int:
     print(f"PASS: Hash chain concurrency verified with {args.threads} threads over {DEFAULT_STRESS_ITERATIONS} iterations")
     return 0
 
-
 if __name__ == "__main__":
     raise SystemExit(main())
