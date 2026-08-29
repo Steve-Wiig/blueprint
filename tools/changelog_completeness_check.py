@@ -47,80 +47,112 @@ EXIT_ENV_ERROR = 3
 COMMIT_HASH_PATTERN: Pattern[str] = re.compile(r'\b([0-9a-f]{7,12})\b')
 
 
+class GitRepo:
+    """Encapsulate git-related operations."""
+
+    @staticmethod
+    def is_git_repo() -> bool:
+        return os.path.exists(".git")
+
+    @staticmethod
+    def get_latest_tag() -> Optional[str]:
+        """
+        Retrieve the most recent Git tag.
+
+        Returns:
+            The latest tag name as a string, or None if no tags exist.
+
+        Raises:
+            FileNotFoundError: If git executable is not found.
+        """
+        try:
+            tag = subprocess.check_output(
+                ["git", "describe", "--tags", "--abbrev=0"],
+                stderr=subprocess.DEVNULL
+            ).decode().strip()
+            return tag
+        except subprocess.CalledProcessError:
+            return None
+
+    @staticmethod
+    def iter_commits_since_tag(tag: str) -> Iterator[str]:
+        """
+        Stream commits since the given tag without loading all into memory.
+
+        Args:
+            tag: The Git tag to compare against.
+
+        Yields:
+            Commit strings in format "%h %s" (short hash + subject).
+        """
+        proc = subprocess.Popen(
+            ["git", "log", f"{tag}..HEAD", "--pretty=format:%h %s"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        try:
+            if proc.stdout:
+                for line in proc.stdout:
+                    yield line.rstrip("\n")
+        finally:
+            proc.wait()
+
+    @staticmethod
+    def get_commits_since_tag(tag: str) -> List[str]:
+        """
+        Get all commits since the given tag.
+
+        Args:
+            tag: The Git tag to compare against.
+
+        Returns:
+            List of commit strings in format "%h %s" (short hash + subject).
+        """
+        return list(GitRepo.iter_commits_since_tag(tag))
+
+
+class ChangelogParser:
+    """Encapsulate changelog parsing."""
+
+    @staticmethod
+    def parse_hashes(changelog_path: str) -> Set[str]:
+        """
+        Parse CHANGELOG.md and extract all commit hashes (7-12 hex chars).
+
+        Args:
+            changelog_path: Path to the changelog file.
+
+        Returns:
+            Set of lowercase commit hashes found in the changelog.
+        """
+        changelog_hashes: Set[str] = set()
+
+        with open(changelog_path, "r") as f:
+            for line in f:
+                changelog_hashes.update(COMMIT_HASH_PATTERN.findall(line.lower()))
+
+        return changelog_hashes
+
+
 def get_latest_tag() -> Optional[str]:
-    """
-    Retrieve the most recent Git tag.
-
-    Returns:
-        The latest tag name as a string, or None if no tags exist.
-
-    Raises:
-        FileNotFoundError: If git executable is not found.
-    """
-    try:
-        tag = subprocess.check_output(
-            ["git", "describe", "--tags", "--abbrev=0"],
-            stderr=subprocess.DEVNULL
-        ).decode().strip()
-        return tag
-    except subprocess.CalledProcessError:
-        return None
+    """Module-level function for backward compatibility with tests."""
+    return GitRepo.get_latest_tag()
 
 
 def iter_commits_since_tag(tag: str) -> Iterator[str]:
-    """
-    Stream commits since the given tag without loading all into memory.
-
-    Args:
-        tag: The Git tag to compare against.
-
-    Yields:
-        Commit strings in format "%h %s" (short hash + subject).
-    """
-    proc = subprocess.Popen(
-        ["git", "log", f"{tag}..HEAD", "--pretty=format:%h %s"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        text=True,
-    )
-    try:
-        if proc.stdout:
-            for line in proc.stdout:
-                yield line.rstrip("\n")
-    finally:
-        proc.wait()
+    """Module-level function for backward compatibility with tests."""
+    return GitRepo.iter_commits_since_tag(tag)
 
 
 def get_commits_since_tag(tag: str) -> List[str]:
-    """
-    Get all commits since the given tag.
-
-    Args:
-        tag: The Git tag to compare against.
-
-    Returns:
-        List of commit strings in format "%h %s" (short hash + subject).
-    """
-    return list(iter_commits_since_tag(tag))
+    """Module-level function for backward compatibility with tests."""
+    return GitRepo.get_commits_since_tag(tag)
 
 
 def parse_changelog_hashes(changelog_path: str) -> Set[str]:
-    """
-    Parse CHANGELOG.md and extract all commit hashes (7-12 hex chars).
-
-    Args:
-        changelog_path: Path to the changelog file.
-
-    Returns:
-        Set of lowercase commit hashes found in the changelog.
-    """
-    changelog_hashes: Set[str] = set()
-
-    with open(changelog_path, "r") as f:
-        for line in f:
-            changelog_hashes.update(COMMIT_HASH_PATTERN.findall(line.lower()))
-
-    return changelog_hashes
+    """Module-level function for backward compatibility with tests."""
+    return ChangelogParser.parse_hashes(changelog_path)
 
 
 def find_missing_entries(commits: List[str], changelog_hashes: Set[str]) -> List[str]:
@@ -181,36 +213,14 @@ def main() -> int:
     )
     args: argparse.Namespace = parser.parse_args()
 
-    class _GitRepo:
-        """Encapsulate git‑related operations."""
-
-        @staticmethod
-        def is_git_repo() -> bool:
-            return os.path.exists(".git")
-
-        @staticmethod
-        def get_latest_tag() -> Optional[str]:
-            return get_latest_tag()
-
-        @staticmethod
-        def get_commits_since_tag(tag: str) -> List[str]:
-            return get_commits_since_tag(tag)
-
-    class _ChangelogParser:
-        """Encapsulate changelog parsing."""
-
-        @staticmethod
-        def parse_hashes(path: str) -> Set[str]:
-            return parse_changelog_hashes(path)
-
     # Verify repository presence
-    if not _GitRepo.is_git_repo():
+    if not GitRepo.is_git_repo():
         print("ENV_NOT_AVAILABLE: Not a git repository")
         return EXIT_ENV_ERROR
 
     # Retrieve latest tag
     try:
-        latest_tag = _GitRepo.get_latest_tag()
+        latest_tag = GitRepo.get_latest_tag()
     except (FileNotFoundError, subprocess.CalledProcessError):
         print("ENV_NOT_AVAILABLE: git command not found or repository invalid")
         return EXIT_ENV_ERROR
@@ -220,7 +230,7 @@ def main() -> int:
         return EXIT_CONFIG_ERROR
 
     # Gather commits since the latest tag
-    commits = _GitRepo.get_commits_since_tag(latest_tag)
+    commits = GitRepo.get_commits_since_tag(latest_tag)
 
     # Ensure changelog file exists
     changelog_path: str = args.changelog_path
@@ -229,12 +239,14 @@ def main() -> int:
         return EXIT_FAIL
 
     # Parse changelog for commit hashes
-    changelog_hashes = _ChangelogParser.parse_hashes(changelog_path)
+    changelog_hashes = ChangelogParser.parse_hashes(changelog_path)
 
     # Determine missing entries
     missing_entries = find_missing_entries(commits, changelog_hashes)
 
     # Report results
     return print_results(missing_entries, changelog_path, args.dry_run)
+
+
 if __name__ == "__main__":
     sys.exit(main())
