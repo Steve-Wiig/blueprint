@@ -44,7 +44,7 @@ EXIT_FAIL = 1
 EXIT_CONFIG_ERROR = 2
 EXIT_ENV_ERROR = 3
 
-COMMIT_HASH_PATTERN: Pattern[str] = re.compile(r'\b([0-9a-f]{7,12})\b')
+COMMIT_HASH_PATTERN: Pattern[str] = re.compile(r'\b([0-9a-f]{7,12})\b')  # Git short hashes are 7-12 chars (default 7, configurable up to 40)
 
 
 class GitRepo:
