@@ -144,9 +144,8 @@ def archive_partition(conn: PgConnection, partition_name: str, dry_run: bool = F
         _stream_and_compress(conn, partition_name, output_file)
         _drop_partition_table(conn, partition_name)
     except Exception as e:
-        sys.stderr.write(f"Archive failed for {partition_name}: {e}\n")
+        logging.error(f"Archive failed for {partition_name}: {e}")
         raise RuntimeError(f"Archive failed for {partition_name}: {e}") from e
-
 
 def archive_partition_with_connection(db_url: str, partition_name: str, dry_run: bool = False) -> None:
     """
