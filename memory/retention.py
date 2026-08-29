@@ -171,7 +171,7 @@ def get_partitions_to_archive(db_url: str, retention_days: int, conn: PgConnecti
     """
     Get list of partitions older than retention_days.
     
-    Performs validation, mount check, and database query.
+    Performs database query only. Validation and mount checks are caller's responsibility.
     
     Args:
         db_url: PostgreSQL connection string.
@@ -182,10 +182,8 @@ def get_partitions_to_archive(db_url: str, retention_days: int, conn: PgConnecti
         List of partition names to archive.
         
     Raises:
-        RuntimeError: If validation or mount check fails.
+        RuntimeError: If database query fails.
     """
-    validate_commands()
-    check_cmr_mount()
     own_conn = False
     if conn is None:
         conn = psycopg2.connect(db_url)
@@ -210,7 +208,6 @@ def get_partitions_to_archive(db_url: str, retention_days: int, conn: PgConnecti
     finally:
         if own_conn:
             conn.close()
-
 def execute_archive_plan(db_url: str, partitions: List[str], max_workers: int, dry_run: bool) -> None:
     """
     Execute archiving plan for given partitions.
