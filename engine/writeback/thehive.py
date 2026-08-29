@@ -39,14 +39,14 @@ SECRET_PATTERNS = [
     re.compile(r'xox[baprs]-[\w\-]{10,}'),
 ]
 
-_LOGGER_CACHE: dict[Path, logging.Logger] = {}
+_LOGGER_CACHE: dict[str, logging.Logger] = {}
 _SESSION: Optional[requests.Session] = None
 
 
 class TheHiveWritebackAdapter:
     """Class-based adapter for TheHive case writeback with isolated session and logger state."""
 
-    def __init__(self, session: Optional[requests.Session] = None, logger_cache: Optional[dict[Path, logging.Logger]] = None):
+    def __init__(self, session: Optional[requests.Session] = None, logger_cache: Optional[dict[str, logging.Logger]] = None):
         self._session = session
         self._logger_cache = logger_cache if logger_cache is not None else {}
 
@@ -65,8 +65,9 @@ class TheHiveWritebackAdapter:
         Returns:
             Configured logger instance with file handler.
         """
-        if log_path in self._logger_cache:
-            return self._logger_cache[log_path]
+        cache_key = str(log_path.resolve())
+        if cache_key in self._logger_cache:
+            return self._logger_cache[cache_key]
 
         logger_name = f"thehive_writeback.handoff.{log_path}"
         logger = logging.getLogger(logger_name)
@@ -76,7 +77,7 @@ class TheHiveWritebackAdapter:
         handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
         handler.setFormatter(logging.Formatter("%(message)s"))
         logger.addHandler(handler)
-        self._logger_cache[log_path] = logger
+        self._logger_cache[cache_key] = logger
         return logger
 
     def verify_sanitization(self, payload: Any, context: str = "payload") -> None:
@@ -246,8 +247,9 @@ def _setup_logger(log_path: Path) -> logging.Logger:
     Returns:
         Configured logger instance with file handler.
     """
-    if log_path in _LOGGER_CACHE:
-        return _LOGGER_CACHE[log_path]
+    cache_key = str(log_path.resolve())
+    if cache_key in _LOGGER_CACHE:
+        return _LOGGER_CACHE[cache_key]
 
     logger_name = f"thehive_writeback.handoff.{log_path}"
     logger = logging.getLogger(logger_name)
@@ -257,7 +259,7 @@ def _setup_logger(log_path: Path) -> logging.Logger:
     handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(message)s"))
     logger.addHandler(handler)
-    _LOGGER_CACHE[log_path] = logger
+    _LOGGER_CACHE[cache_key] = logger
     return logger
 
 
@@ -317,17 +319,17 @@ def build_payload(raw_data: Any, mode: str) -> Any:
 def call_thehive_api(url: str, api_key: str, payload: Any) -> str:
     """Create a case in TheHive via REST API (module-level backward compatibility).
 
+
     Args:
-        url: TheHive base URL (e.g., 'https://thehive.example.com').
-        api_key: TheHive API key for authentication.
-        payload: Sanitized case payload dictionary.
+        url: TheHive base URL.
+        api_key: TheHive API key.
+        payload: Sanitized case payload.
 
     Returns:
-        TheHive case ID string.
+        TheHive case ID.
 
     Raises:
-        RuntimeError: If API returns error status or missing case ID in response.
-        requests.exceptions.RequestException: If network request fails.
+        RuntimeError: If API call fails.
     """
     return _default_adapter.call_thehive_api(url, api_key, payload)
 
@@ -346,107 +348,21 @@ def log_handoff(log_path: Path, case_id: str, mode: str) -> None:
     _default_adapter.log_handoff(log_path, case_id, mode)
 
 
-def main() -> str:
-    """Main entry point for TheHive case writeback adapter (module-level backward compatibility).
-
-    Parses arguments, validates input, creates case in TheHive,
-    and logs the handoff result.
+def main() -> Union[str, int]:
+    """Module-level main entry point for CLI execution.
 
     Returns:
-        Case ID string on success.
-
-    Raises:
-        ValidationError: Missing required fields, invalid JSON, or sanitization failed.
-        TheHiveAPIError: TheHive API returned an error.
-        NetworkError: Network/request exception occurred.
+        Case ID string on success, or integer exit code on failure.
     """
     args = parse_args()
+    return _default_adapter.main(args)
 
-    # Handle --test-sanitization CLI entry point for external test suite
-    if getattr(args, 'test_sanitization', False):
-        try:
-            from tests.test_thehive_writeback import run_sanitization_tests
-            success = run_sanitization_tests()
-            if not success:
-                raise ValidationError("Sanitization tests failed")
-            return "test-success"
-        except ImportError as e:
-            raise RuntimeError("Test module not found. Run tests via pytest.") from e
-        except Exception as e:
-            raise RuntimeError(f"Test execution failed: {e}") from e
 
-    # Import custom exceptions (defined elsewhere in the codebase)
-    try:
-        from engine.exceptions import ValidationError, TheHiveAPIError, NetworkError
-    except ImportError:
-        # Fallback definitions if not available
-        class ValidationError(Exception):
-            pass
-        class TheHiveAPIError(Exception):
-            pass
-        class NetworkError(Exception):
-            pass
-
-    result = _default_adapter.main(args)
-    if isinstance(result, str):
-        return result
-
-    # Map legacy integer error codes to specific exceptions
-    if result == 1:
-        raise TheHiveAPIError("Missing required fields or TheHive API error")
-    elif result == 2:
-        raise ValidationError("Invalid JSON in case-data")
-    elif result == 3:
-        raise NetworkError("Network/request exception")
-    elif result == 4:
-        raise ValidationError("Sanitization verification failed")
-    else:
-        raise RuntimeError(f"Unknown error code: {result}")
-def run_sanitization_tests() -> bool:
-    """Run unit tests for sanitization verification.
-
-    Returns:
-        True if all tests pass, False otherwise.
-    """
-    test_cases = [
-        ({"title": "Test", "description": "Normal case"}, True, "clean payload"),
-        ({"title": "Test", "description": "Case with api_key=abcdefghijklmnopqrstuvwxyz"}, False, "api key in description"),
-        ({"title": "Test", "description": "Password: secret123"}, False, "password in description"),
-        ({"title": "Test", "description": "Token: ghp_abcdefghijklmnopqrstuvwxyz123456"}, False, "github token"),
-        ({"title": "Test", "description": "Key: sk-abcdefghijklmnopqrstuvwxyz123456"}, False, "openai key"),
-        ({"title": "Test", "description": "Auth: Bearer abcdefghijklmnopqrstuvwxyz"}, False, "bearer token"),
-        ({"title": "Test", "description": "Secret: abcdefghijklmnopqrstuvwxyz123456"}, False, "high entropy string"),
-        ({"title": "Test", "tags": ["normal", "tag"]}, True, "clean tags"),
-        ({"title": "Test", "tags": ["api_key=abcdefghijklmnopqrstuvwxyz"]}, False, "secret in tag"),
-        ({"title": "Test", "customFields": [{"name": "api_key", "value": "abcdefghijklmnopqrstuvwxyz"}]}, False, "secret in custom field"),
-    ]
-
-    all_passed = True
-    for payload, should_pass, description in test_cases:
-        try:
-            verify_sanitization(payload, f"test: {description}")
-            if not should_pass:
-                print(f"FAIL: {description} - expected detection but passed")
-                all_passed = False
-            else:
-                print(f"PASS: {description}")
-        except ValueError as e:
-            if should_pass:
-                print(f"FAIL: {description} - unexpected detection: {e}")
-                all_passed = False
-            else:
-                print(f"PASS: {description} - correctly detected secret")
-
-    return all_passed
-
+__version__ = "1.0.0"
 
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] == "--test-sanitization":
-        success = run_sanitization_tests()
-        sys.exit(0 if success else 1)
     result = main()
-    if isinstance(result, str):
-        sys.exit(0)
-    else:
+    if isinstance(result, int):
         sys.exit(result)
+    else:
+        print(result)
