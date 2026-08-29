@@ -46,7 +46,33 @@ Output a structured, executive-level report. Be ruthless and analytical. Do not 
 """
 
 
-def main():
+def main() -> None:
+    """
+    Main entry point for the LLM analysis CLI tool.
+
+    Parses command-line arguments, reads the input file, constructs the prompt
+    (using either the default failure-pattern analysis prompt or a custom prompt
+    file), sends the request to OpenRouter via the OpenAI-compatible API, and
+    saves the analysis report to a timestamped Markdown file in the overnight/
+    directory.
+
+    Command-line arguments:
+        input_file (positional): Path to the text file containing the corpus to analyze.
+        --model: OpenRouter model ID (default: qwen/qwen-2.5-72b-instruct).
+        --prompt-file: Optional path to a custom prompt template file. Must contain
+            the {corpus} placeholder where the input data should be inserted.
+        --output: Optional explicit output file path (default: auto-generated
+            timestamped filename in overnight/).
+        --max-tokens: Maximum tokens for the model response (default: 4000).
+        --temperature: Sampling temperature for the model (default: 0.2).
+
+    Environment variables:
+        OPENROUTER_API_KEY: Required API key for OpenRouter authentication.
+            Should be set in the project's .env file or environment.
+
+    Exits:
+        Exits with code 1 on file not found, missing API key, or API request failure.
+    """
     parser = argparse.ArgumentParser(
         description="Send a large text file to a high-context LLM via OpenRouter for analysis."
     )
