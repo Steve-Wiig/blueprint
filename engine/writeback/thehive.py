@@ -290,8 +290,10 @@ def verify_sanitization(payload: Any, context: str = "payload") -> None:
     Raises:
         ValueError: If any secret pattern is detected in the payload.
     """
-    _default_adapter.verify_sanitization(payload, context)
-
+    payload_str = json.dumps(payload, ensure_ascii=False)
+    for pattern in SECRET_PATTERNS:
+        if pattern.search(payload_str):
+            raise ValueError(f"Secret pattern detected in {context}")
 
 def build_payload(raw_data: Any, mode: str) -> Any:
     """Build and sanitize the case payload for TheHive API (module-level backward compatibility).
