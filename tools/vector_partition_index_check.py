@@ -422,6 +422,11 @@ def _check_indexing_enabled(
 
 
 def main() -> int:
+    EXIT_SUCCESS = 0
+    EXIT_VALIDATION_ERROR = 1
+    EXIT_CONFIG_ERROR = 2
+    EXIT_ENV_ERROR = 3
+
     parser = argparse.ArgumentParser(
         description="Validate vector database partition configuration",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -474,7 +479,6 @@ Exit Codes:
     except OSError as e:
         print(f"File Error: {e}", file=sys.stderr)
         return EXIT_CONFIG_ERROR
-
 
 if __name__ == "__main__":
     sys.exit(main())
