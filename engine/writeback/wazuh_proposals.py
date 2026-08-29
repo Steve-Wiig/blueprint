@@ -172,7 +172,6 @@ def _queue_audit_entry(proposal_id: int, action: str, old_status: Optional[str],
         else:
             _schedule_audit_flush()
 
-
 def init_db() -> None:
     """Initializes the SQLite database and creates the proposals table if it does not exist.
 
