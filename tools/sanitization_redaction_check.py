@@ -140,20 +140,33 @@ class Sanitizer:
         """
         self._patterns = dict(patterns) if patterns is not None else dict(PATTERNS)
         self._compiled_patterns: Dict[str, Pattern[str]] = {}
+        self._pattern_hashes: Dict[str, int] = {}
         self._redaction_token = redaction_token
         self._lock = threading.RLock()
         self.recompile()
 
     def recompile(self) -> None:
-        """Recompile all patterns from the current _patterns dict.
+        """Recompile only patterns that have changed since last compilation.
 
         Call this if _patterns is modified after initialization to ensure
         compiled patterns are up to date. Thread-safe.
         """
         with self._lock:
-            self._compiled_patterns = {
-                k: re.compile(v["pattern"]) for k, v in self._patterns.items()
-            }
+            new_hashes = {}
+            for k, v in self._patterns.items():
+                pattern_str = v["pattern"]
+                new_hashes[k] = hash(pattern_str)
+
+            for k, new_hash in new_hashes.items():
+                old_hash = self._pattern_hashes.get(k)
+                if old_hash != new_hash:
+                    self._compiled_patterns[k] = re.compile(self._patterns[k]["pattern"])
+
+            for k in list(self._compiled_patterns.keys()):
+                if k not in new_hashes:
+                    del self._compiled_patterns[k]
+
+            self._pattern_hashes = new_hashes
 
     def redact(self, pattern_key: str, text: str, redaction_token: Optional[str] = None) -> str:
         """Redact sensitive pattern in text, preserving prefix for query/header patterns.
