@@ -36,7 +36,15 @@ from typing import List, Optional
 
 # Blueprint v11.6.0: Hash Chain Integrity Constraints
 # MAX_CONCURRENT_THREADS increased default to 100, configurable via --threads
+# DEFAULT_MAX_CONCURRENT_THREADS: Maximum number of concurrent threads for stress testing.
+#   Expected range: 1-1000. Higher values increase contention exposure but consume more resources.
+#   Default 100 balances CI execution time with race condition detection probability.
 DEFAULT_MAX_CONCURRENT_THREADS = 100
+
+# DEFAULT_STRESS_ITERATIONS: Number of stress test iterations to run.
+#   Expected range: 1-100. Multiple iterations increase probability of exposing
+#   intermittent race conditions. Default 10 provides reasonable confidence
+#   while keeping CI runtime acceptable.
 DEFAULT_STRESS_ITERATIONS = 10
 
 
