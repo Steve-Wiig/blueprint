@@ -292,55 +292,49 @@ def validate_partition_config(
     if dry_run:
         print("DRY-RUN: Starting validation checks...")
 
-    # Step 1: File existence check
-    if dry_run:
-        print("  [1/6] File existence check")
-    _check_file_exists(config_path)
-    if dry_run:
-        print("  [1/6] PASSED")
+    # Use a mutable holder so step2 can update the parsed data for subsequent steps
+    data_holder = [data]
 
-    # Step 2: JSON parsing (skip if data provided)
-    if dry_run:
-        print("  [2/6] JSON parsing")
-    if data is None:
-        data = _check_json_parsing(config_path)
-    else:
-        if not isinstance(data, dict):
-            raise ValidationError("Configuration data must be a dictionary")
-    if dry_run:
-        print("  [2/6] PASSED")
+    def step1() -> None:
+        _check_file_exists(config_path)
 
-    # Step 3: Required partitions
-    if dry_run:
-        print("  [3/6] Required partitions")
-    _check_required_partitions(config_path, required_partitions, data)
-    if dry_run:
-        print("  [3/6] PASSED")
+    def step2() -> None:
+        if data_holder[0] is None:
+            data_holder[0] = _check_json_parsing(config_path)
+        else:
+            if not isinstance(data_holder[0], dict):
+                raise ValidationError("Configuration data must be a dictionary")
 
-    # Step 4: Schema version
-    if dry_run:
-        print("  [4/6] Schema version")
-    _check_schema_version(config_path, index_schema_version, data)
-    if dry_run:
-        print("  [4/6] PASSED")
+    def step3() -> None:
+        _check_required_partitions(config_path, required_partitions, data_holder[0])
 
-    # Step 5: Shard size constraints
-    if dry_run:
-        print("  [5/6] Shard size constraints")
-    _check_shard_sizes(config_path, max_shard_size_gb, data)
-    if dry_run:
-        print("  [5/6] PASSED")
+    def step4() -> None:
+        _check_schema_version(config_path, index_schema_version, data_holder[0])
 
-    # Step 6: Indexing enabled
-    if dry_run:
-        print("  [6/6] Indexing enabled")
-    _check_indexing_enabled(config_path, data)
-    if dry_run:
-        print("  [6/6] PASSED")
+    def step5() -> None:
+        _check_shard_sizes(config_path, max_shard_size_gb, data_holder[0])
+
+    def step6() -> None:
+        _check_indexing_enabled(config_path, data_holder[0])
+
+    validation_steps = [
+        ("File existence check", step1),
+        ("JSON parsing", step2),
+        ("Required partitions", step3),
+        ("Schema version", step4),
+        ("Shard size constraints", step5),
+        ("Indexing enabled", step6),
+    ]
+
+    for i, (name, step_func) in enumerate(validation_steps, 1):
+        if dry_run:
+            print(f"  [{i}/{len(validation_steps)}] {name}")
+        step_func()
+        if dry_run:
+            print(f"  [{i}/{len(validation_steps)}] PASSED")
 
     if dry_run:
         print("DRY-RUN: Validation completed successfully.")
-
 
 def _check_file_exists(config_path: Path) -> None:
     if not config_path.is_file():
