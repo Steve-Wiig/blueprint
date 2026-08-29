@@ -60,6 +60,8 @@ def validate_commands() -> None:
         )
 
 
+import logging
+
 def check_cmr_mount() -> None:
     """
     Verify that the CMR mount point is available.
@@ -71,22 +73,21 @@ def check_cmr_mount() -> None:
         RuntimeError: If the CMR mount point is not mounted or accessible.
     """
     if not os.path.exists(CMR_MOUNT):
-        sys.stderr.write(f"Error: CMR mount point {CMR_MOUNT} does not exist.\n")
+        logging.error(f"CMR mount point {CMR_MOUNT} does not exist.")
         raise RuntimeError("CMR mount point not available")
     
     if not os.access(CMR_MOUNT, os.R_OK):
-        sys.stderr.write(f"Error: CMR mount point {CMR_MOUNT} is not readable.\n")
+        logging.error(f"CMR mount point {CMR_MOUNT} is not readable.")
         raise RuntimeError("CMR mount point not accessible")
     
     try:
         with open('/proc/mounts', 'r') as f:
             mounts = f.read()
             if CMR_MOUNT not in mounts:
-                sys.stderr.write(f"Error: CMR mount point {CMR_MOUNT} not found in /proc/mounts.\n")
+                logging.error(f"CMR mount point {CMR_MOUNT} not found in /proc/mounts.")
                 raise RuntimeError("CMR mount point not mounted")
     except (OSError, IOError):
         pass
-
 
 
 def _get_archive_paths(partition_name: str) -> Tuple[Path, Path]:
