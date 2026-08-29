@@ -105,21 +105,6 @@ def _audit_log(conn: sqlite3.Connection, event_type: str, alert_id: str, details
         (event_type, alert_id, datetime.now(timezone.utc).isoformat(), json.dumps(audit_details))
     )
 def sanitize_payload(data: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
-    def validate_payload(data: dict[str, Any]) -> dict[str, Any]:
-        return {k: data.get(k) for k in ALLOWED_PAYLOAD_KEYS if k in data}
-    
-    def calculate_severity(data: dict[str, Any]) -> int:
-        raw_level = int(data.get("rule", {}).get("level", 3))
-        return max(0, min(5, raw_level))
-    
-    def build_alert_record(sanitized_payload: dict[str, Any], severity: int) -> dict[str, Any]:
-        return {
-            "id": str(uuid.uuid4()),
-            "severity": severity,
-            "payload": sanitized_payload,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-    
     try:
         sanitized_payload = validate_payload(data)
         severity = calculate_severity(data)
@@ -128,6 +113,23 @@ def sanitize_payload(data: dict[str, Any]) -> tuple[dict[str, Any] | None, str |
     except Exception as e:
         return None, str(e)
 
+
+def validate_payload(data: dict[str, Any]) -> dict[str, Any]:
+    return {k: data.get(k) for k in ALLOWED_PAYLOAD_KEYS if k in data}
+
+
+def calculate_severity(data: dict[str, Any]) -> int:
+    raw_level = int(data.get("rule", {}).get("level", 3))
+    return max(0, min(5, raw_level))
+
+
+def build_alert_record(sanitized_payload: dict[str, Any], severity: int) -> dict[str, Any]:
+    return {
+        "id": str(uuid.uuid4()),
+        "severity": severity,
+        "payload": sanitized_payload,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
 def parse_and_validate(raw_payload: str) -> dict[str, Any]:
     try:
         data = json.loads(raw_payload)
