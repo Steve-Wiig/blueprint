@@ -37,7 +37,7 @@ _COMBINED_PATTERN: str = '|'.join(f'(?P<{name}>{pattern})' for name, pattern in 
 COMPILED_COMBINED: Pattern[str] = re.compile(_COMBINED_PATTERN, re.IGNORECASE)
 
 
-class ScanExit(SystemExit):
+class ScanExit(RuntimeError):
     """Exception raised to signal scan completion with an exit code."""
     def __init__(self, exit_code: int, message: str = "") -> None:
         super().__init__(exit_code)
