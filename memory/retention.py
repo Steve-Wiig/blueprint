@@ -36,16 +36,11 @@ ZSTD_COMMAND = 'zstd'
 
 def _load_config() -> dict:
     """Read environment variables and return config dict."""
-    global ARCHIVE_BASE, CMR_MOUNT, ZSTD_COMMAND
-    ARCHIVE_BASE = os.environ.get('ARCHIVE_BASE', '/archive/iocs')
-    CMR_MOUNT = os.environ.get('CMR_MOUNT', '/mnt/cmr')
-    ZSTD_COMMAND = os.environ.get('ZSTD_COMMAND', 'zstd')
     return {
-        'ARCHIVE_BASE': ARCHIVE_BASE,
-        'CMR_MOUNT': CMR_MOUNT,
-        'ZSTD_COMMAND': ZSTD_COMMAND,
+        'ARCHIVE_BASE': os.environ.get('ARCHIVE_BASE', ARCHIVE_BASE),
+        'CMR_MOUNT': os.environ.get('CMR_MOUNT', CMR_MOUNT),
+        'ZSTD_COMMAND': os.environ.get('ZSTD_COMMAND', ZSTD_COMMAND),
     }
-
 def validate_commands() -> None:
     """
     Verify that required external commands are available in PATH.
