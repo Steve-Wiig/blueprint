@@ -130,7 +130,6 @@ TOKEN_PATTERN: Pattern[str] = re.compile(rf'[a-zA-Z0-9+/=]{{{MIN_TOKEN_LENGTH},}
 
 import functools
 
-@functools.lru_cache(maxsize=1024)
 def calculate_entropy(data: str) -> float:
     """Calculates the Shannon entropy of a given string.
 
