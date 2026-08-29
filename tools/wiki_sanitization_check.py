@@ -143,8 +143,8 @@ def scan_text(text: str) -> list[tuple[str, str]]:
         TypeError: If text is not a string.
 
     Example:
-        >>> scan_text("api_key=secret123")
-        [('API_KEY_PARAM', 'api_key=secret123')]
+        >>> scan_text("api_key=secret1234567890123456")
+        [('API_KEY_PARAM', 'api_key=secret1234567890123456')]
         >>> scan_text("safe content")
         []
     """
@@ -158,7 +158,6 @@ def scan_text(text: str) -> list[tuple[str, str]]:
         if matched_value not in ALLOWLIST:
             found.append((pattern_name, matched_value))
     return found
-
 
 def scan_file(file_path: str) -> list[tuple[str, str]]:
     """
