@@ -8,6 +8,7 @@ import struct
 from datetime import datetime, timezone, timedelta
 from typing import TypedDict, Optional, Callable
 from xml.sax.saxutils import escape
+from dataclasses import dataclass
 
 
 _PG_POOL_MINCONN = 1
@@ -90,6 +91,17 @@ class MemoryMetadata(TypedDict):
     max_age_days: int
 
 
+@dataclass
+class AuditLogEntry:
+    """Data class for audit log entry fields."""
+    retrieval_timestamp: datetime
+    query_hash: str
+    case_ids: list[str]
+    top_k: int
+    max_age_days: int
+    audit_context: Optional[dict] = None
+
+
 def _compute_query_hash(query_embedding: list[float]) -> str:
     """Compute a deterministic SHA256 hash of the query embedding for audit logging."""
     embedding_bytes = struct.pack(f"{len(query_embedding)}d", *query_embedding)
@@ -98,12 +110,7 @@ def _compute_query_hash(query_embedding: list[float]) -> str:
 
 def _log_audit(
     conn: psycopg2.extensions.connection,
-    retrieval_timestamp: datetime,
-    query_hash: str,
-    case_ids: list[str],
-    top_k: int,
-    max_age_days: int,
-    audit_context: Optional[dict] = None
+    entry: AuditLogEntry
 ) -> None:
     """Insert an audit log entry for the memory retrieval operation."""
     cur = None
@@ -113,31 +120,31 @@ def _log_audit(
             INSERT INTO memory_retrieval_audit (retrieval_timestamp, query_hash, case_ids, top_k, max_age_days, audit_context)
             VALUES (%s, %s, %s, %s, %s, %s);
         """
-        context_json = json.dumps(audit_context) if audit_context is not None else None
-        cur.execute(audit_query, (retrieval_timestamp, query_hash, case_ids, top_k, max_age_days, context_json))
+        context_json = json.dumps(entry.audit_context) if entry.audit_context is not None else None
+        cur.execute(audit_query, (entry.retrieval_timestamp, entry.query_hash, entry.case_ids, entry.top_k, entry.max_age_days, context_json))
         conn.commit()
     except psycopg2.Error as e:
         print(
-            f"AUDIT LOG FAILURE (psycopg2.Error): query_hash={query_hash}, case_ids={case_ids}, "
-            f"top_k={top_k}, max_age_days={max_age_days}, error={e}",
+            f"AUDIT LOG FAILURE (psycopg2.Error): query_hash={entry.query_hash}, case_ids={entry.case_ids}, "
+            f"top_k={entry.top_k}, max_age_days={entry.max_age_days}, error={e}",
             file=sys.stderr,
         )
         try:
             conn.rollback()
         except psycopg2.Error as rb_err:
-            print(f"AUDIT ROLLBACK FAILURE: query_hash={query_hash}, error={rb_err}", file=sys.stderr)
-        raise RuntimeError(f"Failed to write audit log for query_hash={query_hash}") from e
+            print(f"AUDIT ROLLBACK FAILURE: query_hash={entry.query_hash}, error={rb_err}", file=sys.stderr)
+        raise RuntimeError(f"Failed to write audit log for query_hash={entry.query_hash}") from e
     except (TypeError, ValueError, json.JSONDecodeError) as e:
         print(
-            f"AUDIT LOG FAILURE (serialization error): query_hash={query_hash}, case_ids={case_ids}, "
-            f"top_k={top_k}, max_age_days={max_age_days}, error={e}",
+            f"AUDIT LOG FAILURE (serialization error): query_hash={entry.query_hash}, case_ids={entry.case_ids}, "
+            f"top_k={entry.top_k}, max_age_days={entry.max_age_days}, error={e}",
             file=sys.stderr,
         )
         try:
             conn.rollback()
         except psycopg2.Error as rb_err:
-            print(f"AUDIT ROLLBACK FAILURE: query_hash={query_hash}, error={rb_err}", file=sys.stderr)
-        raise RuntimeError(f"Audit context serialization failed for query_hash={query_hash}") from e
+            print(f"AUDIT ROLLBACK FAILURE: query_hash={entry.query_hash}, error={rb_err}", file=sys.stderr)
+        raise RuntimeError(f"Audit context serialization failed for query_hash={entry.query_hash}") from e
     finally:
         if cur is not None:
             cur.close()
@@ -187,7 +194,15 @@ def stitch_memory_context(
         metadata = _build_metadata(retrieval_timestamp, case_refs, top_k, max_age_days)
 
         query_hash = _compute_query_hash(query_embedding)
-        _log_audit(conn, retrieval_timestamp, query_hash, case_refs, top_k, max_age_days, audit_context)
+        audit_entry = AuditLogEntry(
+            retrieval_timestamp=retrieval_timestamp,
+            query_hash=query_hash,
+            case_ids=case_refs,
+            top_k=top_k,
+            max_age_days=max_age_days,
+            audit_context=audit_context
+        )
+        _log_audit(conn, audit_entry)
         
         return formatted_context, metadata
 
