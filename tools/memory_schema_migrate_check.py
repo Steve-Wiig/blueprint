@@ -47,6 +47,9 @@ def _load_config():
     if env_ledger:
         ledger_path = Path(env_ledger).resolve()
 
+    # Setup phase: ensure ledger directory exists (idempotent)
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+
     return Config(project_root=project_root, schema_path=schema_path, ledger_path=ledger_path)
 
 def validate_schema(schema_data: dict) -> tuple[bool, str]:
@@ -111,7 +114,6 @@ def main() -> int:
         return 0
 
     # Append audit entry to migration ledger (append-only per Section 30)
-    config.ledger_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config.ledger_path, 'a') as f:
         f.write(f"{datetime.now(timezone.utc).isoformat()} | Schema valid | Schema {SCHEMA_VERSION_REQUIRED} verified\n")
 
