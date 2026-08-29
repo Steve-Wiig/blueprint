@@ -65,6 +65,7 @@ class ModelRegistryClient:
         self._routing_config_path = routing_config_path
         self._routing_config: Optional[Dict[str, str]] = routing_config
         self._adapter_cache: Dict[str, Dict[str, Any]] = {}
+        self._adapter_id_cache: Dict[str, Dict[str, Any]] = {}
 
         if routing_config_path is not None and routing_config is not None:
             raise ValueError("Exactly one of routing_config_path or routing_config must be provided")
@@ -96,6 +97,7 @@ class ModelRegistryClient:
             raise ValueError(f"CONFIG ERROR: Could not load routing config: {self._routing_config_path}")
 
         self._adapter_cache.clear()
+        self._adapter_id_cache.clear()
         return self._routing_config
 
     @property
@@ -177,6 +179,13 @@ class ModelRegistryClient:
         if not adapter_id:
             raise AdapterNotFoundError(f"No adapter configured for task type: {task_type}")
 
+        # Check secondary cache keyed by adapter_id to avoid redundant database queries
+        # when multiple task_types map to the same adapter_id
+        if adapter_id in self._adapter_id_cache:
+            result = self._adapter_id_cache[adapter_id]
+            self._adapter_cache[task_type] = result
+            return result
+
         try:
             conn = self._connection
             cursor = conn.cursor()
@@ -194,6 +203,7 @@ class ModelRegistryClient:
 
             result = {"adapter_id": row['adapter_id'], "sha256": row['adapter_sha256'], "status": row['status']}
             self._adapter_cache[task_type] = result
+            self._adapter_id_cache[adapter_id] = result
             return result
         except sqlite3.Error as e:
             raise DatabaseError(f"Database error retrieving adapter {adapter_id}: {e}")
