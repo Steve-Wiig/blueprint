@@ -19,7 +19,69 @@ from typing import Any, Dict, List, Optional, Union
 
 
 def parse_log_file(log_path: Path) -> Dict[str, Any]:
-    """Parse a single drain log file and extract structured metrics."""
+    """
+    Parse a single drain log file and extract structured metrics.
+
+    Args:
+        log_path: Path to the overnight drain log file.
+
+    Returns:
+        Dictionary with the following structure:
+        {
+            "file": str,                    # Path to the log file
+            "run_date": str | None,         # Extracted run date (e.g., "Mon Aug 26 01:41:03 UTC 2026")
+            "summary": {
+                "total_attempts": int,      # Total fix attempts (successful + rejected)
+                "successful": int,          # Number of fixes committed
+                "rejected": int,            # Number of rejected fixes
+                "deferred": int,            # Number of deferred items
+                "success_rate": float       # successful / total_attempts (0.0 if no attempts)
+            },
+            "failure_categories": dict[str, int],  # Category -> count, e.g.:
+                # "unterminated_triple_quoted": 5,
+                # "unterminated_string": 3,
+                # "unclosed_parenthesis": 2,
+                # "fix_too_short": 1,
+                # "invalid_python": 4,
+                # "tests_failed": 2,
+                # "other_rejection": 1
+            "file_failures": dict[str, int],       # File path -> failure count (top 10)
+            "deferred_items": list[dict],          # Each: {"attempts": int, "description": str}
+            "passes": list[dict]                   # Each: {"pass_number": int, "remaining": int, "applied": int}
+        }
+
+    Example output:
+        {
+            "file": "overnight/run_20260826_014103.log",
+            "run_date": "Mon Aug 26 01:41:03 UTC 2026",
+            "summary": {
+                "total_attempts": 42,
+                "successful": 28,
+                "rejected": 12,
+                "deferred": 2,
+                "success_rate": 0.6666666666666666
+            },
+            "failure_categories": {
+                "unterminated_triple_quoted": 5,
+                "tests_failed": 3,
+                "invalid_python": 2,
+                "other_rejection": 2
+            },
+            "file_failures": {
+                "src/utils/parser.py": 4,
+                "tests/test_parser.py": 3
+            },
+            "deferred_items": [
+                {"attempts": 3, "description": "Fix type annotation in complex generic..."},
+                {"attempts": 5, "description": "Refactor circular import in..."}
+            ],
+            "passes": [
+                {"pass_number": 1, "remaining": 42, "applied": 15},
+                {"pass_number": 2, "remaining": 27, "applied": 8},
+                {"pass_number": 3, "remaining": 19, "applied": 5}
+            ]
+        }
+    """
     content: str = log_path.read_text(encoding="utf-8")
     lines: List[str] = content.splitlines()
     
