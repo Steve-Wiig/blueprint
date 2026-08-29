@@ -22,14 +22,13 @@ except ImportError:
 LARGE_FILE_THRESHOLD = 100 * 1024 * 1024  # 100 MB
 
 def compute_row_hash(row: dict[str, Any]) -> str:
-    """Recomputes hash for a single row excluding the hash field itself."""
+    """Excludes top-level hash field only. Nested hash fields are included in hash computation."""
     data = {k: v for k, v in row.items() if k != "hash"}
     if ORJSON_AVAILABLE:
         serialized = orjson.dumps(data, option=orjson.OPT_SORT_KEYS).decode()
     else:
         serialized = json.dumps(data, sort_keys=True, separators=(',', ':'), ensure_ascii=True)
     return hashlib.sha256(serialized.encode()).hexdigest()
-
 def _verify_chain_iterable(entries: Iterable[dict[str, Any]]) -> bool:
     """Internal helper that verifies a chain given an iterable of entries."""
     expected_seq = 0
