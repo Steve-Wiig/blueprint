@@ -161,10 +161,8 @@ def check_idempotency(input_text: str, prefix: str) -> bool:
 
 def _validate(prefixes: Dict[str, str]) -> bool:
     if not validate_against_service(prefixes):
-        print("ERROR: Prefix validation against embedding service failed", file=sys.stderr)
-        return False
+        raise RuntimeError("Prefix validation against embedding service failed")
     return True
-
 def _load_cases(prefixes: Dict[str, str], dry_run: bool):
     doc_prefix = prefixes["document"]
     query_prefix = prefixes["query"]
