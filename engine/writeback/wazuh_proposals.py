@@ -292,15 +292,26 @@ def parse_args() -> argparse.Namespace:
     """Parses command line arguments.
 
     Returns:
-        Parsed arguments namespace with key, value, and approval_token attributes.
+        argparse.Namespace: Parsed arguments with the following attributes:
+            - key (str): CDB Key
+            - value (str): CDB Value
+            - approval_token (str | None): Approval token for gated mutation (Section 24)
+            - changed_by (str): Identity of the proposer (default: "cli-user")
     """
+    from typing import TypedDict, Optional, cast
+
+    class _ParsedArgs(TypedDict):
+        key: str
+        value: str
+        approval_token: Optional[str]
+        changed_by: str
+
     parser = argparse.ArgumentParser(description="Wazuh CDB Proposal Adapter")
     parser.add_argument("--key", required=True, help="CDB Key")
     parser.add_argument("--value", required=True, help="CDB Value")
     parser.add_argument("--approval-token", required=False, help="Approval token for gated mutation (Section 24)")
     parser.add_argument("--changed-by", required=False, default="cli-user", help="Identity of the proposer")
-    return parser.parse_args()
-
+    return cast(_ParsedArgs, parser.parse_args())
 
 def validate_proposal(key: str) -> None:
     """Validates the proposal key and environment.
