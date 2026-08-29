@@ -99,12 +99,12 @@ def create_pending_cursor(conn: psycopg2.extensions.connection) -> psycopg2.exte
         """
         SELECT h.id, h.ts, h.payload_sha256
         FROM handoffs h
-        WHERE NOT EXISTS (SELECT 1 FROM audit_chain a WHERE a.row_id = h.id)
+        LEFT JOIN audit_chain a ON a.row_id = h.id
+        WHERE a.row_id IS NULL
         ORDER BY h.ts ASC, h.id ASC
         """
     )
     return pending_cur
-
 
 def fetch_pending_batches(
     pending_cur: psycopg2.extensions.cursor,
