@@ -4,6 +4,7 @@ import hmac
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Callable
 
@@ -25,6 +26,20 @@ ENV_HMAC_KEY_ID = 'SO_LEDGER_HMAC_KEY_ID'
 _LEDGER_PATH: str = DEFAULT_LEDGER_PATH
 _HMAC_KEY: bytes = b''
 _HMAC_KEY_ID: str = 'default'
+
+# Regex patterns for secret redaction
+_SECRET_PATTERNS = [
+    (re.compile(r'(?i)(api[_-]?key|apikey|access[_-]?token|secret[_-]?key|auth[_-]?token)\s*[:=]\s*[\w\-]{20,}'), r'\1=***REDACTED***'),
+    (re.compile(r'(?i)(password|passwd|pwd)\s*[:=]\s*\S+'), r'\1=***REDACTED***'),
+    (re.compile(r'eyJ[\w\-]+\.eyJ[\w\-]+\.[\w\-]+'), '***JWT_REDACTED***'),
+    (re.compile(r'(?i)bearer\s+[\w\-]{20,}'), 'Bearer ***REDACTED***'),
+    (re.compile(r'(?i)authorization\s*[:=]\s*\S+'), 'Authorization=***REDACTED***'),
+    (re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b'), '***IP_REDACTED***'),
+    (re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'), '***EMAIL_REDACTED***'),
+    (re.compile(r'(?i)(ssh[_-]?key|private[_-]?key)\s*[:=]\s*\S+'), r'\1=***REDACTED***'),
+    (re.compile(r'(?i)aws[_-]?secret[_-]?access[_-]?key\s*[:=]\s*\S+'), 'aws_secret_access_key=***REDACTED***'),
+    (re.compile(r'(?i)github[_-]?token\s*[:=]\s*\S+'), 'github_token=***REDACTED***'),
+]
 
 
 def _load_config() -> None:
@@ -56,18 +71,32 @@ def configure_logging() -> None:
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 
+def _redact_secrets(text: str) -> str:
+    """Redact secrets, high-entropy tokens, and PII from text."""
+    for pattern, replacement in _SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
 def sanitize_input(data: Any) -> Dict[str, str]:
-    """Sanitizes input dictionary by truncating keys and values.
+    """Sanitizes input dictionary by redacting secrets then truncating keys and values.
 
     Args:
         data: The input data to sanitize.
 
     Returns:
-        A dictionary with keys truncated to 64 chars and values to 2048 chars.
+        A dictionary with keys truncated to 64 chars and values to 2048 chars,
+        with secrets redacted.
     """
     if not isinstance(data, dict):
         return {}
-    return {str(k)[:64]: str(v)[:2048] for k, v in data.items()}
+    sanitized = {}
+    for k, v in data.items():
+        key_str = str(k)[:64]
+        val_str = str(v)[:2048]
+        val_str = _redact_secrets(val_str)
+        sanitized[key_str] = val_str
+    return sanitized
 
 
 def create_case_draft(sanitized: Dict[str, str]) -> str:
