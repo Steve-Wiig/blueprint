@@ -86,6 +86,12 @@ def drain_fix_backlog(api_keys, max_fixes=3):
     """Apply backlog fixes with retry tracking. Fixes that fail MAX_FIX_RETRIES
     times are moved to a deferred list instead of being retried forever, so we
     stop burning quota on hopeless fixes (large-file truncation, unfixable tests)."""
+    
+    # HARDENING: Gracefully skip if human operator has locked the backlog for manual editing
+    if BACKLOG_LOCK.exists():
+        print("       ⚠️  BACKLOG LOCKED: Human operator is editing. Skipping drain pass to prevent overwrite.")
+        return 0
+        
     backlog = _load_backlog()
     if not backlog:
         return 0
