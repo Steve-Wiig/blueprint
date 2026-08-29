@@ -144,7 +144,6 @@ def validate_meta_schema(data: Any) -> List[str]:
         return [f"Meta-schema validation failed: {e.message}"]
     except Exception as e:
         return [f"Meta-schema validation error: {str(e)}"]
-
 def find_forbidden(obj: Any, forbidden_fields: Set[str]) -> List[str]:
     """Recursively search for forbidden field names in a JSON schema object.
 
