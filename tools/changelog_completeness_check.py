@@ -136,9 +136,8 @@ class ChangelogParser:
 
 
 def get_latest_tag() -> Optional[str]:
-    """Module-level function for backward compatibility with tests."""
+    """Module-level function for test patching isolation."""
     return GitRepo.get_latest_tag()
-
 
 def iter_commits_since_tag(tag: str) -> Iterator[str]:
     """Module-level function for backward compatibility with tests."""
