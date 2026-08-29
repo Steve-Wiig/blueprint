@@ -126,14 +126,9 @@ class ChangelogParser:
         Returns:
             Set of lowercase commit hashes found in the changelog.
         """
-        changelog_hashes: Set[str] = set()
-
         with open(changelog_path, "r") as f:
-            for line in f:
-                changelog_hashes.update(COMMIT_HASH_PATTERN.findall(line.lower()))
-
-        return changelog_hashes
-
+            content = f.read()
+        return set(COMMIT_HASH_PATTERN.findall(content.lower()))
 
 def get_latest_tag() -> Optional[str]:
     """Module-level function for test patching isolation."""
