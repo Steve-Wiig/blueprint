@@ -94,6 +94,8 @@ def reset_defaults_cache() -> None:
     # Global cache removed; configuration is now passed explicitly.
     # This function is kept for API compatibility and is a no-op.
     pass
+
+
 def _load_defaults_config() -> Dict[str, Any]:
     """
     Load default configuration from JSON file with caching.
@@ -245,51 +247,50 @@ def validate_partition_config(
     max_shard_size_gb = _get_max_shard_size_gb(defaults)
     index_schema_version = _get_index_schema_version(defaults)
 
-    config_path_str = str(config_path)
-
-    # Define all validation steps upfront for consistent reporting
-    steps: List[tuple[str, Callable[[], None]]] = [
-        ("File existence check", lambda: _check_file_exists(config_path)),
-        ("JSON parsing", lambda: _check_json_parsing(config_path)),
-        ("Required partitions", lambda: _check_required_partitions(config_path, required_partitions)),
-        ("Schema version", lambda: _check_schema_version(config_path, index_schema_version)),
-        ("Shard size constraints", lambda: _check_shard_sizes(config_path, max_shard_size_gb)),
-        ("Indexing enabled", lambda: _check_indexing_enabled(config_path)),
-    ]
-
     if dry_run:
         print("DRY-RUN: Starting validation checks...")
-        for i, (name, _) in enumerate(steps, 1):
-            print(f"  [{i}/{len(steps)}] {name}")
 
-    data: Optional[PartitionConfig] = None
+    # Step 1: File existence check
+    if dry_run:
+        print("  [1/6] File existence check")
+    _check_file_exists(config_path)
+    if dry_run:
+        print("  [1/6] PASSED")
 
-    for i, (name, check_fn) in enumerate(steps, 1):
-        try:
-            if i == 2:
-                # JSON parsing step returns the parsed data
-                data = _check_json_parsing(config_path)
-            elif i == 3:
-                _check_required_partitions(config_path, required_partitions, data)
-            elif i == 4:
-                _check_schema_version(config_path, index_schema_version, data)
-            elif i == 5:
-                _check_shard_sizes(config_path, max_shard_size_gb, data)
-            elif i == 6:
-                _check_indexing_enabled(config_path, data)
-            else:
-                check_fn()
+    # Step 2: JSON parsing
+    if dry_run:
+        print("  [2/6] JSON parsing")
+    data = _check_json_parsing(config_path)
+    if dry_run:
+        print("  [2/6] PASSED")
 
-            if dry_run:
-                print(f"  [{i}/{len(steps)}] PASSED")
-        except RuntimeError as e:
-            if dry_run:
-                print(f"  [{i}/{len(steps)}] FAILED – {e}")
-            raise
-        except OSError:
-            if dry_run:
-                print(f"  [{i}/{len(steps)}] FAILED – unable to read file.")
-            raise
+    # Step 3: Required partitions
+    if dry_run:
+        print("  [3/6] Required partitions")
+    _check_required_partitions(config_path, required_partitions, data)
+    if dry_run:
+        print("  [3/6] PASSED")
+
+    # Step 4: Schema version
+    if dry_run:
+        print("  [4/6] Schema version")
+    _check_schema_version(config_path, index_schema_version, data)
+    if dry_run:
+        print("  [4/6] PASSED")
+
+    # Step 5: Shard size constraints
+    if dry_run:
+        print("  [5/6] Shard size constraints")
+    _check_shard_sizes(config_path, max_shard_size_gb, data)
+    if dry_run:
+        print("  [5/6] PASSED")
+
+    # Step 6: Indexing enabled
+    if dry_run:
+        print("  [6/6] Indexing enabled")
+    _check_indexing_enabled(config_path, data)
+    if dry_run:
+        print("  [6/6] PASSED")
 
     if dry_run:
         print("DRY-RUN: Validation completed successfully.")
@@ -315,6 +316,8 @@ def _check_json_parsing(config_path: Path, data: Optional[Dict[str, Any]] = None
         return parsed
     except json.JSONDecodeError:
         raise RuntimeError(EXIT_VALIDATION_ERROR)
+
+
 def _check_required_partitions(
     config_path: Path,
     required_partitions: List[str],
@@ -334,7 +337,8 @@ def _check_schema_version(
 ) -> None:
     if data is None:
         data = _check_json_parsing(config_path)
-    if data.get("version") != expected_version:
+    actual_version = data.get("version")
+    if actual_version != expected_version:
         raise RuntimeError(EXIT_VALIDATION_ERROR)
 
 
@@ -345,9 +349,9 @@ def _check_shard_sizes(
 ) -> None:
     if data is None:
         data = _check_json_parsing(config_path)
-    for name, settings in data["partitions"].items():
-        max_shard = settings.get("max_shard_gb")
-        if max_shard is None or max_shard > max_shard_size_gb:
+    for partition_name, settings in data.get("partitions", {}).items():
+        max_shard = settings.get("max_shard_gb", 0)
+        if max_shard > max_shard_size_gb:
             raise RuntimeError(EXIT_VALIDATION_ERROR)
 
 
@@ -357,34 +361,40 @@ def _check_indexing_enabled(
 ) -> None:
     if data is None:
         data = _check_json_parsing(config_path)
-    for name, settings in data["partitions"].items():
+    for partition_name, settings in data.get("partitions", {}).items():
         if not settings.get("indexing_enabled", False):
             raise RuntimeError(EXIT_VALIDATION_ERROR)
 
 
-def _parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
+def _load_config() -> Dict[str, Any]:
+    """Load configuration from environment variables and defaults file."""
+    defaults = _load_defaults_config()
+    return {
+        "required_partitions": _get_required_partitions(defaults),
+        "max_shard_size_gb": _get_max_shard_size_gb(defaults),
+        "index_schema_version": _get_index_schema_version(defaults),
+    }
+
+
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Validate vector partition configuration against schema constraints and sharding rules."
     )
     parser.add_argument(
         "--config",
         type=Path,
-        default=Path(os.getenv("SLM_CONFIG", "config/vector_partitions.json")),
+        default=Path("config/vector_partitions.json"),
         help="Path to partition configuration JSON file (default: config/vector_partitions.json)",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Perform validation without committing changes with verbose step-by-step output",
+        help="Perform validation without committing changes, with verbose step-by-step output",
     )
-    return parser.parse_args(argv)
-
-
-def main(argv: Optional[List[str]] = None) -> int:
-    args = _parse_arguments(argv)
+    args = parser.parse_args()
 
     if not os.environ.get("SLM_ENV"):
-        print("ERROR: SLM_ENV environment variable is required", file=sys.stderr)
+        print("ERROR: SLM_ENV environment variable not set", file=sys.stderr)
         return EXIT_ENV_ERROR
 
     try:
@@ -395,6 +405,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return EXIT_CONFIG_ERROR
 
     return EXIT_SUCCESS
+
 
 if __name__ == "__main__":
     sys.exit(main())
