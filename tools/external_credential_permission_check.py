@@ -38,6 +38,26 @@ def sanitize_auth(auth: tuple[str, str] | None) -> tuple[str, str]:
 
 
 def validate_config(config: dict) -> None:
+    """
+    Validate the configuration dictionary for all services.
+
+    Validates that each service config contains all REQUIRED_KEYS:
+        - user_env: environment variable name for the API user
+        - token_env: environment variable name for the API token
+        - read: path for the read endpoint (must start with '/')
+        - forbidden: path for the forbidden endpoint (must start with '/')
+        - forbidden_method: HTTP method to test (must be in VALID_METHODS)
+
+    VALID_METHODS: {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+
+    Side effects:
+        - Mutates `config` in-place: normalizes `forbidden_method` to uppercase.
+
+    Raises:
+        ValueError: If config is not a dict, a service config is not a dict,
+                    required keys are missing, forbidden_method is invalid,
+                    or read/forbidden paths don't start with '/'.
+    """
     if not isinstance(config, dict):
         raise ValueError("Config must be a dictionary mapping service names to config objects")
 
@@ -60,7 +80,6 @@ def validate_config(config: dict) -> None:
         for key in ("read", "forbidden"):
             if not isinstance(cfg[key], str) or not cfg[key].startswith("/"):
                 raise ValueError(f"Service '{service}' {key} must be a path starting with '/'")
-
 
 def load_config(config_path: str | None = None) -> dict:
     path = config_path or os.getenv("CONFIG_FILE", DEFAULT_CONFIG_PATH)
