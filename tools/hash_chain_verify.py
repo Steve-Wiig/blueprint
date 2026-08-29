@@ -40,7 +40,6 @@ def _verify_chain_iterable(entries: Iterable[dict[str, Any]]) -> bool:
         expected_prev_hash = actual_hash
         expected_seq += 1
     return True
-
 def verify_chain_streaming(file_path: str) -> bool:
     """
     Verifies hash chain using streaming JSON parser (ijson).
