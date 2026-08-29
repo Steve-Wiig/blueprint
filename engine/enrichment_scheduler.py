@@ -279,7 +279,7 @@ def _fetch_provider_values(
     """
     if not providers:
         return {}
-    cache_key = (table, column, tuple(sorted(providers)))
+    cache_key = (table, column, frozenset(providers))
     cached = _fetch_cache.get(cache_key)
     if cached is not None:
         return cached
@@ -291,7 +291,6 @@ def _fetch_provider_values(
     result = {row[0]: row[1] for row in cursor.fetchall()}
     _fetch_cache.set(cache_key, result)
     return result
-
 
 def update_quota(
     sq_conn: sqlite3.Connection,
