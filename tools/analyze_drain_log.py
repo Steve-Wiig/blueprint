@@ -11,17 +11,19 @@ Usage:
 import re
 import json
 import argparse
+import sys
 from pathlib import Path
 from collections import defaultdict, Counter
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Union
 
 
-def parse_log_file(log_path):
+def parse_log_file(log_path: Path) -> Dict[str, Any]:
     """Parse a single drain log file and extract structured metrics."""
-    content = log_path.read_text(encoding="utf-8")
-    lines = content.splitlines()
+    content: str = log_path.read_text(encoding="utf-8")
+    lines: List[str] = content.splitlines()
     
-    metrics = {
+    metrics: Dict[str, Any] = {
         "file": str(log_path),
         "run_date": None,
         "summary": {
@@ -43,8 +45,8 @@ def parse_log_file(log_path):
         metrics["run_date"] = date_match.group(1)
     
     # Parse line by line
-    current_pass = None
-    current_file = None
+    current_pass: Optional[int] = None
+    current_file: Optional[str] = None
     
     for line in lines:
         # Track passes
@@ -128,10 +130,10 @@ def parse_log_file(log_path):
     return metrics
 
 
-def analyze_multiple_logs(log_paths):
+def analyze_multiple_logs(log_paths: List[Path]) -> Dict[str, Any]:
     """Analyze multiple log files and aggregate metrics."""
-    all_metrics = []
-    aggregated = {
+    all_metrics: List[Dict[str, Any]] = []
+    aggregated: Dict[str, Any] = {
         "total_runs": len(log_paths),
         "combined_summary": {
             "total_attempts": 0,
@@ -175,7 +177,7 @@ def analyze_multiple_logs(log_paths):
     return aggregated
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Deterministic parser for overnight drain logs"
     )
@@ -196,7 +198,7 @@ def main():
     args = parser.parse_args()
     
     # Resolve glob patterns
-    log_paths = []
+    log_paths: List[Path] = []
     for pattern in args.log_files:
         if "*" in pattern:
             log_paths.extend(sorted(Path(".").glob(pattern)))
@@ -214,13 +216,13 @@ def main():
     
     # Analyze
     if len(log_paths) == 1:
-        result = parse_log_file(log_paths[0])
+        result: Dict[str, Any] = parse_log_file(log_paths[0])
     else:
         result = analyze_multiple_logs(log_paths)
     
     # Output
-    indent = 2 if args.pretty else None
-    json_output = json.dumps(result, indent=indent, default=str)
+    indent: Optional[int] = 2 if args.pretty else None
+    json_output: str = json.dumps(result, indent=indent, default=str)
     
     if args.output:
         Path(args.output).write_text(json_output, encoding="utf-8")
@@ -229,29 +231,29 @@ def main():
         print(json_output)
     
     # Print summary to stderr for quick review
-    print("\n" + "="*70, file=__import__('sys').stderr)
-    print("📈 SUMMARY", file=__import__('sys').stderr)
-    print("="*70, file=__import__('sys').stderr)
+    print("\n" + "="*70, file=sys.stderr)
+    print("📈 SUMMARY", file=sys.stderr)
+    print("="*70, file=sys.stderr)
     
     if len(log_paths) == 1:
         s = result["summary"]
-        print(f"Total attempts: {s['total_attempts']}", file=__import__('sys').stderr)
-        print(f"Successful:     {s['successful']}", file=__import__('sys').stderr)
-        print(f"Rejected:       {s['rejected']}", file=__import__('sys').stderr)
-        print(f"Deferred:       {s['deferred']}", file=__import__('sys').stderr)
-        print(f"Success rate:   {s['success_rate']:.1%}", file=__import__('sys').stderr)
+        print(f"Total attempts: {s['total_attempts']}", file=sys.stderr)
+        print(f"Successful:     {s['successful']}", file=sys.stderr)
+        print(f"Rejected:       {s['rejected']}", file=sys.stderr)
+        print(f"Deferred:       {s['deferred']}", file=sys.stderr)
+        print(f"Success rate:   {s['success_rate']:.1%}", file=sys.stderr)
         
-        print(f"\n🔥 Top failing files:", file=__import__('sys').stderr)
+        print(f"\n🔥 Top failing files:", file=sys.stderr)
         for file, count in result["file_failures"].items():
-            print(f"  {file}: {count} failures", file=__import__('sys').stderr)
+            print(f"  {file}: {count} failures", file=sys.stderr)
     else:
         s = result["combined_summary"]
-        print(f"Total runs:     {result['total_runs']}", file=__import__('sys').stderr)
-        print(f"Total attempts: {s['total_attempts']}", file=__import__('sys').stderr)
-        print(f"Successful:     {s['successful']}", file=__import__('sys').stderr)
-        print(f"Rejected:       {s['rejected']}", file=__import__('sys').stderr)
-        print(f"Deferred:       {s['deferred']}", file=__import__('sys').stderr)
-        print(f"Success rate:   {s['success_rate']:.1%}", file=__import__('sys').stderr)
+        print(f"Total runs:     {result['total_runs']}", file=sys.stderr)
+        print(f"Total attempts: {s['total_attempts']}", file=sys.stderr)
+        print(f"Successful:     {s['successful']}", file=sys.stderr)
+        print(f"Rejected:       {s['rejected']}", file=sys.stderr)
+        print(f"Deferred:       {s['deferred']}", file=sys.stderr)
+        print(f"Success rate:   {s['success_rate']:.1%}", file=sys.stderr)
 
 
 if __name__ == "__main__":
