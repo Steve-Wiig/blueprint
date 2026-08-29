@@ -30,36 +30,6 @@
     "deferred_reason": "failed 7 attempts"
   },
   {
-    "file": "engine/queue_manager.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 40,
-      "line_end": 42,
-      "description": "lease_interval, max_attempts, emergency_depth hardcoded in __init__; prevents environment-specific tuning and testing",
-      "suggestion": "Add optional parameters to __init__ with defaults; load from config object or environment variables",
-      "impact": "medium",
-      "effort": "trivial"
-    },
-    "attempts": 7,
-    "deferred_reason": "failed 7 attempts"
-  },
-  {
-    "file": "engine/queue_manager.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 1,
-      "line_end": 15,
-      "description": "Status and severity constants defined as module-level strings; no enum type safety or IDE autocomplete",
-      "suggestion": "Convert to Python enum.Enum classes (Status, Severity) for type checking and autocomplete",
-      "impact": "low",
-      "effort": "small"
-    },
-    "attempts": 7,
-    "deferred_reason": "failed 7 attempts"
-  },
-  {
     "file": "engine/sanitization_pipeline.py",
     "issue": {
       "category": "performance",
