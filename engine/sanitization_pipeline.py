@@ -137,7 +137,7 @@ def calculate_entropy(data: str) -> float:
         data: The input string to analyze.
 
     Returns:
-        float: The calculated Shannon entropy.
+        float: The calculated Shannon entropy. Returns 0.0 for empty string.
 
     Raises:
         TypeError: If data is not a string.
