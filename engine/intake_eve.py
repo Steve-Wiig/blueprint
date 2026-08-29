@@ -59,8 +59,20 @@ def with_db(transaction: bool = False) -> Callable[[Callable[..., T]], Callable[
 
 def execute_in_transaction(func: Callable[..., T]) -> Callable[..., T]:
     """Decorator that provides a connection with transaction handling."""
-    return with_db(transaction=True)(func)
+    def _execute_with_error_handling(operation: Callable[[], T], func_name: str) -> T:
+        try:
+            return operation()
+        except Exception as e:
+            logger.error(f"{func_name} error: {e}")
+            raise RuntimeError("Library code called exit(2)")
 
+    def wrapper(*args: Any, **kwargs: Any) -> T:
+        def operation():
+            with get_connection() as conn:
+                with transaction(conn) as cursor:
+                    return func(cursor, *args, **kwargs)
+        return _execute_with_error_handling(operation, func.__name__)
+    return wrapper
 def execute_with_connection(func: Callable[..., T]) -> Callable[..., T]:
     """Decorator that provides a connection and handles errors."""
     def wrapper(*args: Any, **kwargs: Any) -> T:
