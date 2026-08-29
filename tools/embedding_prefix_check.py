@@ -163,7 +163,7 @@ class EmbeddingService:
         """
         vector = self.encoder(f'{self.doc_prefix}{text}')
         self._validate_dimension(vector, "document")
-        return list(vector)
+        return vector
 
     def embed_query(self, text: str) -> list[float]:
         """
@@ -192,7 +192,7 @@ class EmbeddingService:
         """
         vector = self.encoder(f'{self.query_prefix}{text}')
         self._validate_dimension(vector, "query")
-        return list(vector)
+        return vector
 def run_verification(
     dry_run: bool = False,
     doc_prefix: Optional[str] = None,
