@@ -1,14 +1,50 @@
 #!/usr/bin/env python3
 """
-Send a large text corpus to a high-context LLM via OpenRouter for analysis.
-Designed for failure-pattern analysis, documentation audits, and code reviews
-that exceed local VRAM context limits.
+LLM Analysis Tool - Send large text corpora to high-context LLMs via OpenRouter.
 
-Usage:
-    python3 tools/llm_analyze.py <input_file.txt>
+This module provides a CLI tool for analyzing large text files (failure logs,
+code reviews, documentation audits) using high-context-window LLMs through
+the OpenRouter API. It is designed for tasks that exceed local VRAM context limits.
+
+Purpose:
+    - Failure-pattern analysis of overnight AI coding agent runs
+    - Documentation audits and code reviews at scale
+    - Security architecture reviews of large codebases
+    - Any analysis requiring 100k+ token context windows
+
+Dependencies:
+    - openai (OpenAI Python client, used for OpenRouter compatibility)
+    - python-dotenv (for loading OPENROUTER_API_KEY from .env file)
+    - Standard library: argparse, os, sys, datetime, pathlib
+
+Environment Variables:
+    OPENROUTER_API_KEY: Required. API key for OpenRouter authentication.
+        Should be set in the project's .env file or environment.
+
+Usage Examples:
+    # Basic failure-pattern analysis (default prompt)
     python3 tools/llm_analyze.py post_run_analysis.txt
+
+    # Custom model selection
     python3 tools/llm_analyze.py audit_context.txt --model anthropic/claude-3.5-sonnet
+
+    # Custom prompt template
     python3 tools/llm_analyze.py data.txt --prompt-file custom_prompt.txt
+
+    # Explicit output path
+    python3 tools/llm_analyze.py input.txt --output reports/analysis.md
+
+    # Adjust generation parameters
+    python3 tools/llm_analyze.py input.txt --max-tokens 8000 --temperature 0.3
+
+Output:
+    - Prints analysis report to stdout
+    - Saves timestamped Markdown report to overnight/llm_analysis_YYYYMMDD_HHMMSS.md
+    - Reports token usage statistics
+
+Exit Codes:
+    0: Success
+    1: File not found, missing API key, or API request failure
 """
 import os
 import sys
