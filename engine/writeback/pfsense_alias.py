@@ -15,6 +15,21 @@ AUDIT_ACTOR = 'pfsense_alias_adapter'
 TABLE_ALIAS_PROPOSALS = 'alias_proposals'
 TABLE_AUDIT_LOG = 'audit_log'
 
+INSERT_PROPOSAL_SQL = (
+    "INSERT INTO alias_proposals (alias_name, ip_address, status, created_at) "
+    "VALUES (?, ?, ?, ?)"
+)
+SELECT_PENDING_COUNT_SQL = (
+    "SELECT COUNT(*) FROM alias_proposals WHERE status = ?"
+)
+DELETE_PENDING_SQL = (
+    "DELETE FROM alias_proposals WHERE status = ?"
+)
+ROLLBACK_REFERENCE_MSG = (
+    "ROLLBACK_REFERENCE: To revert, execute 'DELETE FROM alias_proposals "
+    "WHERE status = \"PENDING\"' in sqlite3."
+)
+
 
 DDL_SCRIPT = '''
 CREATE TABLE IF NOT EXISTS alias_proposals
@@ -97,7 +112,7 @@ def store_proposal(name: str, ip: str) -> None:
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO " + TABLE_ALIAS_PROPOSALS + " (alias_name, ip_address, status, created_at) VALUES (?, ?, ?, ?)",
+        cursor.execute(INSERT_PROPOSAL_SQL,
                        (name, ip, PROPOSAL_STATUS_PENDING, datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')))
         conn.commit()
         conn.close()
@@ -108,7 +123,7 @@ def store_proposal(name: str, ip: str) -> None:
 
 def rollback_plan() -> None:
     """Prints instructions for rolling back pending alias proposals."""
-    print(MSG_ROLLBACK_REFERENCE + ": To revert, execute 'DELETE FROM " + TABLE_ALIAS_PROPOSALS + " WHERE status = \"" + PROPOSAL_STATUS_PENDING + "\"' in sqlite3.")
+    print(ROLLBACK_REFERENCE_MSG)
 
 def rollback_execute(approved: bool = False) -> int:
     """Executes rollback of pending alias proposals.
@@ -125,7 +140,7 @@ def rollback_execute(approved: bool = False) -> int:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
-        cursor.execute("SELECT COUNT(*) FROM " + TABLE_ALIAS_PROPOSALS + " WHERE status = ?", (PROPOSAL_STATUS_PENDING,))
+        cursor.execute(SELECT_PENDING_COUNT_SQL, (PROPOSAL_STATUS_PENDING,))
         count = cursor.fetchone()[0]
         
         if not approved:
@@ -133,7 +148,7 @@ def rollback_execute(approved: bool = False) -> int:
             logging.info(MSG_ROLLBACK_DRYRUN + ": Would delete " + str(count) + " pending proposal(s)")
             return count
         
-        cursor.execute("DELETE FROM " + TABLE_ALIAS_PROPOSALS + " WHERE status = ?", (PROPOSAL_STATUS_PENDING,))
+        cursor.execute(DELETE_PENDING_SQL, (PROPOSAL_STATUS_PENDING,))
         deleted = cursor.rowcount
         conn.commit()
         conn.close()
