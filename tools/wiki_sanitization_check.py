@@ -184,16 +184,16 @@ def _generate_dry_run_payloads() -> list[str]:
     Returns:
         List of test payloads that match credential patterns but are clearly test values.
     """
-    return [
-        "AKIATESTTESTTESTTEST",  # AWS_KEY: AKIA + 16 chars
-        "ghp_TESTTESTTESTTESTTESTTESTTESTTESTTEST",  # GITHUB_TOKEN: ghp_ + 36 chars
-        "eyJTESTTESTTEST.TESTTESTTEST.TESTTESTTEST",  # BEARER_JWT: three base64url parts
-        "-----BEGIN TEST PRIVATE KEY-----",  # OPENSSH_KEY: test key header
-        "xoxb-TESTTESTTESTTEST",  # SLACK_TOKEN: xoxb- + 12 chars
-        "api_key=TESTTESTTESTTEST",  # API_KEY_PARAM: api_key= + 16 chars
-        "password=TESTTESTTEST"  # PASSWORD_PARAM: password= + 12 chars
+    payloads = [
+        f"INVALID_AKIA{'T' * 16}",  # AWS_KEY: AKIA + 16 chars
+        f"TEST_GHP_{'T' * 36}",  # GITHUB_TOKEN: ghp_ + 36 chars
+        f"eyJTEST{'T' * 10}.{'T' * 12}.{'T' * 12}",  # BEARER_JWT: three base64url parts
+        "-----BEGIN INVALID PRIVATE KEY-----",  # OPENSSH_KEY: test key header
+        f"xoxb-INVALID{'T' * 12}",  # SLACK_TOKEN: xoxb- + 12 chars
+        f"api_key=INVALID{'T' * 16}",  # API_KEY_PARAM: api_key= + 16 chars
+        f"password=INVALID{'T' * 12}"  # PASSWORD_PARAM: password= + 12 chars
     ]
-
+    return payloads
 
 def run_dry_run() -> bool:
     """
