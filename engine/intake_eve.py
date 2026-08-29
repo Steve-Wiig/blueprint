@@ -2,6 +2,8 @@ import json
 import sqlite3
 import os
 import logging
+import math
+import hashlib
 from typing import Any, Dict, List, Optional, Callable, TypeVar, Generator
 from datetime import datetime, timezone
 from contextlib import contextmanager
@@ -12,6 +14,9 @@ LOG_PATH = os.getenv('SOC_LOG_PATH', '/var/log/soc/intake.log')
 logger = logging.getLogger(__name__)
 
 T = TypeVar('T')
+
+ENTROPY_THRESHOLD = 4.5
+MIN_ENTROPY_LENGTH = 20
 
 
 def configure_logging() -> None:
@@ -31,6 +36,8 @@ def configure_logging() -> None:
         ))
         logger.addHandler(file_handler)
         logger.setLevel(logging.INFO)
+
+
 def get_connection() -> Generator[sqlite3.Connection, None, None]:
     """Context manager for database connections with automatic cleanup."""
     conn = sqlite3.connect(DB_PATH)
@@ -39,6 +46,7 @@ def get_connection() -> Generator[sqlite3.Connection, None, None]:
         yield conn
     finally:
         conn.close()
+
 
 def with_db(transaction: bool = False) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """Parameterized decorator for database operations with optional transaction handling."""
@@ -57,6 +65,7 @@ def with_db(transaction: bool = False) -> Callable[[Callable[..., T]], Callable[
         return wrapper
     return decorator
 
+
 def execute_in_transaction(func: Callable[..., T]) -> Callable[..., T]:
     """Decorator that provides a connection with transaction handling."""
     def _execute_with_error_handling(operation: Callable[[], T], func_name: str) -> T:
@@ -73,6 +82,8 @@ def execute_in_transaction(func: Callable[..., T]) -> Callable[..., T]:
                     return func(cursor, *args, **kwargs)
         return _execute_with_error_handling(operation, func.__name__)
     return wrapper
+
+
 def execute_with_connection(func: Callable[..., T]) -> Callable[..., T]:
     """Decorator that provides a connection and handles errors."""
     def wrapper(*args: Any, **kwargs: Any) -> T:
@@ -149,6 +160,8 @@ def init_db() -> None:
     except Exception as e:
         logger.error(f"Database initialization error: {e}")
         raise RuntimeError(f"Database initialization failed: {e}")
+
+
 def _log_audit(cursor: sqlite3.Cursor, event_id: int, old_status: Optional[str], new_status: str, actor: str = "system") -> None:
     """Logs a status change to the audit_log table.
 
@@ -163,9 +176,48 @@ def _log_audit(cursor: sqlite3.Cursor, event_id: int, old_status: Optional[str],
         "INSERT INTO audit_log (event_id, old_status, new_status, actor) VALUES (?, ?, ?, ?)",
         (event_id, old_status, new_status, actor),
     )
-import math
-import hashlib
-from typing import Any, Dict, List
+
+
+def shannon_entropy(data: str) -> float:
+    """Calculate Shannon entropy of a string."""
+    if not data:
+        return 0.0
+    entropy = 0.0
+    for x in range(256):
+        p_x = data.count(chr(x)) / len(data)
+        if p_x > 0:
+            entropy += -p_x * math.log2(p_x)
+    return entropy
+
+
+def is_high_entropy(value: str, threshold: float = ENTROPY_THRESHOLD, min_length: int = MIN_ENTROPY_LENGTH) -> bool:
+    """Check if a string has high entropy (likely encoded/encrypted)."""
+    if not isinstance(value, str) or len(value) < min_length:
+        return False
+    return shannon_entropy(value) > threshold
+
+
+def redact_value(value: Any) -> Any:
+    """Redact high-entropy values that may contain secrets."""
+    if isinstance(value, str) and is_high_entropy(value):
+        return "[REDACTED_HIGH_ENTROPY]"
+    return value
+
+
+def sanitize_recursive(obj: Any) -> Any:
+    """Recursively sanitize a data structure."""
+    if isinstance(obj, dict):
+        return {k: sanitize_recursive(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_recursive(item) for item in obj]
+    else:
+        return redact_value(obj)
+
+
+def sanitize_value(value: Any) -> Any:
+    """Sanitize a single value."""
+    return sanitize_recursive(value)
+
 
 def sanitize_event(event: Dict[str, Any]) -> Dict[str, Any]:
     """Filters and sanitizes an event dictionary to include only allowed keys.
@@ -203,7 +255,10 @@ def sanitize_event(event: Dict[str, Any]) -> Dict[str, Any]:
             sanitized[key] = sanitize_value(event[key])
     if "severity" not in sanitized:
         sanitized["severity"] = "unknown"
-    return sanitized@execute_in_transaction
+    return sanitized
+
+
+@execute_in_transaction
 def enqueue_event(cursor: sqlite3.Cursor, event: Dict[str, Any]) -> None:
     """Inserts a single sanitized event into the triage_queue table.
 
@@ -288,6 +343,7 @@ def get_pending_events(conn: sqlite3.Connection, limit: int = 100) -> List[Dict[
     rows = cursor.fetchall()
     return [dict(row) for row in rows]
 
+
 @execute_in_transaction
 def lease_event(cursor: sqlite3.Cursor, event_id: int, ttl_seconds: int = 300) -> bool:
     """Attempts to lease a pending event for processing.
@@ -305,7 +361,7 @@ def lease_event(cursor: sqlite3.Cursor, event_id: int, ttl_seconds: int = 300) -
     )
     row = cursor.fetchone()
     old_status = row[0] if row else None
-    
+
     cursor.execute(
         """
         UPDATE triage_queue
