@@ -19,6 +19,8 @@ DENIED_CODES = {401, 403}
 MOCK_USER = "mock_user"
 MOCK_TOKEN = "mock_token"
 
+MAX_CONCURRENT_CHECKS = 10
+
 
 def sanitize_token(token: str | None) -> str:
     if not token:
@@ -146,7 +148,7 @@ def main() -> int:
 
     config = load_config(args.config)
 
-    max_workers = len(config)
+    max_workers = min(len(config), MAX_CONCURRENT_CHECKS)
     session = None
     if not args.dry_run:
         session = create_session(max_workers)
