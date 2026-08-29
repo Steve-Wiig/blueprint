@@ -316,6 +316,10 @@ def main() -> None:
         print(f"Rejected:       {s['rejected']}", file=sys.stderr)
         print(f"Deferred:       {s['deferred']}", file=sys.stderr)
         print(f"Success rate:   {s['success_rate']:.1%}", file=sys.stderr)
+        
+        print(f"\n🔥 Top failing files (combined):", file=sys.stderr)
+        for file, count in result["combined_file_failures"].items():
+            print(f"  {file}: {count} failures", file=sys.stderr)
 
 
 if __name__ == "__main__":
