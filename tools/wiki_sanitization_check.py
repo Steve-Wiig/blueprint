@@ -3,6 +3,7 @@ import sys
 import argparse
 import logging
 import logging.handlers
+import os
 from pathlib import Path
 from typing import Pattern
 from datetime import datetime, timezone
@@ -136,10 +137,6 @@ def scan_file(file_path: str) -> list[tuple[str, str]]:
         content = f.read()
     return scan_text(content)
 
-
-import os
-from pathlib import Path
-from typing import Pattern
 
 def scan_directory(dir_path: str, recursive: bool = True) -> list[tuple[str, str, str]]:
     """
