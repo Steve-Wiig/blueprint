@@ -109,8 +109,10 @@ class AuditLogEntry:
 
 def _compute_query_hash(query_embedding: list[float]) -> str:
     """Compute a deterministic SHA256 hash of the query embedding for audit logging."""
-    embedding_bytes = struct.pack(f"{len(query_embedding)}d", *query_embedding)
-    return hashlib.sha256(embedding_bytes).hexdigest()
+    h = hashlib.sha256()
+    for v in query_embedding:
+        h.update(struct.pack('d', v))
+    return h.hexdigest()
 
 
 def _log_audit(
