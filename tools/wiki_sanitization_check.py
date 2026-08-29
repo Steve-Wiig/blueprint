@@ -44,9 +44,48 @@ class ScanExit(RuntimeError):
         self.exit_code = exit_code
         self.message = message or f"scan completed with exit code {exit_code}"
         self.args = (self.message,)
-def _configure_logging() -> logging.Logger:
+
+
+def _get_default_log_path() -> Path:
+    """Get platform-appropriate default log file path."""
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        log_dir = base / "credential-sanitizer"
+    elif sys.platform == "darwin":
+        log_dir = Path.home() / "Library" / "Caches" / "credential-sanitizer"
+    else:
+        # Linux/Unix: prefer ~/.cache, fall back to /var/log if running as root
+        if os.geteuid() == 0:
+            log_dir = Path("/var/log")
+        else:
+            cache_home = os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))
+            log_dir = Path(cache_home) / "credential-sanitizer"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir / "credential_sanitizer_audit.log"
+
+
+DEFAULT_LOG_FILE: Path = _get_default_log_path()
+
+
+def _load_config() -> Path:
+    """
+    Load log file configuration from environment variable.
+
+    Returns:
+        Path to log file from CREDENTIAL_SANITIZER_LOG_FILE env var or default.
+    """
+    env_log = os.environ.get("CREDENTIAL_SANITIZER_LOG_FILE")
+    if env_log:
+        return Path(env_log).expanduser().resolve()
+    return DEFAULT_LOG_FILE
+
+
+def _configure_logging(log_file: Path) -> logging.Logger:
     """
     Configure structured logging for audit trails per Blueprint v11.8.
+
+    Args:
+        log_file: Path to the log file.
 
     Returns:
         Configured logger instance.
@@ -55,8 +94,10 @@ def _configure_logging() -> logging.Logger:
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
 
-    if logger.handlers:
-        return logger
+    # Clear existing handlers to allow reconfiguration
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        handler.close()
 
     formatter = logging.Formatter(
         fmt='{"timestamp": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "message": "%(message)s"}',
@@ -68,7 +109,6 @@ def _configure_logging() -> logging.Logger:
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
 
-    log_file = Path("credential_sanitizer_audit.log")
     file_handler = logging.handlers.RotatingFileHandler(
         log_file, maxBytes=10_485_760, backupCount=5, encoding="utf-8"
     )
@@ -79,7 +119,7 @@ def _configure_logging() -> logging.Logger:
     return logger
 
 
-LOGGER = _configure_logging()
+LOGGER = _configure_logging(DEFAULT_LOG_FILE)
 
 
 def scan_text(text: str) -> list[tuple[str, str]]:
@@ -119,6 +159,7 @@ def scan_text(text: str) -> list[tuple[str, str]]:
             found.append((pattern_name, matched_value))
     return found
 
+
 def scan_file(file_path: str) -> list[tuple[str, str]]:
     """
     Scan a single file for credential violations.
@@ -154,12 +195,12 @@ def scan_directory(dir_path: str, recursive: bool = True) -> list[tuple[str, str
     """
     found: list[tuple[str, str, str]] = []
     path = Path(dir_path)
-    
+
     if not path.is_dir():
         raise OSError(f"Path is not a directory: {dir_path}")
-    
+
     exclude_dirs = {'.git', '__pycache__', 'node_modules', '.venv', 'venv', 'env', 'dist', 'build', '.pytest_cache', '.mypy_cache'}
-    
+
     if recursive:
         for root, dirs, files in os.walk(path):
             # Prune excluded directories in-place to avoid descending into them
@@ -181,8 +222,9 @@ def scan_directory(dir_path: str, recursive: bool = True) -> list[tuple[str, str
                         found.append((str(file_path), v_type, val))
                 except (OSError, UnicodeDecodeError):
                     continue
-    
+
     return found
+
 
 def _generate_dry_run_payloads() -> list[str]:
     """
@@ -201,6 +243,7 @@ def _generate_dry_run_payloads() -> list[str]:
         f"password=INVALID{'T' * 12}"  # PASSWORD_PARAM: password= + 12 chars
     ]
     return payloads
+
 
 def run_dry_run() -> bool:
     """
@@ -230,6 +273,7 @@ def main() -> None:
         --dry-run: Run self-test with built-in payloads and exit.
         --recursive: Scan directories recursively (default: True).
         --no-recursive: Scan only top-level files in directories.
+        --log-file: Path to log file (default: platform-appropriate location).
         files: Zero or more file or directory paths to scan.
 
     Raises:
@@ -246,6 +290,8 @@ def main() -> None:
         $ python credential_sanitizer.py --recursive ./project
         FAIL: Found GITHUB_TOKEN in ./project/.env
     """
+    global LOGGER
+
     # Load allowlist configuration
     ALLOWLIST_SHA256 = [
         # Example SHA256 hash, replace with actual values and comments
@@ -260,19 +306,25 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Scan files and directories for credential patterns",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=f"""
 Examples:
   %(prog)s --dry-run                    # Run self-test
   %(prog)s file1.txt file2.yaml         # Scan specific files
   %(prog)s --recursive ./project        # Scan directory recursively
   %(prog)s --no-recursive ./config      # Scan only top-level files in directory
+  %(prog)s --log-file /custom/path.log  # Custom log file location
         """
     )
     parser.add_argument("--dry-run", action="store_true", help="Run self-test with built-in payloads")
     parser.add_argument("--recursive", action="store_true", default=True, help="Scan directories recursively (default)")
     parser.add_argument("--no-recursive", action="store_false", dest="recursive", help="Scan only top-level files in directories")
+    parser.add_argument("--log-file", type=Path, help="Path to log file (default: platform-appropriate cache directory)")
     parser.add_argument("paths", nargs="*", help="Files or directories to scan for credentials")
     args = parser.parse_args()
+
+    # Determine log file path: CLI arg > env var > default
+    log_file = args.log_file or _load_config()
+    LOGGER = _configure_logging(log_file)
 
     if args.dry_run:
         success = run_dry_run()
