@@ -89,13 +89,6 @@ class PartitionConfig(TypedDict):
     partitions: Dict[str, PartitionSettings]
 
 
-def reset_defaults_cache() -> None:
-    """Reset the defaults cache for testing purposes."""
-    # Global cache removed; configuration is now passed explicitly.
-    # This function is kept for API compatibility and is a no-op.
-    pass
-
-
 def _load_defaults_config() -> Dict[str, Any]:
     """
     Load default configuration from JSON file with caching.
@@ -344,18 +337,17 @@ def _check_json_parsing(config_path: Path, data: Optional[Dict[str, Any]] = None
             parsed = json.load(f)
         cache[config_path] = parsed
         return parsed
-    except json.JSONDecodeError:
-        raise RuntimeError(EXIT_VALIDATION_ERROR)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(EXIT_VALIDATION_ERROR) from e
 
 
 def _check_required_partitions(
     config_path: Path,
     required_partitions: List[str],
-    data: Optional[PartitionConfig] = None,
+    data: PartitionConfig,
 ) -> None:
-    if data is None:
-        data = _check_json_parsing(config_path)
-    missing = [p for p in required_partitions if p not in data.get("partitions", {})]
+    partitions = data.get("partitions", {})
+    missing = [p for p in required_partitions if p not in partitions]
     if missing:
         raise RuntimeError(EXIT_VALIDATION_ERROR)
 
@@ -363,10 +355,8 @@ def _check_required_partitions(
 def _check_schema_version(
     config_path: Path,
     expected_version: str,
-    data: Optional[PartitionConfig] = None,
+    data: PartitionConfig,
 ) -> None:
-    if data is None:
-        data = _check_json_parsing(config_path)
     actual_version = data.get("version")
     if actual_version != expected_version:
         raise RuntimeError(EXIT_VALIDATION_ERROR)
@@ -375,11 +365,10 @@ def _check_schema_version(
 def _check_shard_sizes(
     config_path: Path,
     max_shard_size_gb: int,
-    data: Optional[PartitionConfig] = None,
+    data: PartitionConfig,
 ) -> None:
-    if data is None:
-        data = _check_json_parsing(config_path)
-    for partition_name, settings in data.get("partitions", {}).items():
+    partitions = data.get("partitions", {})
+    for name, settings in partitions.items():
         max_shard = settings.get("max_shard_gb", 0)
         if max_shard > max_shard_size_gb:
             raise RuntimeError(EXIT_VALIDATION_ERROR)
@@ -387,23 +376,12 @@ def _check_shard_sizes(
 
 def _check_indexing_enabled(
     config_path: Path,
-    data: Optional[PartitionConfig] = None,
+    data: PartitionConfig,
 ) -> None:
-    if data is None:
-        data = _check_json_parsing(config_path)
-    for partition_name, settings in data.get("partitions", {}).items():
+    partitions = data.get("partitions", {})
+    for name, settings in partitions.items():
         if not settings.get("indexing_enabled", False):
             raise RuntimeError(EXIT_VALIDATION_ERROR)
-
-
-def _load_config() -> Dict[str, Any]:
-    """Load configuration from environment variables and defaults file."""
-    defaults = _load_defaults_config()
-    return {
-        "required_partitions": _get_required_partitions(defaults),
-        "max_shard_size_gb": _get_max_shard_size_gb(defaults),
-        "index_schema_version": _get_index_schema_version(defaults),
-    }
 
 
 def main() -> int:
@@ -428,13 +406,15 @@ def main() -> int:
         return EXIT_ENV_ERROR
 
     try:
-        validate_partition_config(args.config, args.dry_run)
+        validate_partition_config(args.config, dry_run=args.dry_run)
+        return EXIT_SUCCESS
     except RuntimeError as e:
-        return int(e.args[0]) if e.args else EXIT_VALIDATION_ERROR
+        if e.args and isinstance(e.args[0], int):
+            return e.args[0]
+        return EXIT_VALIDATION_ERROR
     except OSError:
         return EXIT_CONFIG_ERROR
 
-    return EXIT_SUCCESS
 
 if __name__ == "__main__":
     sys.exit(main())
