@@ -215,48 +215,55 @@ def main() -> int:
         3 (EXIT_ENV_ERROR): Not a git repository, git command not found,
            or repository invalid (e.g., corrupted).
     """
-    parser = argparse.ArgumentParser(description="Verify CHANGELOG completeness")
-    parser.add_argument("--dry-run", action="store_true", help="Validate logic without failing")
-    parser.add_argument(
-        "--changelog-path",
-        default="CHANGELOG.md",
-        help="Path to changelog file (default: CHANGELOG.md)",
-    )
-    args: argparse.Namespace = parser.parse_args()
+    def parse_args() -> argparse.Namespace:
+        parser = argparse.ArgumentParser(description="Verify CHANGELOG completeness")
+        parser.add_argument("--dry-run", action="store_true", help="Validate logic without failing")
+        parser.add_argument(
+            "--changelog-path",
+            default="CHANGELOG.md",
+            help="Path to changelog file (default: CHANGELOG.md)",
+        )
+        return parser.parse_args()
 
-    # Verify repository presence
-    if not GitRepo.is_git_repo():
-        print("ENV_NOT_AVAILABLE: Not a git repository")
-        return EXIT_ENV_ERROR
+    def validate_environment() -> Optional[str]:
+        if not GitRepo.is_git_repo():
+            print("ENV_NOT_AVAILABLE: Not a git repository")
+            return "not_git_repo"
+        try:
+            latest_tag = GitRepo.get_latest_tag()
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            print("ENV_NOT_AVAILABLE: git command not found or repository invalid")
+            return "git_error"
+        if latest_tag is None:
+            print("CONFIG ERROR: No tags found to compare against")
+            return "no_tags"
+        return latest_tag
 
-    # Retrieve latest tag
-    try:
-        latest_tag = GitRepo.get_latest_tag()
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        print("ENV_NOT_AVAILABLE: git command not found or repository invalid")
-        return EXIT_ENV_ERROR
+    def collect_commits(latest_tag: str) -> List:
+        return GitRepo.get_commits_since_tag(latest_tag)
 
-    if latest_tag is None:
-        print("CONFIG ERROR: No tags found to compare against")
-        return EXIT_CONFIG_ERROR
+    def parse_changelog(changelog_path: str) -> Set[str]:
+        if not os.path.exists(changelog_path):
+            print(f"FAIL: {changelog_path} missing")
+            return set()
+        return ChangelogParser.parse_hashes(changelog_path)
 
-    # Gather commits since the latest tag
-    commits = GitRepo.get_commits_since_tag(latest_tag)
+    def compare_and_report(commits: List, changelog_hashes: Set[str], changelog_path: str, dry_run: bool) -> int:
+        missing_entries = find_missing_entries(commits, changelog_hashes)
+        return print_results(missing_entries, changelog_path, dry_run)
 
-    # Ensure changelog file exists
-    changelog_path: str = args.changelog_path
-    if not os.path.exists(changelog_path):
-        print(f"FAIL: {changelog_path} missing")
+    args = parse_args()
+    validation_result = validate_environment()
+    if isinstance(validation_result, str):
+        if validation_result == "not_git_repo" or validation_result == "git_error":
+            return EXIT_ENV_ERROR
+        elif validation_result == "no_tags":
+            return EXIT_CONFIG_ERROR
+    latest_tag = validation_result
+    commits = collect_commits(latest_tag)
+    changelog_hashes = parse_changelog(args.changelog_path)
+    if not changelog_hashes and not os.path.exists(args.changelog_path):
         return EXIT_FAIL
-
-    # Parse changelog for commit hashes
-    changelog_hashes = ChangelogParser.parse_hashes(changelog_path)
-
-    # Determine missing entries
-    missing_entries = find_missing_entries(commits, changelog_hashes)
-
-    # Report results
-    return print_results(missing_entries, changelog_path, args.dry_run)
-
+    return compare_and_report(commits, changelog_hashes, args.changelog_path, args.dry_run)
 if __name__ == "__main__":
     sys.exit(main())
