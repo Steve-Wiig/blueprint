@@ -10,10 +10,23 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 SCHEMA_VERSION_REQUIRED = "11.6.0"
-BASE_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = BASE_DIR.parent
+
+# Default PROJECT_ROOT derived from __file__ (fallback)
+_BASE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = _BASE_DIR.parent
 SCHEMA_PATH = PROJECT_ROOT / 'config' / 'memory_schema.json'
 LEDGER_PATH = PROJECT_ROOT / 'logs' / 'migration_ledger.log'
+
+def _load_config() -> None:
+    """Load configuration from environment variables, updating module globals."""
+    global PROJECT_ROOT, SCHEMA_PATH, LEDGER_PATH
+    
+    # Allow PROJECT_ROOT to be overridden via environment variable
+    env_root = os.environ.get("PROJECT_ROOT")
+    if env_root:
+        PROJECT_ROOT = Path(env_root).resolve()
+        SCHEMA_PATH = PROJECT_ROOT / 'config' / 'memory_schema.json'
+        LEDGER_PATH = PROJECT_ROOT / 'logs' / 'migration_ledger.log'
 
 def validate_schema(schema_data: dict) -> tuple[bool, str]:
     """Validates schema structure against blueprint v11.6.0 requirements.
@@ -49,6 +62,8 @@ def main() -> int:
     Returns:
         int: Exit code (0=success, 1=validation failure, 2=config missing).
     """
+    _load_config()
+    
     parser = argparse.ArgumentParser(description="Memory Schema Migration Check")
     parser.add_argument("--dry-run", action="store_true", help="Validate without applying")
     args: argparse.Namespace = parser.parse_args()
