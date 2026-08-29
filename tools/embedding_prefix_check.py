@@ -212,6 +212,9 @@ def run_verification(
     Returns:
         0 if all checks pass, 1 if any check fails.
     """
+    global calls
+    calls = []
+
     effective_doc_prefix = doc_prefix or REQUIRED_DOC_PREFIX
     effective_query_prefix = query_prefix or REQUIRED_QUERY_PREFIX
     effective_dim = dim or REQUIRED_DIM
@@ -256,7 +259,6 @@ def run_verification(
 
     logger.info("PASS: Embedding prefix and dimension contract verified.")
     return 0
-
 
 def main() -> int:
     """
