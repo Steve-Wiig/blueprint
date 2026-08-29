@@ -48,13 +48,14 @@ _DEFAULT_POOL_LOCK = threading.Lock()
 def _get_default_pool() -> psycopg2.pool.ThreadedConnectionPool:
     """Get or create the default PostgreSQL connection pool."""
     global _DEFAULT_POOL, _DEFAULT_POOL_FACTORY
-    with _DEFAULT_POOL_LOCK:
+    if not hasattr(_get_default_pool, "_lock"):
+        _get_default_pool._lock = threading.Lock()
+    with _get_default_pool._lock:
         if _DEFAULT_POOL is None:
             if _DEFAULT_POOL_FACTORY is None:
                 _DEFAULT_POOL_FACTORY = configure_connection()
             _DEFAULT_POOL = _DEFAULT_POOL_FACTORY()
         return _DEFAULT_POOL
-
 
 def _get_pg_conn(pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None) -> psycopg2.extensions.connection:
     """Acquire a connection from the pool."""
