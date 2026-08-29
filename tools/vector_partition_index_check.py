@@ -79,6 +79,29 @@ EXIT_CONFIG_ERROR: int = 2
 EXIT_ENV_ERROR: int = 3
 
 
+class ValidationError(RuntimeError):
+    """Raised when partition configuration validation fails."""
+    def __init__(self, message: str, partition: Optional[str] = None, value: Any = None, limit: Any = None):
+        self.partition = partition
+        self.value = value
+        self.limit = limit
+        super().__init__(message)
+
+
+class ConfigError(RuntimeError):
+    """Raised when configuration file is missing or invalid."""
+    def __init__(self, message: str, path: Optional[Path] = None):
+        self.path = path
+        super().__init__(message)
+
+
+class EnvError(RuntimeError):
+    """Raised when required environment variable is not set."""
+    def __init__(self, message: str, var_name: Optional[str] = None):
+        self.var_name = var_name
+        super().__init__(message)
+
+
 class PartitionSettings(TypedDict):
     max_shard_gb: int
     indexing_enabled: bool
@@ -255,12 +278,11 @@ def validate_partition_config(
             when validating multiple times or when data is already loaded.
 
     Raises:
-        RuntimeError: With exit code as argument on validation failure:
-            1 (EXIT_VALIDATION_ERROR) - Validation failed (missing partition, version mismatch,
-                shard size exceeded, or indexing disabled).
-            2 (EXIT_CONFIG_ERROR) - Config file not found at specified path.
+        ValidationError: On validation failure with descriptive message including
+            partition name and offending value.
+        ConfigError: If config file not found at specified path.
         json.JSONDecodeError: If the config file contains invalid JSON (caught internally,
-            raises RuntimeError(EXIT_VALIDATION_ERROR)).
+            raises ValidationError).
         OSError: If file cannot be read due to permissions (propagates to caller).
     """
     required_partitions = _get_required_partitions(defaults)
@@ -284,7 +306,7 @@ def validate_partition_config(
         data = _check_json_parsing(config_path)
     else:
         if not isinstance(data, dict):
-            raise RuntimeError(EXIT_VALIDATION_ERROR)
+            raise ValidationError("Configuration data must be a dictionary")
     if dry_run:
         print("  [2/6] PASSED")
 
@@ -319,9 +341,10 @@ def validate_partition_config(
     if dry_run:
         print("DRY-RUN: Validation completed successfully.")
 
+
 def _check_file_exists(config_path: Path) -> None:
     if not config_path.is_file():
-        raise RuntimeError(EXIT_CONFIG_ERROR)
+        raise ConfigError(f"Configuration file not found: {config_path}", path=config_path)
 
 
 def _check_json_parsing(config_path: Path, data: Optional[Dict[str, Any]] = None) -> PartitionConfig:
@@ -338,7 +361,7 @@ def _check_json_parsing(config_path: Path, data: Optional[Dict[str, Any]] = None
         cache[config_path] = parsed
         return parsed
     except json.JSONDecodeError as e:
-        raise RuntimeError(EXIT_VALIDATION_ERROR) from e
+        raise ValidationError(f"Invalid JSON in configuration file: {e}") from e
 
 
 def _check_required_partitions(
@@ -349,7 +372,12 @@ def _check_required_partitions(
     partitions = data.get("partitions", {})
     missing = [p for p in required_partitions if p not in partitions]
     if missing:
-        raise RuntimeError(EXIT_VALIDATION_ERROR)
+        raise ValidationError(
+            f"Missing required partitions: {', '.join(missing)}",
+            partition=", ".join(missing),
+            value="missing",
+            limit=f"required: {', '.join(required_partitions)}"
+        )
 
 
 def _check_schema_version(
@@ -359,7 +387,12 @@ def _check_schema_version(
 ) -> None:
     actual_version = data.get("version")
     if actual_version != expected_version:
-        raise RuntimeError(EXIT_VALIDATION_ERROR)
+        raise ValidationError(
+            f"Schema version mismatch: expected '{expected_version}', got '{actual_version}'",
+            partition="version",
+            value=actual_version,
+            limit=expected_version
+        )
 
 
 def _check_shard_sizes(
@@ -368,10 +401,15 @@ def _check_shard_sizes(
     data: PartitionConfig,
 ) -> None:
     partitions = data.get("partitions", {})
-    for name, settings in partitions.items():
-        max_shard = settings.get("max_shard_gb", 0)
-        if max_shard > max_shard_size_gb:
-            raise RuntimeError(EXIT_VALIDATION_ERROR)
+    for partition_name, settings in partitions.items():
+        max_shard = settings.get("max_shard_gb")
+        if max_shard is not None and max_shard > max_shard_size_gb:
+            raise ValidationError(
+                f"Partition '{partition_name}' exceeds maximum shard size: {max_shard} GB > {max_shard_size_gb} GB",
+                partition=partition_name,
+                value=max_shard,
+                limit=max_shard_size_gb
+            )
 
 
 def _check_indexing_enabled(
@@ -379,40 +417,69 @@ def _check_indexing_enabled(
     data: PartitionConfig,
 ) -> None:
     partitions = data.get("partitions", {})
-    for name, settings in partitions.items():
-        if not settings.get("indexing_enabled", False):
-            raise RuntimeError(EXIT_VALIDATION_ERROR)
+    for partition_name, settings in partitions.items():
+        indexing_enabled = settings.get("indexing_enabled")
+        if indexing_enabled is not True:
+            raise ValidationError(
+                f"Partition '{partition_name}' has indexing disabled or not set",
+                partition=partition_name,
+                value=indexing_enabled,
+                limit=True
+            )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Validate vector partition configuration against schema constraints and sharding rules."
+        description="Validate vector database partition configuration",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Environment Variables:
+  SLM_ENV                    Required. Must be set for the tool to run.
+  SLM_DEFAULTS_CONFIG        Path to defaults JSON file
+                             (default: config/vector_index_defaults.json)
+  SLM_REQUIRED_PARTITIONS    Comma-separated list of required partition names
+                             (default: alerts,threat_intel,audit_logs)
+  SLM_MAX_SHARD_SIZE_GB      Maximum allowed shard size in GB (default: 16)
+  SLM_INDEX_SCHEMA_VERSION   Expected schema version string (default: 11.6.0)
+
+Exit Codes:
+  0  Validation passed successfully
+  1  Validation failed
+  2  Config file not found
+  3  SLM_ENV not set
+        """
     )
     parser.add_argument(
         "--config",
         type=Path,
         default=Path("config/vector_partitions.json"),
-        help="Path to partition configuration JSON file (default: config/vector_partitions.json)",
+        help="Path to partition configuration JSON file (default: config/vector_partitions.json)"
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Perform validation without committing changes, with verbose step-by-step output",
+        help="Perform validation without committing changes, with verbose output"
     )
     args = parser.parse_args()
 
     if not os.environ.get("SLM_ENV"):
-        print("ERROR: SLM_ENV environment variable not set", file=sys.stderr)
+        print("Error: SLM_ENV environment variable is required", file=sys.stderr)
         return EXIT_ENV_ERROR
 
     try:
         validate_partition_config(args.config, dry_run=args.dry_run)
         return EXIT_SUCCESS
-    except RuntimeError as e:
-        if e.args and isinstance(e.args[0], int):
-            return e.args[0]
+    except ConfigError as e:
+        print(f"Config Error: {e}", file=sys.stderr)
+        return EXIT_CONFIG_ERROR
+    except ValidationError as e:
+        print(f"Validation Error: {e}", file=sys.stderr)
         return EXIT_VALIDATION_ERROR
-    except OSError:
+    except json.JSONDecodeError as e:
+        print(f"JSON Parse Error: {e}", file=sys.stderr)
+        return EXIT_VALIDATION_ERROR
+    except OSError as e:
+        print(f"File Error: {e}", file=sys.stderr)
         return EXIT_CONFIG_ERROR
 
 
