@@ -1,4 +1,6 @@
 import argparse
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -16,14 +18,18 @@ DEFAULT_LEDGER_PATH = 'handoffs_ledger.log'
 DEFAULT_TIMEOUT = 10
 ENV_TIMEOUT = 'SO_API_TIMEOUT'
 ENV_LEDGER_PATH = 'SO_LEDGER_PATH'
+ENV_HMAC_KEY = 'SO_LEDGER_HMAC_KEY'
+ENV_HMAC_KEY_ID = 'SO_LEDGER_HMAC_KEY_ID'
 
 # Resolved at runtime via _load_config()
 _LEDGER_PATH: str = DEFAULT_LEDGER_PATH
+_HMAC_KEY: bytes = b''
+_HMAC_KEY_ID: str = 'default'
 
 
 def _load_config() -> None:
     """Load configuration from environment variables."""
-    global _LEDGER_PATH
+    global _LEDGER_PATH, _HMAC_KEY, _HMAC_KEY_ID
     env_path = os.environ.get(ENV_LEDGER_PATH)
     if env_path:
         _LEDGER_PATH = os.path.abspath(env_path)
@@ -36,6 +42,13 @@ def _load_config() -> None:
             base_dir = '/var/log/so-case-writeback'
         os.makedirs(base_dir, exist_ok=True)
         _LEDGER_PATH = os.path.join(base_dir, DEFAULT_LEDGER_PATH)
+
+    hmac_key = os.environ.get(ENV_HMAC_KEY)
+    if hmac_key:
+        _HMAC_KEY = hmac_key.encode('utf-8')
+    hmac_key_id = os.environ.get(ENV_HMAC_KEY_ID)
+    if hmac_key_id:
+        _HMAC_KEY_ID = hmac_key_id
 
 
 def configure_logging() -> None:
@@ -134,8 +147,22 @@ def create_case(api_url: str, api_key: str, payload: Dict[str, Any], draft_mode:
     return creator(api_url, api_key, sanitized, timeout)
 
 
+def _compute_hmac(line: str) -> str:
+    """Compute HMAC-SHA256 of a line using the configured key.
+
+    Args:
+        line: The line content to sign (without HMAC field).
+
+    Returns:
+        Hex-encoded HMAC digest.
+    """
+    if not _HMAC_KEY:
+        return 'NO_HMAC_KEY'
+    return hmac.new(_HMAC_KEY, line.encode('utf-8'), hashlib.sha256).hexdigest()
+
+
 def write_to_ledger(payload_ref: str, case_id: str, draft_mode: bool = False) -> None:
-    """Writes the case transaction to the local handoff ledger.
+    """Writes the case transaction to the local handoff ledger with HMAC integrity.
 
     Args:
         payload_ref: The reference identifier from the payload.
@@ -146,8 +173,12 @@ def write_to_ledger(payload_ref: str, case_id: str, draft_mode: bool = False) ->
         RuntimeError: If the ledger file cannot be written to.
     """
     try:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        line_content = f"{timestamp} | {payload_ref} | {case_id} | draft={draft_mode} | key_id={_HMAC_KEY_ID}"
+        hmac_digest = _compute_hmac(line_content)
+        full_line = f"{line_content} | hmac={hmac_digest}\n"
         with open(_LEDGER_PATH, "a") as f:
-            f.write(f"{datetime.now(timezone.utc).isoformat()} | {payload_ref} | {case_id} | draft={draft_mode}\n")
+            f.write(full_line)
     except IOError:
         raise RuntimeError(f"Library code called exit(2)")
 
