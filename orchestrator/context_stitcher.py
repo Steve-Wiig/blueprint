@@ -6,6 +6,7 @@ import hashlib
 import json
 import struct
 import io
+import threading
 from datetime import datetime, timezone, timedelta
 from typing import TypedDict, Optional, Callable
 from xml.sax.saxutils import escape
@@ -41,16 +42,18 @@ def configure_connection(
 
 _DEFAULT_POOL_FACTORY: Optional[Callable[[], psycopg2.pool.ThreadedConnectionPool]] = None
 _DEFAULT_POOL: Optional[psycopg2.pool.ThreadedConnectionPool] = None
+_DEFAULT_POOL_LOCK = threading.Lock()
 
 
 def _get_default_pool() -> psycopg2.pool.ThreadedConnectionPool:
     """Get or create the default PostgreSQL connection pool."""
     global _DEFAULT_POOL, _DEFAULT_POOL_FACTORY
-    if _DEFAULT_POOL is None:
-        if _DEFAULT_POOL_FACTORY is None:
-            _DEFAULT_POOL_FACTORY = configure_connection()
-        _DEFAULT_POOL = _DEFAULT_POOL_FACTORY()
-    return _DEFAULT_POOL
+    with _DEFAULT_POOL_LOCK:
+        if _DEFAULT_POOL is None:
+            if _DEFAULT_POOL_FACTORY is None:
+                _DEFAULT_POOL_FACTORY = configure_connection()
+            _DEFAULT_POOL = _DEFAULT_POOL_FACTORY()
+        return _DEFAULT_POOL
 
 
 def _get_pg_conn(pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None) -> psycopg2.extensions.connection:
@@ -251,32 +254,23 @@ def _build_metadata(timestamp, case_ids, top_k_val, max_age):
     }
 def set_default_pool_factory(factory: Callable[[], psycopg2.pool.ThreadedConnectionPool]) -> None:
     """Set a custom default pool factory for testing or alternative configurations."""
-    import threading
-    global _DEFAULT_POOL_FACTORY, _DEFAULT_POOL, _DEFAULT_POOL_LOCK
-    # Ensure the lock exists
-    if '_DEFAULT_POOL_LOCK' not in globals():
-        _DEFAULT_POOL_LOCK = threading.Lock()
-    # Ensure the factory and pool globals exist
-    if '_DEFAULT_POOL_FACTORY' not in globals():
-        _DEFAULT_POOL_FACTORY = None
-    if '_DEFAULT_POOL' not in globals():
-        _DEFAULT_POOL = None
+    global _DEFAULT_POOL_FACTORY, _DEFAULT_POOL
     with _DEFAULT_POOL_LOCK:
         _DEFAULT_POOL_FACTORY = factory
         _DEFAULT_POOL = None
 def reset_default_pool() -> None:
     """Reset the default pool (useful for testing)."""
     global _DEFAULT_POOL, _DEFAULT_POOL_FACTORY
-    pool = globals().get('_DEFAULT_POOL')
-    if pool is not None:
-        try:
-            pool.closeall()
-        except Exception:
-            pass
-        _DEFAULT_POOL = None
-    factory = globals().get('_DEFAULT_POOL_FACTORY')
-    if factory is not None:
-        _DEFAULT_POOL_FACTORY = None
+    with _DEFAULT_POOL_LOCK:
+        pool = _DEFAULT_POOL
+        if pool is not None:
+            try:
+                pool.closeall()
+            except Exception:
+                pass
+            _DEFAULT_POOL = None
+        if _DEFAULT_POOL_FACTORY is not None:
+            _DEFAULT_POOL_FACTORY = None
 
 if __name__ == "__main__":
     pass
