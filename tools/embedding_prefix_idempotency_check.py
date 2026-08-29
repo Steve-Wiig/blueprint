@@ -24,17 +24,18 @@ ENV_DOC_PREFIX: str = "EMBEDDING_DOC_PREFIX"
 ENV_QUERY_PREFIX: str = "EMBEDDING_QUERY_PREFIX"
 
 
-def load_prefixes_from_config() -> Dict[str, str]:
+def load_prefixes_from_config(config_path: Path | None = None) -> Dict[str, str]:
     """Load prefixes from JSON config file."""
-    if not CONFIG_PATH.exists():
-        print(f"WARNING: Config file not found at {CONFIG_PATH}, falling back to environment variables", file=sys.stderr)
+    if config_path is None:
+        config_path = CONFIG_PATH
+    if not config_path.exists():
+        print(f"WARNING: Config file not found at {config_path}, falling back to environment variables", file=sys.stderr)
         return {}
     try:
-        with open(CONFIG_PATH, "r") as f:
+        with open(config_path, "r") as f:
             return json.load(f)
     except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON in config file {CONFIG_PATH}: {e}") from e
-
+        raise ValueError(f"Invalid JSON in config file {config_path}: {e}") from e
 
 def load_prefixes_from_env() -> Dict[str, str]:
     """Load prefixes from environment variables with validation."""
