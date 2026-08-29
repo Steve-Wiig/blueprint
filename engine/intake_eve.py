@@ -41,17 +41,26 @@ def get_connection() -> Generator[sqlite3.Connection, None, None]:
     finally:
         conn.close()
 
-@contextmanager
-def transaction(conn: sqlite3.Connection) -> Generator[sqlite3.Cursor, None, None]:
-    """Context manager for database transactions with automatic commit/rollback."""
-    cursor = conn.cursor()
-    try:
-        yield cursor
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
+def with_db(transaction: bool = False) -> Callable[[Callable[..., T]], Callable[..., T]]:
+    """Parameterized decorator for database operations with optional transaction handling."""
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        def wrapper(*args: Any, **kwargs: Any) -> T:
+            try:
+                with get_connection() as conn:
+                    if transaction:
+                        with transaction(conn) as cursor:
+                            return func(cursor, *args, **kwargs)
+                    else:
+                        return func(conn, *args, **kwargs)
+            except Exception as e:
+                logger.error(f"{func.__name__} error: {e}")
+                raise RuntimeError("Library code called exit(2)")
+        return wrapper
+    return decorator
 
+def execute_in_transaction(func: Callable[..., T]) -> Callable[..., T]:
+    """Decorator that provides a connection with transaction handling."""
+    return with_db(transaction=True)(func)
 
 def execute_with_connection(func: Callable[..., T]) -> Callable[..., T]:
     """Decorator that provides a connection and handles errors."""
