@@ -15,7 +15,12 @@ T = TypeVar('T')
 
 
 def configure_logging() -> None:
-    """Configure file logging to LOG_PATH if not already configured."""
+    """Configure file logging to LOG_PATH if not already configured.
+
+    This function MUST be called explicitly at application startup.
+    It is NOT called at module import time to avoid filesystem I/O side effects
+    during import (violates v11.7 no module-level side effects).
+    """
     if not logger.handlers:
         log_dir = os.path.dirname(LOG_PATH)
         if log_dir:
@@ -26,7 +31,6 @@ def configure_logging() -> None:
         ))
         logger.addHandler(file_handler)
         logger.setLevel(logging.INFO)
-
 
 @contextmanager
 def get_connection() -> Generator[sqlite3.Connection, None, None]:
