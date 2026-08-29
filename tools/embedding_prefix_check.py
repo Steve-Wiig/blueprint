@@ -28,7 +28,6 @@ import os
 import argparse
 import logging
 from typing import Callable, Optional, Sequence
-from collections.abc import Sequence as ABCSequence
 
 DEFAULT_DOC_PREFIX = "search_document: "
 DEFAULT_QUERY_PREFIX = "search_query: "
