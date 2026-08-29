@@ -137,25 +137,23 @@ def init_db() -> None:
     except Exception as e:
         logger.error(f"Database initialization error: {e}")
         raise RuntimeError(f"Database initialization failed: {e}")
-def _log_audit(event_id: int, old_status: Optional[str], new_status: str, actor: str = "system") -> None:
+def _log_audit(cursor: sqlite3.Cursor, event_id: int, old_status: Optional[str], new_status: str, actor: str = "system") -> None:
     """Logs a status change to the audit_log table.
 
     Args:
+        cursor: Database cursor to use for the insert.
         event_id: The ID of the event.
         old_status: The previous status (None for initial creation).
         new_status: The new status.
         actor: The actor performing the change.
     """
     try:
-        with get_connection() as conn:
-            with transaction(conn) as cursor:
-                cursor.execute(
-                    "INSERT INTO audit_log (event_id, old_status, new_status, actor) VALUES (?, ?, ?, ?)",
-                    (event_id, old_status, new_status, actor),
-                )
+        cursor.execute(
+            "INSERT INTO audit_log (event_id, old_status, new_status, actor) VALUES (?, ?, ?, ?)",
+            (event_id, old_status, new_status, actor),
+        )
     except Exception as e:
         logger.error(f"Audit log error: {e}")
-
 
 import math
 import hashlib
