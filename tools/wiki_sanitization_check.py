@@ -119,7 +119,6 @@ def scan_text(text: str) -> list[tuple[str, str]]:
             found.append((pattern_name, matched_value))
     return found
 
-
 def scan_file(file_path: str) -> list[tuple[str, str]]:
     """
     Scan a single file for credential violations.
