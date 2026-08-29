@@ -16,57 +16,57 @@ TABLE_ALIAS_PROPOSALS = 'alias_proposals'
 TABLE_AUDIT_LOG = 'audit_log'
 
 
-DDL_SCRIPT = f'''
-CREATE TABLE IF NOT EXISTS {TABLE_ALIAS_PROPOSALS}
+DDL_SCRIPT = '''
+CREATE TABLE IF NOT EXISTS alias_proposals
 (id INTEGER PRIMARY KEY, alias_name TEXT, ip_address TEXT, 
  status TEXT, created_at TIMESTAMP);
 
-CREATE TABLE IF NOT EXISTS {TABLE_AUDIT_LOG}
+CREATE TABLE IF NOT EXISTS audit_log
 (id INTEGER PRIMARY KEY, operation_type TEXT, old_values TEXT, 
  new_values TEXT, actor TEXT, timestamp TIMESTAMP);
 
-CREATE INDEX IF NOT EXISTS idx_{TABLE_ALIAS_PROPOSALS}_alias_name 
-ON {TABLE_ALIAS_PROPOSALS}(alias_name);
+CREATE INDEX IF NOT EXISTS idx_alias_proposals_alias_name 
+ON alias_proposals(alias_name);
 
-CREATE INDEX IF NOT EXISTS idx_{TABLE_ALIAS_PROPOSALS}_ip_address 
-ON {TABLE_ALIAS_PROPOSALS}(ip_address);
+CREATE INDEX IF NOT EXISTS idx_alias_proposals_ip_address 
+ON alias_proposals(ip_address);
 
-CREATE INDEX IF NOT EXISTS idx_{TABLE_ALIAS_PROPOSALS}_status 
-ON {TABLE_ALIAS_PROPOSALS}(status);
+CREATE INDEX IF NOT EXISTS idx_alias_proposals_status 
+ON alias_proposals(status);
 
-CREATE INDEX IF NOT EXISTS idx_{TABLE_AUDIT_LOG}_operation_type 
-ON {TABLE_AUDIT_LOG}(operation_type);
+CREATE INDEX IF NOT EXISTS idx_audit_log_operation_type 
+ON audit_log(operation_type);
 
-CREATE INDEX IF NOT EXISTS idx_{TABLE_AUDIT_LOG}_timestamp 
-ON {TABLE_AUDIT_LOG}(timestamp);
+CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp 
+ON audit_log(timestamp);
 
-CREATE TRIGGER IF NOT EXISTS audit_{TABLE_ALIAS_PROPOSALS}_insert
-AFTER INSERT ON {TABLE_ALIAS_PROPOSALS}
+CREATE TRIGGER IF NOT EXISTS audit_alias_proposals_insert
+AFTER INSERT ON alias_proposals
 BEGIN
-    INSERT INTO {TABLE_AUDIT_LOG} (operation_type, old_values, new_values, actor, timestamp)
+    INSERT INTO audit_log (operation_type, old_values, new_values, actor, timestamp)
     VALUES ('INSERT', NULL, 
             json_object('id', NEW.id, 'alias_name', NEW.alias_name, 'ip_address', NEW.ip_address, 'status', NEW.status, 'created_at', NEW.created_at),
-            '{AUDIT_ACTOR}', datetime('now'));
+            'pfsense_alias_adapter', datetime('now'));
 END;
 
-CREATE TRIGGER IF NOT EXISTS audit_{TABLE_ALIAS_PROPOSALS}_update
-AFTER UPDATE ON {TABLE_ALIAS_PROPOSALS}
+CREATE TRIGGER IF NOT EXISTS audit_alias_proposals_update
+AFTER UPDATE ON alias_proposals
 BEGIN
-    INSERT INTO {TABLE_AUDIT_LOG} (operation_type, old_values, new_values, actor, timestamp)
+    INSERT INTO audit_log (operation_type, old_values, new_values, actor, timestamp)
     VALUES ('UPDATE',
             json_object('id', OLD.id, 'alias_name', OLD.alias_name, 'ip_address', OLD.ip_address, 'status', OLD.status, 'created_at', OLD.created_at),
             json_object('id', NEW.id, 'alias_name', NEW.alias_name, 'ip_address', NEW.ip_address, 'status', NEW.status, 'created_at', NEW.created_at),
-            '{AUDIT_ACTOR}', datetime('now'));
+            'pfsense_alias_adapter', datetime('now'));
 END;
 
-CREATE TRIGGER IF NOT EXISTS audit_{TABLE_ALIAS_PROPOSALS}_delete
-AFTER DELETE ON {TABLE_ALIAS_PROPOSALS}
+CREATE TRIGGER IF NOT EXISTS audit_alias_proposals_delete
+AFTER DELETE ON alias_proposals
 BEGIN
-    INSERT INTO {TABLE_AUDIT_LOG} (operation_type, old_values, new_values, actor, timestamp)
+    INSERT INTO audit_log (operation_type, old_values, new_values, actor, timestamp)
     VALUES ('DELETE',
             json_object('id', OLD.id, 'alias_name', OLD.alias_name, 'ip_address', OLD.ip_address, 'status', OLD.status, 'created_at', OLD.created_at),
             NULL,
-            '{AUDIT_ACTOR}', datetime('now'));
+            'pfsense_alias_adapter', datetime('now'));
 END;
 '''
 
@@ -97,7 +97,7 @@ def store_proposal(name: str, ip: str) -> None:
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute(f"INSERT INTO {TABLE_ALIAS_PROPOSALS} (alias_name, ip_address, status, created_at) VALUES (?, ?, ?, ?)",
+        cursor.execute("INSERT INTO " + TABLE_ALIAS_PROPOSALS + " (alias_name, ip_address, status, created_at) VALUES (?, ?, ?, ?)",
                        (name, ip, PROPOSAL_STATUS_PENDING, datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')))
         conn.commit()
         conn.close()
@@ -108,7 +108,7 @@ def store_proposal(name: str, ip: str) -> None:
 
 def rollback_plan() -> None:
     """Prints instructions for rolling back pending alias proposals."""
-    print(f"{MSG_ROLLBACK_REFERENCE}: To revert, execute 'DELETE FROM {TABLE_ALIAS_PROPOSALS} WHERE status = \"{PROPOSAL_STATUS_PENDING}\"' in sqlite3.")
+    print(MSG_ROLLBACK_REFERENCE + ": To revert, execute 'DELETE FROM " + TABLE_ALIAS_PROPOSALS + " WHERE status = \"" + PROPOSAL_STATUS_PENDING + "\"' in sqlite3.")
 
 def rollback_execute(approved: bool = False) -> int:
     """Executes rollback of pending alias proposals.
@@ -125,19 +125,19 @@ def rollback_execute(approved: bool = False) -> int:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
-        cursor.execute(f"SELECT COUNT(*) FROM {TABLE_ALIAS_PROPOSALS} WHERE status = ?", (PROPOSAL_STATUS_PENDING,))
+        cursor.execute("SELECT COUNT(*) FROM " + TABLE_ALIAS_PROPOSALS + " WHERE status = ?", (PROPOSAL_STATUS_PENDING,))
         count = cursor.fetchone()[0]
         
         if not approved:
             conn.close()
-            logging.info(f"{MSG_ROLLBACK_DRYRUN}: Would delete {count} pending proposal(s)")
+            logging.info(MSG_ROLLBACK_DRYRUN + ": Would delete " + str(count) + " pending proposal(s)")
             return count
         
-        cursor.execute(f"DELETE FROM {TABLE_ALIAS_PROPOSALS} WHERE status = ?", (PROPOSAL_STATUS_PENDING,))
+        cursor.execute("DELETE FROM " + TABLE_ALIAS_PROPOSALS + " WHERE status = ?", (PROPOSAL_STATUS_PENDING,))
         deleted = cursor.rowcount
         conn.commit()
         conn.close()
-        logging.info(f"{MSG_ROLLBACK_EXECUTED}: Deleted {deleted} pending proposal(s)")
+        logging.info(MSG_ROLLBACK_EXECUTED + ": Deleted " + str(deleted) + " pending proposal(s)")
         return deleted
     except Exception:
         raise RuntimeError("Rollback execution failed")
