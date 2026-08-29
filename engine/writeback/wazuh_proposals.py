@@ -110,12 +110,23 @@ def _flush_audit_batch() -> None:
     if not batch:
         return
     
+    # Generate single timestamp for this flush cycle
+    flush_timestamp = datetime.now(timezone.utc)
+    
+    # Prepare batch for insertion with unified timestamp
+    insert_batch = []
+    for entry in batch:
+        # entry: (proposal_id, action, old_status, new_status, changed_by, changed_at, retry_count)
+        # Replace timestamp with flush_timestamp for batch efficiency
+        insert_entry = entry[:5] + (flush_timestamp,)
+        insert_batch.append(insert_entry)
+    
     try:
         conn = _get_connection()
         cursor = conn.cursor()
         cursor.executemany(
             "INSERT INTO audit_log (proposal_id, action, old_status, new_status, changed_by, changed_at) VALUES (?, ?, ?, ?, ?, ?)",
-            batch
+            insert_batch
         )
         conn.commit()
     except sqlite3.Error:
@@ -127,8 +138,8 @@ def _flush_audit_batch() -> None:
             # entry format: (proposal_id, action, old_status, new_status, changed_by, changed_at, retry_count)
             retry_count = entry[6] if len(entry) > 6 else 0
             if retry_count < _AUDIT_MAX_RETRIES:
-                # Re-queue with incremented retry count
-                retry_entry = entry[:6] + (retry_count + 1,)
+                # Re-queue with incremented retry count, using flush_timestamp
+                retry_entry = entry[:5] + (flush_timestamp, retry_count + 1)
                 retry_batch.append(retry_entry)
             else:
                 dead_letter_entries.append(entry)
@@ -146,7 +157,6 @@ def _flush_audit_batch() -> None:
     finally:
         if _batch_mode_enabled:
             _schedule_audit_flush()
-
 
 def _schedule_audit_flush() -> None:
     """Schedule the next audit batch flush."""
