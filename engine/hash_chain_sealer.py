@@ -148,6 +148,15 @@ def compute_chain_hashes(
     """
     rows_to_insert = []
     for row_id, row_ts, payload_sha in batch:
+        if not isinstance(payload_sha, str):
+            raise ValueError(f"payload_sha must be a string, got {type(payload_sha).__name__}")
+        if len(payload_sha) != 64:
+            raise ValueError(f"payload_sha must be 64 hex characters (SHA256), got length {len(payload_sha)}")
+        try:
+            int(payload_sha, 16)
+        except ValueError:
+            raise ValueError(f"payload_sha must be valid hexadecimal, got: {payload_sha}")
+
         last_seq += 1
         hasher = hashlib.sha256()
         hasher.update(str(last_seq).encode("utf-8"))
@@ -167,7 +176,6 @@ def compute_chain_hashes(
         )
         prev_hash = row_hash
     return rows_to_insert, last_seq, prev_hash
-
 def insert_chain_links(cur: psycopg2.extensions.cursor, rows_to_insert: List[Tuple]) -> None:
     """Insert computed chain links into audit_chain using bulk insert.
 
