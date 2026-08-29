@@ -126,6 +126,15 @@ def init_db() -> None:
                     )
                     """
                 )
+                cursor.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_triage_status ON triage_queue(status)"
+                )
+                cursor.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_triage_lease ON triage_queue(lease_expires_at)"
+                )
+                cursor.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_audit_event ON audit_log(event_id)"
+                )
     except Exception as e:
         logger.error(f"Database initialization error: {e}")
         raise RuntimeError(f"Database initialization failed: {e}")
@@ -356,57 +365,4 @@ def heartbeat_event(cursor: sqlite3.Cursor, event_id: int, ttl_seconds: int = 30
         """,
         (f"+{ttl_seconds} seconds", event_id),
     )
-    return cursor.rowcount > 0
-
-
-@execute_in_transaction
-def complete_event(cursor: sqlite3.Cursor, event_id: int) -> bool:
-    """Marks an event as completed.
-
-    Args:
-        event_id: The ID of the event to complete.
-
-    Returns:
-        True if the event was marked complete, False otherwise.
-    """
-    cursor.execute(
-        "SELECT status FROM triage_queue WHERE id = ?",
-        (event_id,),
-    )
-    row = cursor.fetchone()
-    old_status = row[0] if row else None
-    
-    cursor.execute(
-        "UPDATE triage_queue SET status = 'completed' WHERE id = ? AND status = 'processing'",
-        (event_id,),
-    )
-    if cursor.rowcount > 0:
-        _log_audit(event_id, old_status, "completed", "complete")
-    return cursor.rowcount > 0
-
-
-@execute_in_transaction
-def fail_event(cursor: sqlite3.Cursor, event_id: int, reason: str) -> bool:
-    """Marks an event as failed with a reason.
-
-    Args:
-        event_id: The ID of the event to fail.
-        reason: The failure reason.
-
-    Returns:
-        True if the event was marked failed, False otherwise.
-    """
-    cursor.execute(
-        "SELECT status FROM triage_queue WHERE id = ?",
-        (event_id,),
-    )
-    row = cursor.fetchone()
-    old_status = row[0] if row else None
-    
-    cursor.execute(
-        "UPDATE triage_queue SET status = 'failed', failure_reason = ? WHERE id = ? AND status = 'processing'",
-        (reason, event_id),
-    )
-    if cursor.rowcount > 0:
-        _log_audit(event_id, old_status, "failed", "fail")
     return cursor.rowcount > 0
