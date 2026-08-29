@@ -168,7 +168,6 @@ def compute_chain_hashes(
         prev_hash = row_hash
     return rows_to_insert, last_seq, prev_hash
 
-
 def insert_chain_links(cur: psycopg2.extensions.cursor, rows_to_insert: List[Tuple]) -> None:
     """Insert computed chain links into audit_chain using bulk insert.
 
