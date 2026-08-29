@@ -89,7 +89,24 @@ def get_mock_response(status_code: int) -> MockResponse:
     return MockResponse(status_code)
 
 
-def check_service(service: str, cfg: dict, lab_url: str, session: "requests.Session" | None, dry_run: bool = False) -> bool:
+def check_service(service: str, cfg: dict, lab_url: str, session: requests.Session | None, dry_run: bool = False) -> bool:
+    """
+    Verify credential permissions for a single service.
+
+    Args:
+        service: Name of the service being checked (used for logging).
+        cfg: Service configuration dict with keys 'user_env', 'token_env', 'read',
+             'forbidden', and 'forbidden_method'.
+        lab_url: Base URL of the lab environment (trailing slash optional).
+        session: requests.Session for making HTTP requests, or None in dry-run mode.
+        dry_run: If True, use mock credentials and mock responses instead of real requests.
+
+    Returns:
+        True if read access succeeds and forbidden action is properly denied; False otherwise.
+
+    Side Effects:
+        Logs errors on failure, logs info on success. Makes HTTP requests when not in dry-run mode.
+    """
     user = os.getenv(cfg["user_env"], MOCK_USER) if dry_run else os.getenv(cfg["user_env"])
     token = os.getenv(cfg["token_env"], MOCK_TOKEN) if dry_run else os.getenv(cfg["token_env"])
 
@@ -123,7 +140,6 @@ def check_service(service: str, cfg: dict, lab_url: str, session: "requests.Sess
 
     logging.info("PASS: %s credential permissions verified", service)
     return True
-
 
 def main() -> int:
     def create_session(max_workers: int) -> requests.Session:
