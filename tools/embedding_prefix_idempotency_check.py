@@ -115,32 +115,30 @@ def validate_against_service(prefixes: Dict[str, str]) -> bool:
                 print(f"WARNING: Could not validate against embedding service: {e}", file=sys.stderr)
                 return True
             time.sleep(delay)
-PREFIXES = get_prefixes()
-REQUIRED_DOC_PREFIX = PREFIXES["document"]
-REQUIRED_QUERY_PREFIX = PREFIXES["query"]
 
 
-def get_doc_test_cases():
-    required_doc_prefix = REQUIRED_DOC_PREFIX
+def get_doc_test_cases(doc_prefix: str):
     return [
-        ("unprefixed_data", required_doc_prefix, True),
-        (f"{required_doc_prefix}already_prefixed", required_doc_prefix, True),
-        (f"{required_doc_prefix}{required_doc_prefix}double_prefixed", required_doc_prefix, False),
-    ]
-def get_query_test_cases():
-    return [
-        ("unprefixed_query", REQUIRED_QUERY_PREFIX, True),
-        (f"{REQUIRED_QUERY_PREFIX}already_prefixed", REQUIRED_QUERY_PREFIX, True),
-        (f"{REQUIRED_QUERY_PREFIX}{REQUIRED_QUERY_PREFIX}double_prefixed", REQUIRED_QUERY_PREFIX, False),
+        ("unprefixed_data", doc_prefix, True),
+        (f"{doc_prefix}already_prefixed", doc_prefix, True),
+        (f"{doc_prefix}{doc_prefix}double_prefixed", doc_prefix, False),
     ]
 
 
-def get_mock_test_cases():
-    return get_doc_test_cases() + get_query_test_cases()
+def get_query_test_cases(query_prefix: str):
+    return [
+        ("unprefixed_query", query_prefix, True),
+        (f"{query_prefix}already_prefixed", query_prefix, True),
+        (f"{query_prefix}{query_prefix}double_prefixed", query_prefix, False),
+    ]
 
 
-def get_production_test_cases():
-    return get_doc_test_cases()
+def get_mock_test_cases(doc_prefix: str, query_prefix: str):
+    return get_doc_test_cases(doc_prefix) + get_query_test_cases(query_prefix)
+
+
+def get_production_test_cases(doc_prefix: str):
+    return get_doc_test_cases(doc_prefix)
 
 
 def check_idempotency(input_text: str, prefix: str) -> bool:
@@ -162,24 +160,18 @@ def check_idempotency(input_text: str, prefix: str) -> bool:
     return True
 
 
-import sys
-import argparse
-import json
-import os
-from pathlib import Path
-from typing import Dict
-PREFIXES = get_prefixes()
-REQUIRED_DOC_PREFIX = PREFIXES["document"]
-REQUIRED_QUERY_PREFIX = PREFIXES["query"]
-
-def _validate() -> bool:
-    if not validate_against_service(PREFIXES):
+def _validate(prefixes: Dict[str, str]) -> bool:
+    if not validate_against_service(prefixes):
         print("ERROR: Prefix validation against embedding service failed", file=sys.stderr)
         return False
     return True
 
-def _load_cases(dry_run: bool):
-    return get_mock_test_cases() if dry_run else get_production_test_cases()
+
+def _load_cases(prefixes: Dict[str, str], dry_run: bool):
+    doc_prefix = prefixes["document"]
+    query_prefix = prefixes["query"]
+    return get_mock_test_cases(doc_prefix, query_prefix) if dry_run else get_production_test_cases(doc_prefix)
+
 
 def run_tests(test_cases, dry_run: bool) -> bool:
     all_passed = True
@@ -192,6 +184,7 @@ def run_tests(test_cases, dry_run: bool) -> bool:
             print(f"  OK: {text!r} with {prefix!r} -> valid={is_valid}")
     return all_passed
 
+
 def _report(all_passed: bool, dry_run: bool) -> int:
     if dry_run:
         print("DRY RUN: Completed (exit code forced to 0)")
@@ -202,6 +195,7 @@ def _report(all_passed: bool, dry_run: bool) -> int:
     else:
         print("FAIL: Some embedding prefix idempotency checks failed")
         return 1
+
 
 def main(dry_run: bool = False) -> int:
     """
@@ -216,16 +210,20 @@ def main(dry_run: bool = False) -> int:
         0 if all tests pass, 1 if any test fails. In dry-run mode, always
         returns 0 after printing results.
     """
-    if not _validate():
+    prefixes = get_prefixes()
+    
+    if not _validate(prefixes):
         if not dry_run:
             return 1
 
-    test_cases = _load_cases(dry_run)
+    test_cases = _load_cases(prefixes, dry_run)
     if dry_run:
         print("DRY RUN: Running with mock test data (both document and query prefixes)")
 
     all_passed = run_tests(test_cases, dry_run)
     return _report(all_passed, dry_run)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Validate embedding prefix idempotency.")
     parser.add_argument("--dry-run", action="store_true", help="Run with mock test data for both document and query prefixes.")
