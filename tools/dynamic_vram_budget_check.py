@@ -91,6 +91,8 @@ def parse_mem_value(val_str: str) -> int:
         value /= 1024
     # For 'mib', 'mb', 'm', or no unit, keep the value as‑is
     return int(value)
+
+
 def check_vram_budget(gpu_data: Optional[ET.Element] = None) -> VramCheckResult:
     """
     Check GPU VRAM usage against a budget.
@@ -171,13 +173,14 @@ def check_vram_budget(gpu_data: Optional[ET.Element] = None) -> VramCheckResult:
     )
 
 
-def create_mock_gpu_xml(total_mb: int = 16384, used_mb: int = 8192) -> ET.Element:
+def create_mock_gpu_xml(total_mb: int = 16384, used_mb: int = 8192, unit: str = "MiB") -> ET.Element:
     """
     Create mock nvidia-smi XML output for dry-run testing.
 
     Args:
         total_mb: Total GPU memory in MiB.
         used_mb: Used GPU memory in MiB.
+        unit: Memory unit string to use in the mock XML (e.g., "MiB", "GiB", "MB", "GB").
 
     Returns:
         ET.Element: Mock XML root element simulating nvidia-smi -q -x output.
@@ -185,9 +188,9 @@ def create_mock_gpu_xml(total_mb: int = 16384, used_mb: int = 8192) -> ET.Elemen
     root = ET.Element('nvidia_smi_log')
     gpu = ET.SubElement(root, 'gpu')
     fb_memory = ET.SubElement(gpu, 'fb_memory_usage')
-    ET.SubElement(fb_memory, 'total').text = f"{total_mb} MiB"
-    ET.SubElement(fb_memory, 'used').text = f"{used_mb} MiB"
-    ET.SubElement(fb_memory, 'free').text = f"{total_mb - used_mb} MiB"
+    ET.SubElement(fb_memory, 'total').text = f"{total_mb} {unit}"
+    ET.SubElement(fb_memory, 'used').text = f"{used_mb} {unit}"
+    ET.SubElement(fb_memory, 'free').text = f"{total_mb - used_mb} {unit}"
     return root
 
 
