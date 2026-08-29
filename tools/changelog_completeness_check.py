@@ -203,6 +203,13 @@ def main() -> int:
     Orchestrates argument parsing, repository inspection, changelog parsing,
     and result reporting while delegating specific responsibilities to
     helper classes.
+
+    Exit codes:
+        0 (EXIT_PASS): All commits since latest tag are documented in changelog.
+        1 (EXIT_FAIL): Changelog file missing or commits missing from changelog.
+        2 (EXIT_CONFIG_ERROR): No git tags found to compare against.
+        3 (EXIT_ENV_ERROR): Not a git repository, git command not found,
+           or repository invalid (e.g., corrupted).
     """
     parser = argparse.ArgumentParser(description="Verify CHANGELOG completeness")
     parser.add_argument("--dry-run", action="store_true", help="Validate logic without failing")
@@ -246,7 +253,6 @@ def main() -> int:
 
     # Report results
     return print_results(missing_entries, changelog_path, args.dry_run)
-
 
 if __name__ == "__main__":
     sys.exit(main())
