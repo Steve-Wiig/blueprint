@@ -4,7 +4,7 @@ import sys
 import json
 import os
 from urllib.parse import urlparse, ParseResult
-from typing import Any
+from typing import Any, Literal
 
 # O.7 Payload Integrity Contract
 # Verifies canonical URI schemes, SHA256 integrity, and 8 required ledger keys.
@@ -29,8 +29,10 @@ EXIT_FAIL_JSON = 2
 
 SHA256_HEX_LENGTH = 64
 
+ExitCode = Literal[EXIT_PASS, EXIT_FAIL_INTEGRITY, EXIT_FAIL_JSON]
 
-def verify_payload(ledger_path: str) -> int:
+
+def verify_payload(ledger_path: str) -> ExitCode:
     """Verify the integrity of a payload ledger file.
 
     Validates that the ledger file exists, contains valid JSON, has all 8 required
@@ -41,7 +43,7 @@ def verify_payload(ledger_path: str) -> int:
         ledger_path: Path to the ledger JSON file to verify.
 
     Returns:
-        int: Exit code indicating verification result:
+        ExitCode: Exit code indicating verification result:
             EXIT_PASS (0) - PASS: All integrity checks passed
             EXIT_FAIL_INTEGRITY (1) - FAIL: Missing file, missing keys, invalid URI scheme, or checksum length mismatch
             EXIT_FAIL_JSON (2) - FAIL: Invalid JSON format
@@ -81,14 +83,14 @@ def verify_payload(ledger_path: str) -> int:
     return EXIT_PASS
 
 
-def main() -> int:
+def main() -> ExitCode:
     """Main entry point for the CI payload integrity check.
 
     Reads the ledger file path from the LEDGER_PATH environment variable
     (defaults to 'ledger.json') and runs the verification.
 
     Returns:
-        int: Exit code from verify_payload():
+        ExitCode: Exit code from verify_payload():
             EXIT_PASS (0) - PASS: All integrity checks passed
             EXIT_FAIL_INTEGRITY (1) - FAIL: Integrity verification failed
             EXIT_FAIL_JSON (2) - FAIL: Invalid JSON format
