@@ -7,22 +7,23 @@ import json
 import struct
 import io
 import threading
+import os
 from datetime import datetime, timezone, timedelta
 from typing import TypedDict, Optional, Callable
 from xml.sax.saxutils import escape
 from dataclasses import dataclass
 
 
-_PG_POOL_MINCONN = 1
-_PG_POOL_MAXCONN = 10
+_PG_POOL_MINCONN = int(os.getenv('PG_POOL_MINCONN', '1'))
+_PG_POOL_MAXCONN = int(os.getenv('PG_POOL_MAXCONN', '10'))
 MAX_TOP_K = 100
 
 
 def configure_connection(
     dbname: str = "soc_db",
     user: str = "orchestrator",
-    minconn: int = 1,
-    maxconn: int = 10,
+    minconn: int = _PG_POOL_MINCONN,
+    maxconn: int = _PG_POOL_MAXCONN,
     **kwargs
 ) -> Callable[[], psycopg2.pool.ThreadedConnectionPool]:
     """Configure database connection pool parameters and return a pool factory."""
