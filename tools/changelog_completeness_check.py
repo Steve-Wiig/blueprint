@@ -142,8 +142,18 @@ def get_latest_tag() -> Optional[str]:
 
 def iter_commits_since_tag(tag: str) -> Iterator[str]:
     """Module-level function for backward compatibility with tests."""
-    return GitRepo.iter_commits_since_tag(tag)
-
+    import subprocess
+    cmd = ["git", "log", "--format=%h %s", f"{tag}..HEAD"]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+    try:
+        for line in proc.stdout:
+            yield line.rstrip("\n")
+    finally:
+        proc.stdout.close()
+        return_code = proc.wait()
+        if return_code != 0:
+            stderr = proc.stderr.read() if proc.stderr else ""
+            raise RuntimeError(f"git log failed with code {return_code}: {stderr}")
 
 def get_commits_since_tag(tag: str) -> List[str]:
     """Module-level function for backward compatibility with tests."""
