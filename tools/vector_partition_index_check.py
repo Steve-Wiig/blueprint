@@ -215,12 +215,13 @@ def validate_partition_config(
     config_path: Path,
     dry_run: bool = False,
     defaults: Optional[Dict[str, Any]] = None,
+    data: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Validate vector partition configuration against schema constraints and sharding rules.
 
     Performs the following validation steps in order:
     1. File existence check - verifies the config file exists at the given path.
-    2. JSON parsing - ensures the file contains valid JSON.
+    2. JSON parsing - ensures the file contains valid JSON (skipped if `data` is provided).
     3. Required partitions - confirms all required partitions (alerts, threat_intel,
        audit_logs) are present.
     4. Schema version - validates the configuration version matches
@@ -233,6 +234,9 @@ def validate_partition_config(
         dry_run: If True, performs validation without committing changes and prints
             detailed step-by-step output. Defaults to False.
         defaults: Optional defaults dictionary for testing. If not provided, loads from cache.
+        data: Optional pre-parsed configuration data. If provided, skips file reading and
+            JSON parsing (step 2). Callers should pass parsed data to avoid redundant I/O
+            when validating multiple times or when data is already loaded.
 
     Raises:
         RuntimeError: With exit code as argument on validation failure:
@@ -257,10 +261,14 @@ def validate_partition_config(
     if dry_run:
         print("  [1/6] PASSED")
 
-    # Step 2: JSON parsing
+    # Step 2: JSON parsing (skip if data provided)
     if dry_run:
         print("  [2/6] JSON parsing")
-    data = _check_json_parsing(config_path)
+    if data is None:
+        data = _check_json_parsing(config_path)
+    else:
+        if not isinstance(data, dict):
+            raise RuntimeError(EXIT_VALIDATION_ERROR)
     if dry_run:
         print("  [2/6] PASSED")
 
@@ -294,7 +302,6 @@ def validate_partition_config(
 
     if dry_run:
         print("DRY-RUN: Validation completed successfully.")
-
 
 def _check_file_exists(config_path: Path) -> None:
     if not config_path.is_file():
