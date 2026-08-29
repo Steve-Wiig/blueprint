@@ -182,7 +182,7 @@ def parse_log_file(log_path: Path) -> Dict[str, Any]:
     # Calculate success rate
     if metrics["summary"]["total_attempts"] > 0:
         metrics["summary"]["success_rate"] = (
-            metrics["summary"]["successful"] / metrics["summary"]["total_attempts"]
+            float(metrics["summary"]["successful"]) / metrics["summary"]["total_attempts"]
         )
     
     # Convert Counters to dicts for JSON serialization
@@ -228,7 +228,7 @@ def analyze_multiple_logs(log_paths: List[Path]) -> Dict[str, Any]:
     # Calculate combined success rate
     if aggregated["combined_summary"]["total_attempts"] > 0:
         aggregated["combined_summary"]["success_rate"] = (
-            aggregated["combined_summary"]["successful"] / 
+            float(aggregated["combined_summary"]["successful"]) / 
             aggregated["combined_summary"]["total_attempts"]
         )
     
