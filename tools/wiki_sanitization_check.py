@@ -199,12 +199,10 @@ def scan_directory(dir_path: str, recursive: bool = True) -> list[tuple[str, str
     if not path.is_dir():
         raise OSError(f"Path is not a directory: {dir_path}")
 
-    exclude_dirs = {'.git', '__pycache__', 'node_modules', '.venv', 'venv', 'env', 'dist', 'build', '.pytest_cache', '.mypy_cache'}
-
     if recursive:
         for root, dirs, files in os.walk(path):
             # Prune excluded directories in-place to avoid descending into them
-            dirs[:] = [d for d in dirs if d not in exclude_dirs]
+            dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
             for file_name in files:
                 file_path = Path(root) / file_name
                 try:
@@ -224,7 +222,6 @@ def scan_directory(dir_path: str, recursive: bool = True) -> list[tuple[str, str
                     continue
 
     return found
-
 
 def _generate_dry_run_payloads() -> list[str]:
     """
