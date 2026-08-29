@@ -3,10 +3,7 @@ import sys
 import argparse
 import json
 import logging
-import requests
-from requests.adapters import HTTPAdapter
 from dataclasses import dataclass
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 DEFAULT_CONFIG_PATH: str = str(Path(__file__).parent / "config.json")
@@ -81,6 +78,7 @@ def validate_config(config: dict) -> None:
             if not isinstance(cfg[key], str) or not cfg[key].startswith("/"):
                 raise ValueError(f"Service '{service}' {key} must be a path starting with '/'")
 
+
 def load_config(config_path: str | None = None) -> dict:
     path = config_path or os.getenv("CONFIG_FILE", DEFAULT_CONFIG_PATH)
     try:
@@ -108,7 +106,7 @@ def get_mock_response(status_code: int) -> MockResponse:
     return MockResponse(status_code)
 
 
-def check_service(service: str, cfg: dict, lab_url: str, session: requests.Session | None, dry_run: bool = False) -> bool:
+def check_service(service: str, cfg: dict, lab_url: str, session: "requests.Session | None", dry_run: bool = False) -> bool:
     """
     Verify credential permissions for a single service.
 
@@ -126,6 +124,8 @@ def check_service(service: str, cfg: dict, lab_url: str, session: requests.Sessi
     Side Effects:
         Logs errors on failure, logs info on success. Makes HTTP requests when not in dry-run mode.
     """
+    import requests
+
     user = os.getenv(cfg["user_env"], MOCK_USER) if dry_run else os.getenv(cfg["user_env"])
     token = os.getenv(cfg["token_env"], MOCK_TOKEN) if dry_run else os.getenv(cfg["token_env"])
 
@@ -160,7 +160,12 @@ def check_service(service: str, cfg: dict, lab_url: str, session: requests.Sessi
     logging.info("PASS: %s credential permissions verified", service)
     return True
 
+
 def main() -> int:
+    import requests
+    from requests.adapters import HTTPAdapter
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     def create_session(max_workers: int) -> requests.Session:
         session = requests.Session()
         adapter = HTTPAdapter(pool_connections=max_workers, pool_maxsize=max_workers)
