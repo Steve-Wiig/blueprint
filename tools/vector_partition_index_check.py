@@ -350,19 +350,12 @@ def _check_file_exists(config_path: Path) -> None:
 def _check_json_parsing(config_path: Path, data: Optional[Dict[str, Any]] = None) -> PartitionConfig:
     if data is not None:
         return data
-    if not hasattr(_check_json_parsing, "_cache"):
-        _check_json_parsing._cache = {}
-    cache = _check_json_parsing._cache
-    if config_path in cache:
-        return cache[config_path]
     try:
         with config_path.open("r") as f:
             parsed = json.load(f)
-        cache[config_path] = parsed
         return parsed
     except json.JSONDecodeError as e:
         raise ValidationError(f"Invalid JSON in configuration file: {e}") from e
-
 
 def _check_required_partitions(
     config_path: Path,
