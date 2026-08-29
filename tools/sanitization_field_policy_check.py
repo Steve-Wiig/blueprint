@@ -125,6 +125,8 @@ def load_forbidden_fields(policy_file: Optional[str] = None, env_var: str = "FOR
         except json.JSONDecodeError:
             print(f"WARNING: Environment variable {env_var} contains invalid JSON, falling back to defaults.")
     return DEFAULT_FORBIDDEN_FIELDS
+
+
 def validate_meta_schema(data: Any) -> List[str]:
     """Validate schema against JSON Schema Draft 7 meta-schema.
 
@@ -144,6 +146,8 @@ def validate_meta_schema(data: Any) -> List[str]:
         return [f"Meta-schema validation failed: {e.message}"]
     except Exception as e:
         return [f"Meta-schema validation error: {str(e)}"]
+
+
 def find_forbidden(obj: Any, forbidden_fields: Set[str]) -> List[str]:
     """Recursively search for forbidden field names in a JSON schema object.
 
@@ -174,6 +178,8 @@ def find_forbidden(obj: Any, forbidden_fields: Set[str]) -> List[str]:
                 new_path = f"{path}[{i}]"
                 stack.append((item, new_path))
     return found
+
+
 def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = None) -> int:
     """Validate schema file for forbidden fields and meta-schema compliance.
 
@@ -225,6 +231,8 @@ def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = Non
         return EXIT_VIOLATION
 
     return EXIT_OK
+
+
 def check_ci_context() -> None:
     """Validate CI environment context.
 
@@ -233,6 +241,7 @@ def check_ci_context() -> None:
     """
     if not os.getenv("CI_PIPELINE_ID"):
         raise CIMissingError("ENV_NOT_AVAILABLE: CI context missing")
+
 
 def main() -> int:
     """Run the sanitization field policy check.
@@ -277,5 +286,7 @@ def main() -> int:
         return EXIT_OK
 
     return result
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
