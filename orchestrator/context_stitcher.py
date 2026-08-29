@@ -118,6 +118,22 @@ def _log_audit(
     entry: AuditLogEntry
 ) -> None:
     """Insert an audit log entry for the memory retrieval operation."""
+    
+    def _handle_audit_failure(conn, query_hash, error, error_type):
+        print(
+            f"AUDIT LOG FAILURE ({error_type}): query_hash={query_hash}, case_ids={entry.case_ids}, "
+            f"top_k={entry.top_k}, max_age_days={entry.max_age_days}, error={error}",
+            file=sys.stderr,
+        )
+        try:
+            conn.rollback()
+        except psycopg2.Error as rb_err:
+            print(f"AUDIT ROLLBACK FAILURE: query_hash={query_hash}, error={rb_err}", file=sys.stderr)
+        if error_type == "psycopg2.Error":
+            raise RuntimeError(f"Failed to write audit log for query_hash={query_hash}") from error
+        else:
+            raise RuntimeError(f"Audit context serialization failed for query_hash={query_hash}") from error
+
     cur = None
     try:
         cur = conn.cursor()
@@ -129,31 +145,12 @@ def _log_audit(
         cur.execute(audit_query, (entry.retrieval_timestamp, entry.query_hash, entry.case_ids, entry.top_k, entry.max_age_days, context_json))
         conn.commit()
     except psycopg2.Error as e:
-        print(
-            f"AUDIT LOG FAILURE (psycopg2.Error): query_hash={entry.query_hash}, case_ids={entry.case_ids}, "
-            f"top_k={entry.top_k}, max_age_days={entry.max_age_days}, error={e}",
-            file=sys.stderr,
-        )
-        try:
-            conn.rollback()
-        except psycopg2.Error as rb_err:
-            print(f"AUDIT ROLLBACK FAILURE: query_hash={entry.query_hash}, error={rb_err}", file=sys.stderr)
-        raise RuntimeError(f"Failed to write audit log for query_hash={entry.query_hash}") from e
+        _handle_audit_failure(conn, entry.query_hash, e, "psycopg2.Error")
     except (TypeError, ValueError, json.JSONDecodeError) as e:
-        print(
-            f"AUDIT LOG FAILURE (serialization error): query_hash={entry.query_hash}, case_ids={entry.case_ids}, "
-            f"top_k={entry.top_k}, max_age_days={entry.max_age_days}, error={e}",
-            file=sys.stderr,
-        )
-        try:
-            conn.rollback()
-        except psycopg2.Error as rb_err:
-            print(f"AUDIT ROLLBACK FAILURE: query_hash={entry.query_hash}, error={rb_err}", file=sys.stderr)
-        raise RuntimeError(f"Audit context serialization failed for query_hash={entry.query_hash}") from e
+        _handle_audit_failure(conn, entry.query_hash, e, "serialization error")
     finally:
         if cur is not None:
             cur.close()
-
 def stitch_memory_context(
     query_embedding: list[float],
     top_k: int = 5,
