@@ -49,10 +49,10 @@ def verify_chain_streaming(file_path: str) -> bool:
     2. previous_hash linkage
     3. row_hash recomputation
     """
-    import ijson
     with open(file_path, 'rb') as f:
         parser = ijson.items(f, 'item')
         return _verify_chain_iterable(parser)
+
 def verify_chain(chain_data: list[dict[str, Any]]) -> bool:
     """
     Verifies:
