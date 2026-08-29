@@ -116,7 +116,6 @@ def validate_against_service(prefixes: Dict[str, str]) -> bool:
                 return True
             time.sleep(delay)
 
-
 def get_doc_test_cases(doc_prefix: str):
     return [
         ("unprefixed_data", doc_prefix, True),
