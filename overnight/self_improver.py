@@ -53,6 +53,7 @@ def queue_path_for(file_path):
     return QUEUE_DIR / f"{safe_name}.json"
 
 FIX_BACKLOG = ROOT / "overnight" / "fix_backlog.json"
+BACKLOG_LOCK = ROOT / "overnight" / "backlog.lock"  # Human operator lock
 
 def _load_backlog():
     if FIX_BACKLOG.exists():
