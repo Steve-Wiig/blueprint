@@ -45,8 +45,8 @@ def load_config(args: argparse.Namespace) -> dict:
 
 def check_queue_recovery(dry_run: bool = False, config: dict | None = None) -> ExitCode:
     """
-    Verifies that the recovery logic for stale messages is implemented by checking for a
-    specific pattern in a local recovery manifest log file.
+    Verifies recovery logic for stale messages by checking for a specific pattern
+    in a local manifest log file. Does not query any message broker.
     """
     if config is None:
         raise ValueError("config must be provided")
