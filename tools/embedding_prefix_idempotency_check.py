@@ -172,14 +172,13 @@ def _load_cases(prefixes: Dict[str, str], dry_run: bool):
     return get_mock_test_cases(doc_prefix, query_prefix) if dry_run else get_production_test_cases(doc_prefix)
 
 
-def run_tests(test_cases, dry_run: bool) -> bool:
+def run_tests(test_cases: list[tuple[str, str, bool]], dry_run: bool) -> bool:
     all_passed = True
     for text, prefix, expected_valid in test_cases:
         is_valid = check_idempotency(text, prefix)
         if is_valid != expected_valid:
             all_passed = False
     return all_passed
-
 def _report(all_passed: bool, dry_run: bool) -> int:
     if dry_run:
         print("DRY RUN: Completed (exit code forced to 0)")
