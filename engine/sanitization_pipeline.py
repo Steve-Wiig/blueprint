@@ -162,7 +162,9 @@ def _check_allowlist(token: str) -> bool:
     Returns:
         True if token matches an allowlist pattern, False otherwise.
     """
-    return any(p.match(token) for p in ALLOWLIST_PATTERNS_COMPILED.values())
+    if not hasattr(_check_allowlist, "_compiled_regex"):
+        _check_allowlist._compiled_regex = re.compile(_COMBINED_REGEX_PATTERN)
+    return _check_allowlist._compiled_regex.match(token) is not None
 
 def _quick_diversity_check(token: str) -> bool:
     """Fast pre-filter: checks if token has sufficient character diversity.
