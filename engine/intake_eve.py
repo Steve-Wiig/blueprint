@@ -32,15 +32,14 @@ def configure_logging() -> None:
         logger.addHandler(file_handler)
         logger.setLevel(logging.INFO)
 
-@contextmanager
 def get_connection() -> Generator[sqlite3.Connection, None, None]:
     """Context manager for database connections with automatic cleanup."""
     conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
     try:
         yield conn
     finally:
         conn.close()
-
 
 @contextmanager
 def transaction(conn: sqlite3.Connection) -> Generator[sqlite3.Cursor, None, None]:
