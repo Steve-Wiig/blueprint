@@ -207,7 +207,6 @@ def sanitize_event(event: Dict[str, Any]) -> Dict[str, Any]:
     if "severity" not in sanitized:
         sanitized["severity"] = "unknown"
     return sanitized
-
 @execute_in_transaction
 def enqueue_event(cursor: sqlite3.Cursor, event: Dict[str, Any]) -> None:
     """Inserts a single sanitized event into the triage_queue table.
