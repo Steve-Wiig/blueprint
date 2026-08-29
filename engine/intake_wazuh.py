@@ -131,6 +131,17 @@ def build_alert_record(sanitized_payload: dict[str, Any], severity: int) -> dict
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 def parse_and_validate(raw_payload: str) -> dict[str, Any]:
+    """Parse and validate a raw JSON payload string.
+
+    Args:
+        raw_payload: Raw JSON string containing alert data.
+
+    Returns:
+        Sanitized dictionary with validated alert fields.
+
+    Raises:
+        RuntimeError: If JSON parsing fails or payload sanitization fails.
+    """
     try:
         data = json.loads(raw_payload)
     except json.JSONDecodeError:
@@ -142,7 +153,6 @@ def parse_and_validate(raw_payload: str) -> dict[str, Any]:
         raise RuntimeError("Library code called exit(1)")
     
     return sanitized
-
 def persist_alert(conn: sqlite3.Connection, alert_record: dict[str, Any]) -> None:
     cursor = conn.cursor()
     cursor.execute("""
