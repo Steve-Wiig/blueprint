@@ -202,3 +202,42 @@ if universal). Example: "do NOT remove DB_PATH; tests patch engine.quota_ledger.
 ### 8.10 Stateless retry is the biggest hidden cost
 Retrying a deferred item without new context just re-fails the same way. Always add
 the discovered constraint to lessons_learned.json BEFORE re-queuing a deferred item.
+
+## 🛡️ CRITICAL OPERATIONAL LESSONS (Hard-Won from Production)
+
+*Added: 2026-08-29*
+
+These are non-negotiable rules discovered during actual autonomous operation. Ignoring them leads to quota burn, corrupted state, or silent failures.
+
+### 1. The Queue-File Race Condition
+**Symptom:** The background drain loop overwrites manual edits made to `fix_backlog.json`.
+**Resolution:** **NEVER** edit the backlog while the drain is running. 
+**Workflow:** 
+1. Run `lock_backlog` (creates `overnight/backlog.lock`)
+2. The drain will now gracefully skip processing and print a warning.
+3. Edit and `git commit` your changes to the JSON.
+4. Run `unlock_backlog` to resume autonomous processing.
+
+### 2. The Configuration-Class Trap
+**Symptom:** Moving environment variable access into class attributes does *not* make it lazy. Class attributes are evaluated at definition/import time, meaning `.env` files loaded *after* import will be ignored.
+**Resolution:** Always read environment variables inside functions/methods at runtime, or use `os.getenv` with explicit reload logic if dynamic changes are expected.
+
+### 3. Global Replacement Corruption
+**Symptom:** Blind `str.replace()` on identifiers (e.g., replacing `user` with `admin_user`) can corrupt unrelated definitions, docstrings, or comments.
+**Resolution:** Use anchored, unique replacements (e.g., regex with word boundaries `\buser\b`) or AST-based refactoring for code modifications.
+
+### 4. Duplicate Advisories Burn Quota
+**Symptom:** Twin advisories in the queue cause the drain to repeatedly retry the same unfixable issue, burning API quota.
+**Resolution:** Clear duplicates by matching `description`/`content`, **never** by list index (which shifts as items are removed).
+
+### 5. `.env` Inheritance in Subprocesses
+**Symptom:** A `nohup python3 ...` subprocess does not automatically inherit variables from a `.env` file unless explicitly told to.
+**Resolution:** The launch script must explicitly source the environment (e.g., `set -a; source .env; set +a`) before invoking the Python process.
+
+### 6. Silent Background Crashes
+**Symptom:** A background process appears to be running (PID exists) but has silently exited its main loop due to an unhandled exception.
+**Resolution:** Always use unbuffered output (`python3 -u`) and verify the process is actively logging or check its state via a dashboard command, not just `pgrep`.
+
+### 7. Reuse Proven Entry Points
+**Symptom:** Writing custom wrapper scripts that reproduce initialization logic often misses edge cases handled by the main CLI.
+**Resolution:** Prefer the tested `--drain-backlog` CLI entry point over custom ad-hoc wrappers.
