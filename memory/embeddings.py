@@ -7,39 +7,45 @@ class EmbeddingService:
     """
     LOCAL-SOC-SLM v11.6.0 Embedding Service.
 
-    Enforces 768-dim vector space and idempotent prefixing.
+    Enforces model-native vector space dimension and idempotent prefixing.
     Fail-closed on contract violation.
 
     Attributes:
-        DIMENSION (int): Expected embedding dimension (768).
         PREFIX_DOC (str): Prefix applied to documents before encoding.
         PREFIX_QUERY (str): Prefix applied to queries before encoding.
         model (SentenceTransformer): Loaded sentence transformer model.
+        dimension (int): Embedding dimension derived from the loaded model.
     """
 
-    DIMENSION = 768
     PREFIX_DOC = "search_document: "
     PREFIX_QUERY = "search_query: "
 
-    def __init__(self, model_name: str = 'all-mpnet-base-v2') -> None:
+    def __init__(self, model_name: str = 'all-mpnet-base-v2', dimension: Optional[int] = None) -> None:
         """Initialize the embedding service with a sentence transformer model.
 
         Args:
             model_name: Name of the SentenceTransformer model to load.
                 Defaults to 'all-mpnet-base-v2' which produces 768-dim embeddings.
+            dimension: Expected embedding dimension. If None, derived from model.
+                If provided, validated against model's actual dimension.
 
         Raises:
-            RuntimeError: If the model fails to load.
+            RuntimeError: If the model fails to load or dimension mismatch occurs.
 
         Example:
             >>> service = EmbeddingService()
             >>> service = EmbeddingService('all-mpnet-base-v2')
+            >>> service = EmbeddingService('other-model', dimension=384)
         """
         try:
             self.model = SentenceTransformer(model_name)
             actual_dim = self.model.get_sentence_embedding_dimension()
-            if actual_dim != self.DIMENSION:
-                raise ValueError(f"Model '{model_name}' produces {actual_dim}-dim embeddings, expected {self.DIMENSION}")
+            if dimension is not None:
+                if actual_dim != dimension:
+                    raise ValueError(f"Model '{model_name}' produces {actual_dim}-dim embeddings, expected {dimension}")
+                self.dimension = dimension
+            else:
+                self.dimension = actual_dim
         except ValueError:
             raise  # Re-raise dimension mismatch errors directly
         except Exception as e:
@@ -73,7 +79,7 @@ class EmbeddingService:
             prefix: Prefix to apply idempotently.
 
         Returns:
-            np.ndarray: 1D array (768,) for single text, 2D array (n, 768) for batch.
+            np.ndarray: 1D array (dim,) for single text, 2D array (n, dim) for batch.
 
         Raises:
             RuntimeError: If encoding fails.
@@ -89,7 +95,7 @@ class EmbeddingService:
             raise RuntimeError(f"Library code called exit(1)")
 
     def embed_document(self, text: str) -> np.ndarray:
-        """Encode a document text into a 768-dim embedding vector.
+        """Encode a document text into an embedding vector.
 
         Applies the document prefix idempotently before encoding.
 
@@ -97,7 +103,7 @@ class EmbeddingService:
             text: Document text to embed.
 
         Returns:
-            np.ndarray: 768-dimensional float32 embedding vector.
+            np.ndarray: float32 embedding vector of model-native dimension.
 
         Raises:
             RuntimeError: If encoding fails.
@@ -113,7 +119,7 @@ class EmbeddingService:
         return self._encode_internal(text, self.PREFIX_DOC)
 
     def embed_query(self, text: str) -> np.ndarray:
-        """Encode a query text into a 768-dim embedding vector.
+        """Encode a query text into an embedding vector.
 
         Applies the query prefix idempotently before encoding.
 
@@ -121,7 +127,7 @@ class EmbeddingService:
             text: Query text to embed.
 
         Returns:
-            np.ndarray: 768-dimensional float32 embedding vector.
+            np.ndarray: float32 embedding vector of model-native dimension.
 
         Raises:
             RuntimeError: If encoding fails.
@@ -137,7 +143,7 @@ class EmbeddingService:
         return self._encode_internal(text, self.PREFIX_QUERY)
 
     def embed_documents(self, texts: List[str]) -> np.ndarray:
-        """Encode a batch of document texts into 768-dim embedding vectors.
+        """Encode a batch of document texts into embedding vectors.
 
         Applies the document prefix idempotently to each text before encoding.
         Uses SentenceTransformer's native batch encoding for throughput.
@@ -146,7 +152,7 @@ class EmbeddingService:
             texts: List of document texts to embed.
 
         Returns:
-            np.ndarray: 2D array of shape (n_texts, 768) with float32 embeddings.
+            np.ndarray: 2D array of shape (n_texts, dim) with float32 embeddings.
 
         Raises:
             RuntimeError: If encoding fails.
@@ -162,7 +168,7 @@ class EmbeddingService:
         return self._encode_internal(texts, self.PREFIX_DOC)
 
     def embed_queries(self, texts: List[str]) -> np.ndarray:
-        """Encode a batch of query texts into 768-dim embedding vectors.
+        """Encode a batch of query texts into embedding vectors.
 
         Applies the query prefix idempotently to each text before encoding.
         Uses SentenceTransformer's native batch encoding for throughput.
@@ -171,7 +177,7 @@ class EmbeddingService:
             texts: List of query texts to embed.
 
         Returns:
-            np.ndarray: 2D array of shape (n_texts, 768) with float32 embeddings.
+            np.ndarray: 2D array of shape (n_texts, dim) with float32 embeddings.
 
         Raises:
             RuntimeError: If encoding fails.
@@ -191,19 +197,19 @@ if __name__ == "__main__":
     # Self-test for deployment validation
     service = EmbeddingService()
     test_vec = service.embed_query("test")
-    assert len(test_vec) == 768, 'Dimension mismatch'
+    assert len(test_vec) == service.dimension, 'Dimension mismatch'
     assert isinstance(test_vec, np.ndarray), 'Expected numpy array'
     assert test_vec.dtype == np.float32, 'Expected float32'
     
     # Batch encoding tests
     doc_vecs = service.embed_documents(["doc 1", "doc 2", "doc 3"])
-    assert doc_vecs.shape == (3, 768), 'Batch document shape mismatch'
+    assert doc_vecs.shape == (3, service.dimension), 'Batch document shape mismatch'
     assert doc_vecs.dtype == np.float32, 'Expected float32'
     
     query_vecs = service.embed_queries(["query 1", "query 2"])
-    assert query_vecs.shape == (2, 768), 'Batch query shape mismatch'
+    assert query_vecs.shape == (2, service.dimension), 'Batch query shape mismatch'
     assert query_vecs.dtype == np.float32, 'Expected float32'
     
     # Idempotent prefix test for batch
     prefixed_docs = service.embed_documents(["search_document: already prefixed", "not prefixed"])
-    assert prefixed_docs.shape == (2, 768), 'Idempotent batch shape mismatch'
+    assert prefixed_docs.shape == (2, service.dimension), 'Idempotent batch shape mismatch'
