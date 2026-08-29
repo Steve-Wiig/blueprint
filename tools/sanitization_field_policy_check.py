@@ -174,7 +174,6 @@ def find_forbidden(obj: Any, forbidden_fields: Set[str]) -> List[str]:
                 new_path = f"{path}[{i}]"
                 stack.append((item, new_path))
     return found
-
 def validate_schema(schema_path: str, forbidden_fields: Optional[Set[str]] = None) -> int:
     """Validate schema file for forbidden fields and meta-schema compliance.
 
