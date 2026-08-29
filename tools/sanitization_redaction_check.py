@@ -73,12 +73,20 @@ TEST_PAYLOADS: Dict[str, str] = {
 }
 
 
+import re
+import sys
+import threading
+from typing import TypedDict, Dict, Pattern, Optional
+from enum import IntEnum
 class Sanitizer:
     """Encapsulates secret detection patterns and redaction logic for isolated testing.
 
     This is the primary API for sanitization. Instantiate with custom patterns
     or use defaults. All methods are instance methods to enable parallel use
     with different configurations and facilitate unit testing.
+
+    Thread-safety: Pattern updates via recompile() are thread-safe. Concurrent
+    reads (redact, run_sanitization_check) are safe against concurrent updates.
     """
 
     def __init__(self, patterns: Optional[Dict[str, PatternConfig]] = None, redaction_token: str = '[REDACTED]'):
@@ -92,17 +100,19 @@ class Sanitizer:
         self._patterns = dict(patterns) if patterns is not None else dict(PATTERNS)
         self._compiled_patterns: Dict[str, Pattern[str]] = {}
         self._redaction_token = redaction_token
+        self._lock = threading.RLock()
         self.recompile()
 
     def recompile(self) -> None:
         """Recompile all patterns from the current _patterns dict.
 
         Call this if _patterns is modified after initialization to ensure
-        compiled patterns are up to date.
+        compiled patterns are up to date. Thread-safe.
         """
-        self._compiled_patterns = {
-            k: re.compile(v["pattern"]) for k, v in self._patterns.items()
-        }
+        with self._lock:
+            self._compiled_patterns = {
+                k: re.compile(v["pattern"]) for k, v in self._patterns.items()
+            }
 
     def redact(self, pattern_key: str, text: str, redaction_token: Optional[str] = None) -> str:
         """Redact sensitive pattern in text, preserving prefix for query/header patterns.
@@ -120,14 +130,15 @@ class Sanitizer:
         Raises:
             KeyError: If pattern_key is not found in patterns.
         """
-        pattern = self._compiled_patterns.get(pattern_key)
-        if not pattern:
-            raise KeyError(pattern_key)
-        redaction_type = self._patterns[pattern_key]["redaction_type"]
-        token = redaction_token if redaction_token is not None else self._redaction_token
-        if redaction_type == "group":
-            return pattern.sub(r"\1" + token, text)
-        return pattern.sub(token, text)
+        with self._lock:
+            pattern = self._compiled_patterns.get(pattern_key)
+            if not pattern:
+                raise KeyError(pattern_key)
+            redaction_type = self._patterns[pattern_key]["redaction_type"]
+            token = redaction_token if redaction_token is not None else self._redaction_token
+            if redaction_type == "group":
+                return pattern.sub(r"\1" + token, text)
+            return pattern.sub(token, text)
 
     def run_sanitization_check(self, test_payloads: Optional[Dict[str, str]] = None) -> CheckResult:
         """Run sanitization verification against known test payloads.
@@ -145,26 +156,26 @@ class Sanitizer:
         """
         payloads = test_payloads if test_payloads is not None else TEST_PAYLOADS
         try:
-            assert self._patterns and payloads
+            with self._lock:
+                assert self._patterns and payloads
 
-            for key in self._patterns:
-                payload = payloads.get(key)
-                if not payload:
-                    return CheckResult.PAYLOAD_MISSING
+                for key in self._patterns:
+                    payload = payloads.get(key)
+                    if not payload:
+                        return CheckResult.PAYLOAD_MISSING
 
-                if not self._compiled_patterns[key].search(payload):
-                    return CheckResult.PATTERN_MISSING
+                    if not self._compiled_patterns[key].search(payload):
+                        return CheckResult.PATTERN_MISSING
 
-                redacted = self.redact(key, payload)
-                if self._redaction_token not in redacted:
-                    return CheckResult.PATTERN_MISSING
+                    redacted = self.redact(key, payload)
+                    if self._redaction_token not in redacted:
+                        return CheckResult.PATTERN_MISSING
 
             return CheckResult.PASS
         except MemoryError:
             return CheckResult.INTERNAL_ERROR
         except Exception:
             return CheckResult.PAYLOAD_MISSING
-
 
 _default_sanitizer: Optional[Sanitizer] = None
 
