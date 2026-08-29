@@ -92,7 +92,7 @@ class ModelRegistryClient:
         try:
             with open(self._routing_config_path, 'r') as f:
                 self._routing_config = yaml.safe_load(f)
-        except Exception:
+        except (FileNotFoundError, PermissionError, yaml.YAMLError, OSError) as e:
             raise ValueError(f"CONFIG ERROR: Could not load routing config: {self._routing_config_path}")
 
         self._adapter_cache.clear()
