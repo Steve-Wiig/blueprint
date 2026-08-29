@@ -159,14 +159,10 @@ def _log_audit(cursor: sqlite3.Cursor, event_id: int, old_status: Optional[str],
         new_status: The new status.
         actor: The actor performing the change.
     """
-    try:
-        cursor.execute(
-            "INSERT INTO audit_log (event_id, old_status, new_status, actor) VALUES (?, ?, ?, ?)",
-            (event_id, old_status, new_status, actor),
-        )
-    except Exception as e:
-        logger.error(f"Audit log error: {e}")
-
+    cursor.execute(
+        "INSERT INTO audit_log (event_id, old_status, new_status, actor) VALUES (?, ?, ?, ?)",
+        (event_id, old_status, new_status, actor),
+    )
 import math
 import hashlib
 from typing import Any, Dict, List
