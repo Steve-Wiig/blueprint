@@ -55,17 +55,39 @@ def extract_iocs_from_text(text: str) -> Dict[IOCType, set]:
     Extract IOCs from text using regex patterns.
 
     Args:
-        text: Text to search for IOCs.
+        text: Text to search for IOCs. If valid JSON, extracts text fields selectively.
 
     Returns:
         Dictionary mapping IOCType to set of matched values.
     """
+    def _extract_text_fields(obj: Any) -> str:
+        """Recursively extract text from dict/list, targeting common alert fields."""
+        if isinstance(obj, dict):
+            text_parts = []
+            for key in ('description', 'message', 'summary', 'details', 'text', 'content', 'body'):
+                if key in obj and isinstance(obj[key], str):
+                    text_parts.append(obj[key])
+            for value in obj.values():
+                text_parts.append(_extract_text_fields(value))
+            return ' '.join(text_parts)
+        elif isinstance(obj, list):
+            return ' '.join(_extract_text_fields(item) for item in obj)
+        elif isinstance(obj, str):
+            return obj
+        return ''
+
+    if text and text[0] in ('{', '['):
+        try:
+            data = json.loads(text)
+            text = _extract_text_fields(data)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
     matches_by_type: Dict[IOCType, set] = {ioc_type: set() for ioc_type in IOCType}
     for ioc_type, pattern in _IOC_PATTERNS:
         for match in pattern.finditer(text):
             matches_by_type[ioc_type].add(match.group(0))
     return matches_by_type
-
 
 def deduplicate_iocs(matches_by_type: Dict[IOCType, set]) -> List[Tuple[str, str, str, datetime]]:
     """
