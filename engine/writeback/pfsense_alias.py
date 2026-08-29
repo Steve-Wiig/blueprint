@@ -16,17 +16,17 @@ TABLE_ALIAS_PROPOSALS = 'alias_proposals'
 TABLE_AUDIT_LOG = 'audit_log'
 
 INSERT_PROPOSAL_SQL = (
-    "INSERT INTO alias_proposals (alias_name, ip_address, status, created_at) "
+    f"INSERT INTO {TABLE_ALIAS_PROPOSALS} (alias_name, ip_address, status, created_at) "
     "VALUES (?, ?, ?, ?)"
 )
 SELECT_PENDING_COUNT_SQL = (
-    "SELECT COUNT(*) FROM alias_proposals WHERE status = ?"
+    f"SELECT COUNT(*) FROM {TABLE_ALIAS_PROPOSALS} WHERE status = ?"
 )
 DELETE_PENDING_SQL = (
-    "DELETE FROM alias_proposals WHERE status = ?"
+    f"DELETE FROM {TABLE_ALIAS_PROPOSALS} WHERE status = ?"
 )
 ROLLBACK_REFERENCE_MSG = (
-    "ROLLBACK_REFERENCE: To revert, execute 'DELETE FROM alias_proposals "
+    f"ROLLBACK_REFERENCE: To revert, execute 'DELETE FROM {TABLE_ALIAS_PROPOSALS} "
     "WHERE status = \"PENDING\"' in sqlite3."
 )
 
