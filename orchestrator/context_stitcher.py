@@ -222,7 +222,7 @@ def stitch_memory_context(
                 conn.close()
             except Exception:
                 pass
-def _execute_similarity_query(cursor, embedding, cutoff, limit):
+def _execute_similarity_query(cursor: psycopg2.extensions.cursor, embedding: list[float], cutoff: datetime, limit: int) -> tuple[list[tuple], list[str]]:
     query = """
         SELECT case_id, summary, cosine_distance(embedding, %s::vector) as dist
         FROM case_embeddings
@@ -234,7 +234,6 @@ def _execute_similarity_query(cursor, embedding, cutoff, limit):
     results = cursor.fetchall()
     case_refs = [r[0] for r in results]
     return results, case_refs
-
 def _format_context_blocks(results):
     buffer = io.StringIO()
     buffer.write("<memory_context>\n")
