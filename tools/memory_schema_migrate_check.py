@@ -17,17 +17,29 @@ PROJECT_ROOT = _BASE_DIR.parent
 SCHEMA_PATH = PROJECT_ROOT / 'config' / 'memory_schema.json'
 LEDGER_PATH = PROJECT_ROOT / 'logs' / 'migration_ledger.log'
 
-def _load_config() -> None:
-    """Load configuration from environment variables, updating module globals."""
-    global PROJECT_ROOT, SCHEMA_PATH, LEDGER_PATH
-    
-    # Allow PROJECT_ROOT to be overridden via environment variable
+def _load_config():
+    """Load configuration from environment variables, returning a config object."""
+    from dataclasses import dataclass
+    from pathlib import Path
+    import os
+
+    @dataclass
+    class Config:
+        project_root: Path
+        schema_path: Path
+        ledger_path: Path
+
+    base_dir = Path(__file__).resolve().parent
+    project_root = base_dir.parent
+
     env_root = os.environ.get("PROJECT_ROOT")
     if env_root:
-        PROJECT_ROOT = Path(env_root).resolve()
-        SCHEMA_PATH = PROJECT_ROOT / 'config' / 'memory_schema.json'
-        LEDGER_PATH = PROJECT_ROOT / 'logs' / 'migration_ledger.log'
+        project_root = Path(env_root).resolve()
 
+    schema_path = project_root / 'config' / 'memory_schema.json'
+    ledger_path = project_root / 'logs' / 'migration_ledger.log'
+
+    return Config(project_root=project_root, schema_path=schema_path, ledger_path=ledger_path)
 def validate_schema(schema_data: dict) -> tuple[bool, str]:
     """Validates schema structure against blueprint v11.6.0 requirements.
 
