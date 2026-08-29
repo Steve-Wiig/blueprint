@@ -31,7 +31,6 @@ def configure_logging() -> None:
         ))
         logger.addHandler(file_handler)
         logger.setLevel(logging.INFO)
-
 def get_connection() -> Generator[sqlite3.Connection, None, None]:
     """Context manager for database connections with automatic cleanup."""
     conn = sqlite3.connect(DB_PATH)
