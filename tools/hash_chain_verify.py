@@ -72,6 +72,9 @@ def load_mock_chain() -> list[dict[str, Any]]:
 
 def main(chain_file: str) -> int:
     """Verify hash chain from file. Returns 0 on success, 1 on verification failure, 2 on config error, 3 on file not found."""
+    if not chain_file:
+        print("FAIL: Config error - chain file path is empty")
+        return 2
     if not os.path.exists(chain_file):
         print("FAIL: Chain file not found")
         return 3
@@ -106,7 +109,6 @@ def main(chain_file: str) -> int:
     except Exception as e:
         print(f"FAIL: Verification error: {e}")
         return 1
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Hash Chain Verifier")
     parser.add_argument("--dry-run", action="store_true", help="Run with mock chain data from mock_chain.json")
