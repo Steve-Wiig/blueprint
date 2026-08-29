@@ -218,11 +218,15 @@ def redact_regex_patterns(payload: str, metadata: Dict[str, Any]) -> str:
     Returns:
         The payload with regex patterns redacted.
     """
-    metadata["regex_redaction_count"] = len(_COMBINED_REGEX.findall(payload))
-    return _COMBINED_REGEX.sub(
-        lambda m: f"[REDACTED_{m.lastgroup.upper()}]" if m.lastgroup else m.group(0),
-        payload
-    )
+    count = 0
+    def replace_match(m: re.Match[str]) -> str:
+        nonlocal count
+        count += 1
+        return f"[REDACTED_{m.lastgroup.upper()}]" if m.lastgroup else m.group(0)
+    
+    result = _COMBINED_REGEX.sub(replace_match, payload)
+    metadata["regex_redaction_count"] = count
+    return result
 
 def apply_quarantine_policy(payload: str, field_path: Optional[str], metadata: Dict[str, Any]) -> str:
     """Applies quarantine policy for analytical fields with high-entropy content.
