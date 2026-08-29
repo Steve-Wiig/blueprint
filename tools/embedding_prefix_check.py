@@ -54,8 +54,6 @@ def fake_encode(text: str) -> list[float]:
     """
     calls.append(text)
     return [0.0] * REQUIRED_DIM
-
-
 class EmbeddingService:
     """
     Service for generating document and query embeddings with required prefixes.
@@ -195,8 +193,6 @@ class EmbeddingService:
         vector = self.encoder(f'{self.query_prefix}{text}')
         self._validate_dimension(vector, "query")
         return list(vector)
-
-
 def run_verification(
     dry_run: bool = False,
     doc_prefix: Optional[str] = None,
@@ -297,13 +293,28 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    return run_verification(
-        dry_run=args.dry_run,
-        doc_prefix=args.doc_prefix,
-        query_prefix=args.query_prefix,
-        dim=args.dim,
+    doc_prefix = (
+        args.doc_prefix
+        if args.doc_prefix is not None
+        else os.getenv("EMBEDDING_DOC_PREFIX", DEFAULT_DOC_PREFIX)
+    )
+    query_prefix = (
+        args.query_prefix
+        if args.query_prefix is not None
+        else os.getenv("EMBEDDING_QUERY_PREFIX", DEFAULT_QUERY_PREFIX)
+    )
+    dim = (
+        args.dim
+        if args.dim is not None
+        else int(os.getenv("EMBEDDING_DIM", str(DEFAULT_DIM)))
     )
 
+    return run_verification(
+        dry_run=args.dry_run,
+        doc_prefix=doc_prefix,
+        query_prefix=query_prefix,
+        dim=dim,
+    )
 
 if __name__ == "__main__":
     logging.basicConfig(

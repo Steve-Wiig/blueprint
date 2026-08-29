@@ -25,18 +25,28 @@ class ExitCode(IntEnum):
 
 def load_config(args: argparse.Namespace) -> dict:
     """Load configuration with precedence: CLI args > environment variables > defaults."""
-    return {
+    config = {
         "stale_threshold_seconds": args.stale_threshold,
         "required_recovery_log_pattern": args.recovery_pattern,
         "manifest_filename": args.manifest_file,
     }
 
+    if config["stale_threshold_seconds"] <= 0:
+        raise RuntimeError("stale_threshold_seconds must be a positive integer")
+
+    filename = config["manifest_filename"]
+    if not filename:
+        raise RuntimeError("manifest_filename must be a non-empty string")
+    if os.path.sep in filename or (os.path.altsep and os.path.altsep in filename):
+        raise RuntimeError("manifest_filename must not contain path separators")
+    config["manifest_filename"] = os.path.basename(filename)
+
+    return config
 
 def check_queue_recovery(dry_run: bool = False, config: dict | None = None) -> ExitCode:
     """
-    Verifies that the local message queue interface supports stale message recovery.
-    In a production environment, this would query the local message broker status.
-    [LAB-VERIFY]: Requires local access to the message broker socket.
+    Verifies that the recovery logic for stale messages is implemented by checking for a
+    specific pattern in a local recovery manifest log file.
     """
     if config is None:
         raise ValueError("config must be provided")

@@ -1,315 +1,5 @@
 [
   {
-    "file": "engine/enrichment_scheduler.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 50,
-      "line_end": 55,
-      "description": "Inconsistent types in `_DEFAULT_SENSITIVE_PATTERNS`: mixes plain strings with a compiled `re.Pattern` object (`_HIGH_ENTROPY_PATTERN`). Forces `_is_sensitive` to do `isinstance(pat, re.Pattern)` checks on every iteration.",
-      "suggestion": "Keep all patterns as strings at definition. Compile them once in `_load_sensitive_patterns_from_env` or at module initialization into a uniform list of compiled regexes.",
-      "impact": "low",
-      "effort": "trivial"
-    },
-    "attempts": 1
-  },
-  {
-    "file": "engine/hash_chain_sealer.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 129,
-      "line_end": 176,
-      "description": "seal_audit_chain_with_connection is 48 lines with multiple responsibilities (locking, cursor management, batch processing, commit, cleanup)",
-      "suggestion": "Extract batch processing loop into separate function; separate lock acquisition/release into context manager; use 'with' statements for cursors",
-      "impact": "medium",
-      "effort": "medium"
-    },
-    "attempts": 1
-  },
-  {
-    "file": "engine/hash_chain_sealer.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 1,
-      "line_end": 18,
-      "description": "Imports not grouped per PEP 8 (stdlib, third-party, local); missing blank lines between groups",
-      "suggestion": "Reorder imports: stdlib (sys, os, hashlib, logging, json, datetime, typing), then third-party (psycopg2), with blank line between groups",
-      "impact": "low",
-      "effort": "trivial"
-    },
-    "attempts": 1
-  },
-  {
-    "file": "engine/hash_chain_sealer.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 38,
-      "line_end": 176,
-      "description": "Most public functions lack docstrings describing purpose, parameters, return values, and side effects",
-      "suggestion": "Add Google-style or NumPy-style docstrings to all public functions: get_last_chain_state, create_pending_cursor, fetch_pending_batches, compute_chain_hashes, insert_chain_links, seal_audit_chain_with_connection, seal_audit_chain, load_config",
-      "impact": "low",
-      "effort": "small"
-    },
-    "attempts": 1
-  },
-  {
-    "file": "engine/hash_chain_sealer.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "medium",
-      "line_start": 190,
-      "line_end": 214,
-      "description": "load_config reads environment variables at module import time if called at module level; currently only called in main() but could be imported",
-      "suggestion": "Ensure load_config is only called at runtime (inside main), not at module level; current usage is compliant but fragile",
-      "impact": "medium",
-      "effort": "trivial"
-    },
-    "attempts": 1
-  },
-  {
-    "file": "engine/hash_chain_sealer.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "low",
-      "line_start": 216,
-      "line_end": 221,
-      "description": "configure_logging adds handler to root logger every call; if called multiple times, duplicates log output",
-      "suggestion": "Check if handler already exists before adding, or use logging.basicConfig with force=True (Python 3.8+)",
-      "impact": "low",
-      "effort": "trivial"
-    },
-    "attempts": 1
-  },
-  {
-    "file": "engine/intake_eve.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "medium",
-      "line_start": 109,
-      "line_end": 133,
-      "description": "sanitize_event allows 'metadata' field which may contain high-entropy tokens/secrets per Section 34. No entropy-based filtering implemented",
-      "suggestion": "Implement entropy detection for string values > 20 chars with high Shannon entropy. Redact or hash such values. Apply to all string fields recursively",
-      "impact": "medium",
-      "effort": "medium"
-    }
-  },
-  {
-    "file": "engine/intake_eve.py",
-    "issue": {
-      "category": "performance",
-      "severity": "medium",
-      "line_start": 195,
-      "line_end": 210,
-      "description": "get_pending_events lacks ORDER BY clause, returning non-deterministic results. Should order by created_at for FIFO processing",
-      "suggestion": "Add ORDER BY created_at ASC to the SELECT query",
-      "impact": "medium",
-      "effort": "trivial"
-    }
-  },
-  {
-    "file": "engine/intake_eve.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 10,
-      "line_end": 10,
-      "description": "LOG_PATH is defined but never used in the module",
-      "suggestion": "Remove unused LOG_PATH constant or implement file logging configuration",
-      "impact": "low",
-      "effort": "trivial"
-    }
-  },
-  {
-    "file": "engine/intake_wazuh.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 54,
-      "line_end": 70,
-      "description": "sanitize_payload has multiple responsibilities: validation, ID generation, timestamp, severity calculation, payload filtering",
-      "suggestion": "Split into validate_payload(), calculate_severity(), build_alert_record() functions",
-      "impact": "medium",
-      "effort": "small"
-    }
-  },
-  {
-    "file": "engine/intake_wazuh.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 72,
-      "line_end": 109,
-      "description": "intake_adapter handles parsing, sanitization, DB insertion, audit logging - violates single responsibility",
-      "suggestion": "Separate into parse_and_validate(), persist_alert(), audit_alert() functions",
-      "impact": "medium",
-      "effort": "small"
-    }
-  },
-  {
-    "file": "engine/intake_wazuh.py",
-    "issue": {
-      "category": "performance",
-      "severity": "low",
-      "line_start": 42,
-      "line_end": 45,
-      "description": "Multiple CREATE INDEX statements execute on every _init_triage_table call (though IF NOT EXISTS adds overhead)",
-      "suggestion": "Move index creation to separate migration script or check if indexes exist before creating",
-      "impact": "low",
-      "effort": "trivial"
-    }
-  },
-  {
-    "file": "engine/intake_wazuh.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 9,
-      "line_end": 10,
-      "description": "Hardcoded default paths assume specific Linux filesystem; difficult to test without volume mounts",
-      "suggestion": "Use platformdirs library or allow relative paths for development; document required env vars",
-      "impact": "low",
-      "effort": "small"
-    }
-  },
-  {
-    "file": "engine/intake_wazuh.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "medium",
-      "line_start": 48,
-      "line_end": 52,
-      "description": "_audit_log uses append-only pattern correctly but doesn't include correlation_id for traceability across services",
-      "suggestion": "Add correlation_id parameter to _audit_log and intake_adapter for distributed tracing",
-      "impact": "medium",
-      "effort": "small"
-    }
-  },
-  {
-    "file": "engine/intake_wazuh.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 83,
-      "line_end": 109,
-      "description": "Magic numbers for exit codes (1, 2) in __main__ block without constants or documentation",
-      "suggestion": "Define EXIT_PARSE_ERROR = 2, EXIT_GENERAL_ERROR = 1 as module constants",
-      "impact": "low",
-      "effort": "trivial"
-    }
-  },
-  {
-    "file": "engine/ioc_extractor.py",
-    "issue": {
-      "category": "performance",
-      "severity": "medium",
-      "line_start": 28,
-      "line_end": 35,
-      "description": "Regex pattern susceptible to ReDoS due to nested quantifiers in domain and URL patterns, risking CPU exhaustion on malicious input.",
-      "suggestion": "Simplify regex patterns or split into separate regexes per IOC type to avoid catastrophic backtracking.",
-      "impact": "medium",
-      "effort": "medium"
-    }
-  },
-  {
-    "file": "engine/queue_manager.py",
-    "issue": {
-      "description": "Redundant imports and constant definitions are repeated four times at the beginning of the file.",
-      "category": "maintainability",
-      "severity": "medium",
-      "suggestion": "Remove the duplicate blocks of code (lines 1-60) and keep only one set of imports and constants."
-    }
-  },
-  {
-    "file": "engine/queue_manager.py",
-    "issue": {
-      "description": "The severity levels in the SQL CHECK constraint are hardcoded, creating a maintenance burden if the Python constants change.",
-      "category": "maintainability",
-      "severity": "low",
-      "suggestion": "Dynamically generate the SQL CHECK constraint string using the defined severity constants."
-    }
-  },
-  {
-    "file": "engine/writeback/pfsense_alias.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 109,
-      "line_end": 109,
-      "description": "Missing return type annotation for the function.",
-      "suggestion": "Add return type annotation: def rollback_plan() -> None:",
-      "impact": "low",
-      "effort": "trivial"
-    }
-  },
-  {
-    "file": "engine/writeback/thehive.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 42,
-      "line_end": 47,
-      "description": "Global _SESSION and _LOGGER_CACHE prevent proper unit testing isolation. Tests cannot reset state between runs, leading to flaky tests and shared connection pools",
-      "suggestion": "Refactor to a class-based adapter (TheHiveWritebackAdapter) with session and logger as instance attributes. Provide factory function for backward compatibility",
-      "impact": "medium",
-      "effort": "medium"
-    }
-  },
-  {
-    "file": "engine/writeback/thehive.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 200,
-      "line_end": 220,
-      "description": "run_sanitization_tests() embedded in production code. Test functions belong in test files, not the main module. Increases attack surface and module size",
-      "suggestion": "Move tests to tests/test_thehive_writeback.py. Keep only the --test-sanitization CLI entry point that imports and runs external test suite",
-      "impact": "low",
-      "effort": "small"
-    }
-  },
-  {
-    "file": "engine/writeback/thehive.py",
-    "issue": {
-      "category": "performance",
-      "severity": "low",
-      "line_start": 100,
-      "line_end": 108,
-      "description": "verify_sanitization() calls json.dumps(payload) for every pattern check (8 patterns), creating 8 string copies of the payload. For large payloads this allocates unnecessary memory",
-      "suggestion": "Serialize once before the loop: payload_str = json.dumps(payload, ensure_ascii=False). Then iterate patterns against the single string",
-      "impact": "low",
-      "effort": "trivial"
-    }
-  },
-  {
-    "file": "engine/writeback/thehive.py",
-    "issue": {
-      "category": "blueprint_compliance",
-      "severity": "low",
-      "line_start": 227,
-      "line_end": 230,
-      "description": "__main__ block calls sys.exit() directly. While in __main__ this is acceptable, the blueprint prefers raise RuntimeError for library code. The main() function correctly returns exit codes",
-      "suggestion": "Keep as-is since this is the CLI entry point. No change needed - this is compliant for executable scripts",
-      "impact": "low",
-      "effort": "trivial"
-    }
-  },
-  {
-    "file": "engine/writeback/thehive.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 170,
-      "line_end": 171,
-      "description": "main() return type Union[str, int] is ambiguous. Callers must check isinstance(result, str) vs int. Better to raise exceptions for errors and return case_id on success",
-      "suggestion": "Change main() to raise specific exceptions (ValidationError, TheHiveAPIError, NetworkError) and return str case_id. Let CLI wrapper handle exit codes. Or use a Result type",
-      "impact": "low",
-      "effort": "medium"
-    }
-  },
-  {
     "file": "engine/writeback/wazuh_proposals.py",
     "issue": {
       "category": "maintainability",
@@ -320,7 +10,8 @@
       "suggestion": "Remove cache or add cache_clear() method for test isolation; prefer explicit caching with TTL",
       "impact": "medium",
       "effort": "small"
-    }
+    },
+    "attempts": 1
   },
   {
     "file": "engine/writeback/wazuh_proposals.py",
@@ -333,20 +24,8 @@
       "suggestion": "Implement exponential backoff or dead-letter queue for repeatedly failing entries",
       "impact": "low",
       "effort": "medium"
-    }
-  },
-  {
-    "file": "engine/writeback/wazuh_proposals.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "low",
-      "line_start": 1,
-      "line_end": 1,
-      "description": "Unused import: 'functools' is imported but only used for lru_cache which should be removed",
-      "suggestion": "Remove functools import if lru_cache is removed from validate_approval_token",
-      "impact": "low",
-      "effort": "trivial"
-    }
+    },
+    "attempts": 1
   },
   {
     "file": "engine/writeback/wazuh_proposals.py",
@@ -359,20 +38,8 @@
       "suggestion": "Verify NEW.changed_by is available in AFTER INSERT trigger; SQLite provides NEW.* for all columns",
       "impact": "low",
       "effort": "trivial"
-    }
-  },
-  {
-    "file": "memory/embeddings.py",
-    "issue": {
-      "category": "performance",
-      "severity": "medium",
-      "line_start": 70,
-      "line_end": 73,
-      "description": "Casting entire embedding array to float32 after encoding creates unnecessary memory copy; SentenceTransformer.encode() supports output_value='float32' parameter to avoid this",
-      "suggestion": "Pass convert_to_numpy=True, output_value='float32' to model.encode() and remove the astype call",
-      "impact": "medium",
-      "effort": "trivial"
-    }
+    },
+    "attempts": 1
   },
   {
     "file": "memory/embeddings.py",
@@ -385,7 +52,8 @@
       "suggestion": "Remove _encode and _encode_batch methods; call _encode_internal directly from embed_document, embed_query, embed_documents, embed_queries",
       "impact": "medium",
       "effort": "small"
-    }
+    },
+    "attempts": 1
   },
   {
     "file": "memory/retention.py",
@@ -398,7 +66,8 @@
       "suggestion": "Extract dry-run logging to a helper function _log_dry_run(partition_name, archive_base). Call from single location in run_retention before dispatching.",
       "impact": "medium",
       "effort": "small"
-    }
+    },
+    "attempts": 1
   },
   {
     "file": "memory/retention.py",
@@ -411,7 +80,8 @@
       "suggestion": "Move all filtering to SQL: SELECT relname FROM pg_class WHERE relname ~ '^iocs_\\d{4}_\\d{2}_\\d{2}$' AND to_date(substring(relname from 6), 'YYYY_MM_DD') < %s. Remove Python-side loop.",
       "impact": "medium",
       "effort": "trivial"
-    }
+    },
+    "attempts": 1
   },
   {
     "file": "memory/retention.py",
@@ -424,7 +94,8 @@
       "suggestion": "Use psycopg2.pool.ThreadedConnectionPool or pass a connection factory. Reuse connections within worker threads. Limit pool size to max_workers.",
       "impact": "medium",
       "effort": "medium"
-    }
+    },
+    "attempts": 1
   },
   {
     "file": "memory/retention.py",
@@ -437,7 +108,8 @@
       "suggestion": "Return config dict from _load_config() instead of mutating globals. Pass config to functions that need it. Keep module-level constants as true constants (fallback defaults only).",
       "impact": "medium",
       "effort": "small"
-    }
+    },
+    "attempts": 1
   },
   {
     "file": "memory/retention.py",
@@ -450,7 +122,8 @@
       "suggestion": "Move to module-level constant: COPY_QUERY_TEMPLATE = 'COPY (SELECT * FROM {table}) TO STDOUT WITH (FORMAT JSON);'",
       "impact": "low",
       "effort": "trivial"
-    }
+    },
+    "attempts": 1
   },
   {
     "file": "memory/retention.py",
@@ -463,33 +136,8 @@
       "suggestion": "Split into: get_partitions_to_archive(), execute_archive_plan(), run_retention() as orchestrator. Improves testability and readability.",
       "impact": "low",
       "effort": "medium"
-    }
-  },
-  {
-    "file": "orchestrator/context_stitcher.py",
-    "issue": {
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 38,
-      "line_end": 45,
-      "description": "Module-level global state (_DEFAULT_POOL, _DEFAULT_POOL_FACTORY) creates hidden dependencies and makes unit testing difficult",
-      "suggestion": "Encapsulate in a class with dependency injection, or provide a context manager for pool lifecycle. At minimum, add 'reset_default_pool()' call in test fixtures",
-      "impact": "medium",
-      "effort": "medium"
-    }
-  },
-  {
-    "file": "orchestrator/context_stitcher.py",
-    "issue": {
-      "category": "performance",
-      "severity": "low",
-      "line_start": 91,
-      "line_end": 97,
-      "description": "_compute_query_hash formats each float to 8 decimal places with f-string, creating unnecessary string allocations for large embeddings",
-      "suggestion": "Use struct.pack for binary representation: 'import struct; embedding_bytes = struct.pack(f\"{len(query_embedding)}d\", *query_embedding)' then hash bytes directly",
-      "impact": "low",
-      "effort": "small"
-    }
+    },
+    "attempts": 1
   },
   {
     "file": "orchestrator/context_stitcher.py",

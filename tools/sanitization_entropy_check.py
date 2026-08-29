@@ -283,41 +283,24 @@ def main(input_data: str) -> int:
             0: PASS - Sanitization consistent, no high-entropy secrets detected.
             1: FAIL - Inconsistency between passes (potential missed secret).
             2: CONFIG ERROR - Unexpected exception during processing.
-
-    Edge Cases:
-        - Empty input: returns 0 (PASS)
-        - Input with only allowlisted tokens: returns 0 (PASS)
-        - Input causing exception: returns 2 (CONFIG ERROR)
-        - Unicode input: handled correctly
-
-    Example:
-        >>> main("normal text")
-        0
-        >>> main("sk_live_abcdefghijklmnopqrstuvwxyz123456")
-        0  # redacted consistently
     """
     try:
         if not input_data:
             return 0
 
         # Pass 1: Initial scan and redaction
-        pass1 = sanitize_pass(input_data)
+        pass1: str = sanitize_pass(input_data)
 
         # Pass 2: Verification of remaining high-entropy tokens
-        pass2 = sanitize_pass(pass1)
+        pass2: str = sanitize_pass(pass1)
 
         if pass1 != pass2:
-            print("FAIL: Sanitization inconsistency detected between passes.")
             return 1
 
-        print("PASS: Sanitization entropy threshold verified.")
         return 0
 
-    except Exception as e:
-        print(f"CONFIG ERROR: {str(e)}")
+    except Exception:
         return 2
-
-
 def main_stream(input_stream: TextIO) -> int:
     """Execute two-pass sanitization verification on a stream.
 

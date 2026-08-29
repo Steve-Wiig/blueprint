@@ -92,8 +92,7 @@ class PartitionConfig(TypedDict):
 def reset_defaults_cache() -> None:
     """Reset the defaults cache for testing purposes."""
     global _DEFAULTS_CACHE
-    _DEFAULTS_CACHE = None
-
+    _DEFAULTS_CACHE = {}
 
 def _load_defaults_config() -> Dict[str, Any]:
     """
@@ -301,14 +300,21 @@ def _check_file_exists(config_path: Path) -> None:
         raise RuntimeError(EXIT_CONFIG_ERROR)
 
 
-def _check_json_parsing(config_path: Path) -> PartitionConfig:
+def _check_json_parsing(config_path: Path, data: Optional[Dict[str, Any]] = None) -> PartitionConfig:
+    if data is not None:
+        return data
+    if not hasattr(_check_json_parsing, "_cache"):
+        _check_json_parsing._cache = {}
+    cache = _check_json_parsing._cache
+    if config_path in cache:
+        return cache[config_path]
     try:
         with config_path.open("r") as f:
-            return json.load(f)
+            parsed = json.load(f)
+        cache[config_path] = parsed
+        return parsed
     except json.JSONDecodeError:
         raise RuntimeError(EXIT_VALIDATION_ERROR)
-
-
 def _check_required_partitions(
     config_path: Path,
     required_partitions: List[str],
@@ -389,7 +395,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         return EXIT_CONFIG_ERROR
 
     return EXIT_SUCCESS
-
 
 if __name__ == "__main__":
     sys.exit(main())

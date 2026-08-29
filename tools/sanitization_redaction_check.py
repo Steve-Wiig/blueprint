@@ -73,6 +73,11 @@ TEST_PAYLOADS: Dict[str, str] = {
 }
 
 
+import re
+import sys
+from typing import TypedDict, Dict, Pattern, Optional
+from enum import IntEnum
+
 class Sanitizer:
     """Encapsulates secret detection patterns and redaction logic for isolated testing.
 
@@ -81,15 +86,17 @@ class Sanitizer:
     with different configurations and facilitate unit testing.
     """
 
-    def __init__(self, patterns: Optional[Dict[str, PatternConfig]] = None):
+    def __init__(self, patterns: Optional[Dict[str, PatternConfig]] = None, redaction_token: str = '[REDACTED]'):
         """Initialize sanitizer with custom or default patterns.
 
         Args:
             patterns: Optional dict of pattern configurations. If None, uses global PATTERNS.
                       A copy is made to avoid external mutations affecting compiled patterns.
+            redaction_token: Token used to replace sensitive data.
         """
         self._patterns = dict(patterns) if patterns is not None else dict(PATTERNS)
         self._compiled_patterns: Dict[str, Pattern[str]] = {}
+        self._redaction_token = redaction_token
         self.recompile()
 
     def recompile(self) -> None:
@@ -110,7 +117,7 @@ class Sanitizer:
             text: Input text containing potential sensitive data.
 
         Returns:
-            Text with sensitive portions replaced by "[REDACTED]". For "group" redaction
+            Text with sensitive portions replaced by the configured redaction token. For "group" redaction
             types (auth_header, api_key_query, password_query), the prefix (e.g.,
             "Authorization: Bearer ", "api_key=", "password=") is preserved.
 
@@ -122,8 +129,8 @@ class Sanitizer:
             raise KeyError(pattern_key)
         redaction_type = self._patterns[pattern_key]["redaction_type"]
         if redaction_type == "group":
-            return pattern.sub(r"\1[REDACTED]", text)
-        return pattern.sub("[REDACTED]", text)
+            return pattern.sub(r"\1" + self._redaction_token, text)
+        return pattern.sub(self._redaction_token, text)
 
     def run_sanitization_check(self, test_payloads: Optional[Dict[str, str]] = None) -> CheckResult:
         """Run sanitization verification against known test payloads.
@@ -131,7 +138,7 @@ class Sanitizer:
         Validates that all defined patterns:
         1. Have corresponding test payloads.
         2. Match their respective test payloads.
-        3. Successfully redact the matched portion (producing "[REDACTED]").
+        3. Successfully redact the matched portion (producing the configured redaction token).
 
         Args:
             test_payloads: Optional dict of test payloads. If None, uses global TEST_PAYLOADS.
@@ -152,7 +159,7 @@ class Sanitizer:
                     return CheckResult.PATTERN_MISSING
 
                 redacted = self.redact(key, payload)
-                if "[REDACTED]" not in redacted:
+                if self._redaction_token not in redacted:
                     return CheckResult.PATTERN_MISSING
 
             return CheckResult.PASS
@@ -160,7 +167,22 @@ class Sanitizer:
             return CheckResult.INTERNAL_ERROR
         except Exception:
             return CheckResult.PAYLOAD_MISSING
+def redact(pattern_key: str, text: str) -> str:
+    """Redact sensitive pattern in text using default patterns.
 
+    Args:
+        pattern_key: Key identifying the pattern to redact (must exist in PATTERNS).
+        text: Input text containing potential sensitive data.
+
+    Returns:
+        Text with sensitive portions replaced by "[REDACTED]". For "group" redaction
+        types (auth_header, api_key_query, password_query), the prefix (e.g.,
+        "Authorization: Bearer ", "api_key=", "password=") is preserved.
+
+    Raises:
+        KeyError: If pattern_key is not found in PATTERNS.
+    """
+    return _get_default_sanitizer().redact(pattern_key, text)
 _default_sanitizer: Optional[Sanitizer] = None
 
 

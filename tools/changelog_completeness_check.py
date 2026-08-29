@@ -168,68 +168,73 @@ def main() -> int:
     """
     Verify CHANGELOG.md completeness against git commit history.
 
-    Parses command-line arguments, retrieves commits since the latest tag,
-    scans CHANGELOG.md for commit hashes, and reports any missing entries.
-
-    Command-line arguments:
-        --dry-run (bool): If set, returns 0 even when commits are missing.
-                          Useful for testing CI logic without blocking pipelines.
-        --changelog-path (str): Path to changelog file (default: CHANGELOG.md)
-
-    Returns:
-        int: Exit code indicating verification result:
-            0 = PASS (all commits have changelog entries, or --dry-run)
-            1 = FAIL (one or more commits missing from CHANGELOG.md)
-            2 = CONFIG ERROR (no Git tags found to establish baseline)
-            3 = ENV NOT AVAILABLE (not a Git repository; .git directory missing)
-
-    Side effects:
-        - Executes `git describe` and `git log` subprocesses
-        - Reads CHANGELOG.md from current working directory
-        - Prints human-readable status messages to stdout
-        - Does not modify any files
+    Orchestrates argument parsing, repository inspection, changelog parsing,
+    and result reporting while delegating specific responsibilities to
+    helper classes.
     """
     parser = argparse.ArgumentParser(description="Verify CHANGELOG completeness")
     parser.add_argument("--dry-run", action="store_true", help="Validate logic without failing")
-    parser.add_argument("--changelog-path", default="CHANGELOG.md", help="Path to changelog file (default: CHANGELOG.md)")
+    parser.add_argument(
+        "--changelog-path",
+        default="CHANGELOG.md",
+        help="Path to changelog file (default: CHANGELOG.md)",
+    )
     args: argparse.Namespace = parser.parse_args()
 
-    # Ensure we are in a git repository
-    if not os.path.exists(".git"):
+    class _GitRepo:
+        """Encapsulate git‑related operations."""
+
+        @staticmethod
+        def is_git_repo() -> bool:
+            return os.path.exists(".git")
+
+        @staticmethod
+        def get_latest_tag() -> Optional[str]:
+            return get_latest_tag()
+
+        @staticmethod
+        def get_commits_since_tag(tag: str) -> List[str]:
+            return get_commits_since_tag(tag)
+
+    class _ChangelogParser:
+        """Encapsulate changelog parsing."""
+
+        @staticmethod
+        def parse_hashes(path: str) -> Set[str]:
+            return parse_changelog_hashes(path)
+
+    # Verify repository presence
+    if not _GitRepo.is_git_repo():
         print("ENV_NOT_AVAILABLE: Not a git repository")
         return EXIT_ENV_ERROR
 
-    # Get the latest tag
+    # Retrieve latest tag
     try:
-        latest_tag = get_latest_tag()
-    except FileNotFoundError:
-        print("ENV_NOT_AVAILABLE: git command not found")
+        latest_tag = _GitRepo.get_latest_tag()
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        print("ENV_NOT_AVAILABLE: git command not found or repository invalid")
         return EXIT_ENV_ERROR
 
     if latest_tag is None:
         print("CONFIG ERROR: No tags found to compare against")
         return EXIT_CONFIG_ERROR
 
-    # Get list of commits since latest tag
-    commits = get_commits_since_tag(latest_tag)
-    if not commits and latest_tag:
-        # No commits since tag is valid - all accounted for
-        pass
+    # Gather commits since the latest tag
+    commits = _GitRepo.get_commits_since_tag(latest_tag)
 
+    # Ensure changelog file exists
     changelog_path: str = args.changelog_path
     if not os.path.exists(changelog_path):
         print(f"FAIL: {changelog_path} missing")
         return EXIT_FAIL
 
     # Parse changelog for commit hashes
-    changelog_hashes = parse_changelog_hashes(changelog_path)
+    changelog_hashes = _ChangelogParser.parse_hashes(changelog_path)
 
-    # Find missing entries
+    # Determine missing entries
     missing_entries = find_missing_entries(commits, changelog_hashes)
 
-    # Print results and return exit code
+    # Report results
     return print_results(missing_entries, changelog_path, args.dry_run)
-
-
 if __name__ == "__main__":
     sys.exit(main())

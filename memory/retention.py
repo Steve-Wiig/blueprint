@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, List
 import argparse
 import subprocess
 import sys
@@ -34,12 +34,13 @@ CMR_MOUNT = '/mnt/cmr'
 ZSTD_COMMAND = 'zstd'
 
 
-def _load_config() -> None:
-    """Read environment variables and update module-level config globals."""
-    global ARCHIVE_BASE, CMR_MOUNT, ZSTD_COMMAND
-    ARCHIVE_BASE = os.environ.get('ARCHIVE_BASE', '/archive/iocs')
-    CMR_MOUNT = os.environ.get('CMR_MOUNT', '/mnt/cmr')
-    ZSTD_COMMAND = os.environ.get('ZSTD_COMMAND', 'zstd')
+def _load_config() -> dict:
+    """Read environment variables and return config dict."""
+    return {
+        'ARCHIVE_BASE': os.environ.get('ARCHIVE_BASE', '/archive/iocs'),
+        'CMR_MOUNT': os.environ.get('CMR_MOUNT', '/mnt/cmr'),
+        'ZSTD_COMMAND': os.environ.get('ZSTD_COMMAND', 'zstd'),
+    }
 
 
 def validate_commands() -> None:
@@ -170,27 +171,26 @@ def archive_partition_with_connection(db_url: str, partition_name: str, dry_run:
         conn.close()
 
 
-def run_retention(db_url: str, retention_days: int = None, max_workers: int = 4, dry_run: bool = False) -> None:
+def get_partitions_to_archive(db_url: str, retention_days: int) -> List[str]:
     """
-    Execute the retention policy: archive and drop partitions older than the configured retention period.
+    Get list of partitions older than retention_days.
     
-    Uses parallel processing with a connection pool for improved performance.
+    Performs validation, mount check, and database query.
     
     Args:
         db_url: PostgreSQL connection string.
-        retention_days: Number of days to retain partitions. Defaults to RETENTION_DAYS env var or 90.
-        max_workers: Maximum number of parallel workers for archiving (default: 4).
-        dry_run: If True, log actions without executing archive or DROP TABLE
+        retention_days: Retention period in days.
+        
+    Returns:
+        List of partition names to archive.
         
     Raises:
-        RuntimeError: If retention logic encounters an error.
+        RuntimeError: If validation or mount check fails.
     """
     validate_commands()
     check_cmr_mount()
+    conn = psycopg2.connect(db_url)
     try:
-        conn = psycopg2.connect(db_url)
-        if retention_days is None:
-            retention_days = int(os.environ.get('RETENTION_DAYS', '90'))
         cutoff = datetime.datetime.now(timezone.utc) - datetime.timedelta(days=retention_days)
         
         with conn.cursor() as cur:
@@ -206,39 +206,75 @@ def run_retention(db_url: str, retention_days: int = None, max_workers: int = 4,
                 row[0] for row in cur.fetchall()
                 if isinstance(row[0], str) and row[0].startswith('iocs_')
             ]
-        
+        return partitions_to_archive
+    finally:
         conn.close()
-        
-        if not partitions_to_archive:
-            if dry_run:
-                sys.stdout.write("[DRY-RUN] No partitions to archive.\n")
-            return
-        
+
+
+def execute_archive_plan(db_url: str, partitions: List[str], max_workers: int, dry_run: bool) -> None:
+    """
+    Execute archiving plan for given partitions.
+    
+    Handles dry-run logging and parallel/single execution.
+    
+    Args:
+        db_url: PostgreSQL connection string.
+        partitions: List of partition names to archive.
+        max_workers: Maximum number of parallel workers.
+        dry_run: If True, log actions without executing.
+    """
+    if not partitions:
         if dry_run:
-            sys.stdout.write(f"[DRY-RUN] Would archive {len(partitions_to_archive)} partition(s): {', '.join(partitions_to_archive)}\n")
-            for part in partitions_to_archive:
-                date_part = part.replace('iocs_', '')
-                archive_dir = Path(ARCHIVE_BASE) / date_part[:7]
-                output_file = archive_dir / f"{part}.jsonl.zst"
-                sys.stdout.write(f"[DRY-RUN] Would archive {part} to {output_file}\n")
-                sys.stdout.write(f"[DRY-RUN] Would execute: DROP TABLE {part};\n")
-            return
+            sys.stdout.write("[DRY-RUN] No partitions to archive.\n")
+        return
+
+    if dry_run:
+        sys.stdout.write(f"[DRY-RUN] Would archive {len(partitions)} partition(s): {', '.join(partitions)}\n")
+        for part in partitions:
+            date_part = part.replace('iocs_', '')
+            archive_dir = Path(ARCHIVE_BASE) / date_part[:7]
+            output_file = archive_dir / f"{part}.jsonl.zst"
+            sys.stdout.write(f"[DRY-RUN] Would archive {part} to {output_file}\n")
+            sys.stdout.write(f"[DRY-RUN] Would execute: DROP TABLE {part};\n")
+        return
+
+    if len(partitions) == 1:
+        archive_partition_with_connection(db_url, partitions[0])
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(archive_partition_with_connection, db_url, part): part
+                for part in partitions
+            }
+            for future in as_completed(futures):
+                part = futures[future]
+                try:
+                    future.result()
+                except Exception as e:
+                    sys.stderr.write(f"Failed to archive {part}: {e}\n")
+                    raise
+
+
+def run_retention(db_url: str, retention_days: int = None, max_workers: int = 4, dry_run: bool = False) -> None:
+    """
+    Execute the retention policy: archive and drop partitions older than the configured retention period.
+    
+    Uses parallel processing with a connection pool for improved performance.
+    
+    Args:
+        db_url: PostgreSQL connection string.
+        retention_days: Number of days to retain partitions. Defaults to RETENTION_DAYS env var or 90.
+        max_workers: Maximum number of parallel workers for archiving (default: 4).
+        dry_run: If True, log actions without executing archive or DROP TABLE
         
-        if len(partitions_to_archive) == 1:
-            archive_partition_with_connection(db_url, partitions_to_archive[0])
-        else:
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {
-                    executor.submit(archive_partition_with_connection, db_url, part): part
-                    for part in partitions_to_archive
-                }
-                for future in as_completed(futures):
-                    part = futures[future]
-                    try:
-                        future.result()
-                    except Exception as e:
-                        sys.stderr.write(f"Failed to archive {part}: {e}\n")
-                        raise
+    Raises:
+        RuntimeError: If retention logic encounters an error.
+    """
+    try:
+        if retention_days is None:
+            retention_days = int(os.environ.get('RETENTION_DAYS', '90'))
+        partitions = get_partitions_to_archive(db_url, retention_days)
+        execute_archive_plan(db_url, partitions, max_workers, dry_run)
     except Exception as e:
         sys.stderr.write(f"Retention logic error: {e}\n")
         raise RuntimeError(f"Retention logic error: {e}") from e

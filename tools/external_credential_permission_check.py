@@ -3,6 +3,8 @@ import sys
 import argparse
 import json
 import logging
+import requests
+from requests.adapters import HTTPAdapter
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -19,14 +21,6 @@ MOCK_TOKEN = "mock_token"
 
 
 def sanitize_token(token: str | None) -> str:
-    """Mask a token for safe logging.
-
-    Args:
-        token: The token string to sanitize.
-
-    Returns:
-        Masked token showing only first 4 characters, or '****' if too short/None.
-    """
     if not token:
         return "****"
     if len(token) <= 4:
@@ -35,14 +29,6 @@ def sanitize_token(token: str | None) -> str:
 
 
 def sanitize_auth(auth: tuple[str, str] | None) -> tuple[str, str]:
-    """Sanitize auth tuple for logging.
-
-    Args:
-        auth: Tuple of (username, token).
-
-    Returns:
-        Tuple with sanitized token.
-    """
     if not auth:
         return ("****", "****")
     user, token = auth
@@ -50,15 +36,6 @@ def sanitize_auth(auth: tuple[str, str] | None) -> tuple[str, str]:
 
 
 def validate_config(config: dict) -> None:
-    """
-    Validate the configuration schema.
-
-    Args:
-        config: Configuration dictionary to validate.
-
-    Raises:
-        ValueError: If configuration is invalid.
-    """
     if not isinstance(config, dict):
         raise ValueError("Config must be a dictionary mapping service names to config objects")
 
@@ -70,11 +47,13 @@ def validate_config(config: dict) -> None:
         if missing:
             raise ValueError(f"Service '{service}' missing required keys: {missing}")
 
-        if cfg["forbidden_method"].upper() not in VALID_METHODS:
+        method = cfg["forbidden_method"].upper()
+        if method not in VALID_METHODS:
             raise ValueError(
                 f"Service '{service}' has invalid forbidden_method: {cfg['forbidden_method']}. "
                 f"Must be one of {VALID_METHODS}"
             )
+        cfg["forbidden_method"] = method
 
         for key in ("read", "forbidden"):
             if not isinstance(cfg[key], str) or not cfg[key].startswith("/"):
@@ -82,19 +61,6 @@ def validate_config(config: dict) -> None:
 
 
 def load_config(config_path: str | None = None) -> dict:
-    """
-    Load service configuration from a JSON file.
-
-    Args:
-        config_path: Optional path to config file. Defaults to CONFIG_FILE
-            environment variable or DEFAULT_CONFIG_PATH.
-
-    Returns:
-        Dictionary mapping service names to their configuration objects.
-
-    Raises:
-        RuntimeError: If config file is not found, contains invalid JSON, or fails validation.
-    """
     path = config_path or os.getenv("CONFIG_FILE", DEFAULT_CONFIG_PATH)
     try:
         with open(path, "r") as f:
@@ -114,44 +80,14 @@ def load_config(config_path: str | None = None) -> dict:
 
 @dataclass
 class MockResponse:
-    """Mock HTTP response for dry-run testing."""
     status_code: int
 
 
 def get_mock_response(status_code: int) -> MockResponse:
-    """Return a mock HTTP response with the given status code.
-
-    Args:
-        status_code: HTTP status code for the mock response.
-
-    Returns:
-        A MockResponse instance with the specified status code.
-    """
     return MockResponse(status_code)
 
 
 def check_service(service: str, cfg: dict, lab_url: str, session: "requests.Session" | None, dry_run: bool = False) -> bool:
-    """
-    Verify credential permissions for a single service.
-
-    Tests that credentials allow read access but deny forbidden actions.
-
-    Args:
-        service: Service name (for logging).
-        cfg: Service configuration dict with keys:
-            - user_env: Environment variable name for username
-            - token_env: Environment variable name for token
-            - read: Read endpoint path
-            - forbidden: Forbidden action endpoint path
-            - forbidden_method: HTTP method for forbidden action
-        lab_url: Base URL of the lab environment.
-        session: requests.Session for connection reuse, or None for dry-run.
-        dry_run: If True, use mock responses instead of real requests.
-
-    Returns:
-        True if read access succeeds (200/201) and forbidden action is denied (401/403),
-        False otherwise.
-    """
     user = os.getenv(cfg["user_env"], MOCK_USER) if dry_run else os.getenv(cfg["user_env"])
     token = os.getenv(cfg["token_env"], MOCK_TOKEN) if dry_run else os.getenv(cfg["token_env"])
 
@@ -188,69 +124,40 @@ def check_service(service: str, cfg: dict, lab_url: str, session: "requests.Sess
 
 
 def main() -> int:
-    """
-    Main entry point for the credential permission verification script.
-
-    Parses command-line arguments, loads configuration, and checks all
-    configured services.
-
-    Returns:
-        0 if all services pass permission checks, 1 if any fail,
-        2 if configuration error (missing LAB_URL or config error).
-    """
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(levelname)s: %(message)s",
-        stream=sys.stderr
-    )
-
-    try:
-        import requests
-    except ImportError:
-        logging.error("FAIL: requests library is not installed")
-        raise RuntimeError("requests library is not installed; install with pip install requests")
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--config", help="Path to config JSON file")
-    parser.add_argument("--workers", type=int, default=None, help="Maximum number of parallel workers (default: number of services)")
+    parser = argparse.ArgumentParser(description="Verify credential permissions for services.")
+    parser.add_argument("--config", "-c", help="Path to config JSON file", default=None)
+    parser.add_argument("--lab-url", "-l", required=True, help="Base URL of lab environment")
+    parser.add_argument("--dry-run", "-d", action="store_true", help="Use mock responses")
     args = parser.parse_args()
 
-    try:
-        config = load_config(args.config)
-    except RuntimeError as exc:
-        logging.error("%s", exc)
-        return 2
+    config = load_config(args.config)
 
-    lab_url = os.getenv("LAB_URL", "http://localhost:8080" if args.dry_run else "")
-    if not lab_url:
-        logging.error("CONFIG ERROR: LAB_URL is not set")
-        return 2
+    max_workers = len(config)
+    session = None
+    if not args.dry_run:
+        session = requests.Session()
+        adapter = HTTPAdapter(pool_connections=max_workers, pool_maxsize=max_workers)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
 
-    max_workers = args.workers or int(os.getenv("MAX_WORKERS", str(min(10, len(config)))))
-    max_workers = max(1, min(max_workers, len(config)))
+    results = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(check_service, service, cfg, args.lab_url, session, args.dry_run): service for service, cfg in config.items()}
+        for future in as_completed(futures):
+            service = futures[future]
+            try:
+                result = future.result()
+                results.append((service, result))
+            except Exception as exc:
+                logging.error("FAIL: %s raised exception: %s", service, exc)
+                results.append((service, False))
 
-    session = None if args.dry_run else requests.Session()
-    all_pass = True
-    try:
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_service = {
-                executor.submit(check_service, service, cfg, lab_url, session, args.dry_run): service
-                for service, cfg in config.items()
-            }
-            for future in as_completed(future_to_service):
-                service = future_to_service[future]
-                try:
-                    if not future.result():
-                        all_pass = False
-                except Exception as exc:
-                    logging.error("FAIL: %s check raised exception: %s", service, exc)
-                    all_pass = False
-    finally:
-        if session:
-            session.close()
+    success = all(r[1] for r in results)
+    for service, ok in results:
+        status = "PASS" if ok else "FAIL"
+        print(f"{status}: {service}")
 
-    return 0 if all_pass else 1
+    return 0 if success else 1
 
 
 if __name__ == "__main__":

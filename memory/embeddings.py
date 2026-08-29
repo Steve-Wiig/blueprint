@@ -88,36 +88,6 @@ class EmbeddingService:
         except Exception:
             raise RuntimeError(f"Library code called exit(1)")
 
-    def _encode(self, text: str, prefix: str) -> np.ndarray:
-        """Encode text with prefix into a 768-dim embedding vector.
-
-        Args:
-            text: Input text to encode.
-            prefix: Prefix to apply idempotently.
-
-        Returns:
-            np.ndarray: 768-dimensional float32 embedding vector.
-
-        Raises:
-            RuntimeError: If encoding fails.
-        """
-        return self._encode_internal(text, prefix)
-
-    def _encode_batch(self, texts: List[str], prefix: str) -> np.ndarray:
-        """Encode a batch of texts with prefix into embedding vectors.
-
-        Args:
-            texts: List of input texts to encode.
-            prefix: Prefix to apply idempotently to each text.
-
-        Returns:
-            np.ndarray: 2D array of shape (n_texts, 768) with float32 embeddings.
-
-        Raises:
-            RuntimeError: If encoding fails.
-        """
-        return self._encode_internal(texts, prefix)
-
     def embed_document(self, text: str) -> np.ndarray:
         """Encode a document text into a 768-dim embedding vector.
 
@@ -140,7 +110,7 @@ class EmbeddingService:
             >>> vec.dtype
             dtype('float32')
         """
-        return self._encode(text, self.PREFIX_DOC)
+        return self._encode_internal(text, self.PREFIX_DOC)
 
     def embed_query(self, text: str) -> np.ndarray:
         """Encode a query text into a 768-dim embedding vector.
@@ -164,7 +134,7 @@ class EmbeddingService:
             >>> vec.dtype
             dtype('float32')
         """
-        return self._encode(text, self.PREFIX_QUERY)
+        return self._encode_internal(text, self.PREFIX_QUERY)
 
     def embed_documents(self, texts: List[str]) -> np.ndarray:
         """Encode a batch of document texts into 768-dim embedding vectors.
@@ -189,7 +159,7 @@ class EmbeddingService:
             >>> vecs.dtype
             dtype('float32')
         """
-        return self._encode_batch(texts, self.PREFIX_DOC)
+        return self._encode_internal(texts, self.PREFIX_DOC)
 
     def embed_queries(self, texts: List[str]) -> np.ndarray:
         """Encode a batch of query texts into 768-dim embedding vectors.
@@ -214,7 +184,7 @@ class EmbeddingService:
             >>> vecs.dtype
             dtype('float32')
         """
-        return self._encode_batch(texts, self.PREFIX_QUERY)
+        return self._encode_internal(texts, self.PREFIX_QUERY)
 
 
 if __name__ == "__main__":

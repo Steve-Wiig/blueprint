@@ -36,12 +36,13 @@ _COMBINED_PATTERN: str = '|'.join(f'(?P<{name}>{pattern})' for name, pattern in 
 COMPILED_COMBINED: Pattern[str] = re.compile(_COMBINED_PATTERN, re.IGNORECASE)
 
 
-class ScanExit(RuntimeError):
+class ScanExit(SystemExit):
     """Exception raised to signal scan completion with an exit code."""
     def __init__(self, exit_code: int, message: str = "") -> None:
-        super().__init__(message or f"scan completed with exit code {exit_code}")
+        super().__init__(exit_code)
         self.exit_code = exit_code
-
+        self.message = message or f"scan completed with exit code {exit_code}"
+        self.args = (self.message,)
 
 def _configure_logging() -> logging.Logger:
     """
@@ -99,7 +100,6 @@ def scan_text(text: str) -> list[tuple[str, str]]:
         no violations are detected.
 
     Raises:
-        re.error: If a regex pattern is invalid (should not occur with static patterns).
         TypeError: If text is not a string.
 
     Example:
@@ -118,8 +118,6 @@ def scan_text(text: str) -> list[tuple[str, str]]:
         if matched_value not in ALLOWLIST:
             found.append((pattern_name, matched_value))
     return found
-
-
 def scan_file(file_path: str) -> list[tuple[str, str]]:
     """
     Scan a single file for credential violations.
@@ -162,7 +160,8 @@ def scan_directory(dir_path: str, recursive: bool = True) -> list[tuple[str, str
         raise OSError(f"Path is not a directory: {dir_path}")
     
     if recursive:
-        files = path.rglob("*")
+        exclude_dirs = {'.git', '__pycache__', 'node_modules'}
+        files = (f for f in path.rglob("*") if not any(part in exclude_dirs for part in f.parts))
     else:
         files = path.glob("*")
     
@@ -176,7 +175,6 @@ def scan_directory(dir_path: str, recursive: bool = True) -> list[tuple[str, str
                 continue
     
     return found
-
 
 def _generate_dry_run_payloads() -> list[str]:
     """
@@ -240,6 +238,17 @@ def main() -> None:
         $ python credential_sanitizer.py --recursive ./project
         FAIL: Found GITHUB_TOKEN in ./project/.env
     """
+    # Load allowlist configuration
+    ALLOWLIST_SHA256 = [
+        # Example SHA256 hash, replace with actual values and comments
+        # 'hash1'  # Allowlisted due to specific use case in project XYZ
+    ]
+    ALLOWLIST_UUID = [
+        # Example UUID, replace with actual values and comments
+        # 'uuid1'  # Allowlisted due to specific use case in project ABC
+    ]
+    ALLOWLIST = set(ALLOWLIST_SHA256 + ALLOWLIST_UUID)
+
     parser = argparse.ArgumentParser(
         description="Scan files and directories for credential patterns",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -269,23 +278,28 @@ Examples:
                 violations = scan_file(path_str)
                 if violations:
                     for v_type, val in violations:
-                        LOGGER.error("FAIL: Found %s in %s", v_type, path_str)
-                    exit_code = 1
+                        if val in ALLOWLIST:
+                            LOGGER.info("SKIP: Allowlisted %s found in %s", v_type, path_str)
+                        else:
+                            LOGGER.error("FAIL: Found %s in %s", v_type, path_str)
+                            exit_code = 1
             elif path.is_dir():
                 violations = scan_directory(path_str, recursive=args.recursive)
                 if violations:
                     for file_path, v_type, val in violations:
-                        LOGGER.error("FAIL: Found %s in %s", v_type, file_path)
-                    exit_code = 1
+                        if val in ALLOWLIST:
+                            LOGGER.info("SKIP: Allowlisted %s found in %s", v_type, file_path)
+                        else:
+                            LOGGER.error("FAIL: Found %s in %s", v_type, file_path)
+                            exit_code = 1
             else:
                 LOGGER.error("CONFIG ERROR: Path does not exist: %s", path_str)
                 raise ScanExit(2)
         except (OSError, UnicodeDecodeError) as e:
             LOGGER.error("CONFIG ERROR: Could not read %s: %s", path_str, e)
             raise ScanExit(2)
-            
-    raise ScanExit(exit_code)
 
+    raise ScanExit(exit_code)
 
 if __name__ == "__main__":
     try:

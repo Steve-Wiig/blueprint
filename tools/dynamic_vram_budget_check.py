@@ -68,12 +68,29 @@ def parse_mem_value(val_str: str) -> int:
     """
     if not val_str:
         return 0
-    try:
-        return int(val_str.strip().split()[0])
-    except (ValueError, IndexError):
+    parts = val_str.strip().split()
+    if not parts:
         return 0
-
-
+    num_str = parts[0]
+    unit = parts[1] if len(parts) > 1 else ''
+    # Handle cases where the unit is attached to the number without a space
+    if not unit and any(c.isalpha() for c in num_str):
+        import re
+        m = re.match(r'(?P<num>[0-9]*\.?[0-9]+)\s*(?P<unit>[a-zA-Z]+)?', num_str)
+        if m:
+            num_str = m.group('num')
+            unit = m.group('unit') or ''
+    try:
+        value = float(num_str)
+    except ValueError:
+        return 0
+    unit = unit.lower()
+    if unit in ('gib', 'gb', 'g'):
+        value *= 1024
+    elif unit in ('kib', 'kb', 'k'):
+        value /= 1024
+    # For 'mib', 'mb', 'm', or no unit, keep the value as‑is
+    return int(value)
 def check_vram_budget(gpu_data: Optional[ET.Element] = None) -> VramCheckResult:
     """
     Check GPU VRAM usage against a budget.

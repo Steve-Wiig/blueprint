@@ -116,17 +116,31 @@ def _log_audit(
         context_json = json.dumps(audit_context) if audit_context is not None else None
         cur.execute(audit_query, (retrieval_timestamp, query_hash, case_ids, top_k, max_age_days, context_json))
         conn.commit()
-    except psycopg2.Error:
+    except psycopg2.Error as e:
+        print(
+            f"AUDIT LOG FAILURE (psycopg2.Error): query_hash={query_hash}, case_ids={case_ids}, "
+            f"top_k={top_k}, max_age_days={max_age_days}, error={e}",
+            file=sys.stderr,
+        )
         try:
             conn.rollback()
-        except Exception:
-            pass
-    except Exception:
-        pass
+        except psycopg2.Error as rb_err:
+            print(f"AUDIT ROLLBACK FAILURE: query_hash={query_hash}, error={rb_err}", file=sys.stderr)
+        raise RuntimeError(f"Failed to write audit log for query_hash={query_hash}") from e
+    except (TypeError, ValueError, json.JSONDecodeError) as e:
+        print(
+            f"AUDIT LOG FAILURE (serialization error): query_hash={query_hash}, case_ids={case_ids}, "
+            f"top_k={top_k}, max_age_days={max_age_days}, error={e}",
+            file=sys.stderr,
+        )
+        try:
+            conn.rollback()
+        except psycopg2.Error as rb_err:
+            print(f"AUDIT ROLLBACK FAILURE: query_hash={query_hash}, error={rb_err}", file=sys.stderr)
+        raise RuntimeError(f"Audit context serialization failed for query_hash={query_hash}") from e
     finally:
         if cur is not None:
             cur.close()
-
 
 def stitch_memory_context(
     query_embedding: list[float],
@@ -167,28 +181,10 @@ def stitch_memory_context(
 
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=max_age_days)
 
-        query = """
-            SELECT case_id, summary, cosine_distance(embedding, %s::vector) as dist
-            FROM case_embeddings
-            WHERE created_at >= %s
-            ORDER BY dist ASC
-            LIMIT %s;
-        """
-
-        cur.execute(query, (query_embedding, cutoff_date, top_k))
-        results = cur.fetchall()
-
-        context_blocks = [f"<case_id={r[0]} dist={r[2]:.4f}>{escape(r[1])}</case_id>" for r in results]
-        case_refs = [r[0] for r in results]
-            
-        formatted_context = f"<memory_context>\n{''.join(context_blocks)}\n</memory_context>"
+        results, case_refs = _execute_similarity_query(cur, query_embedding, cutoff_date, top_k)
+        formatted_context = _format_context_blocks(results)
         retrieval_timestamp = datetime.now(timezone.utc)
-        metadata: MemoryMetadata = {
-            "memory_retrieval_timestamp": retrieval_timestamp.isoformat(),
-            "retrieved_case_ids": case_refs,
-            "top_k_requested": top_k,
-            "max_age_days": max_age_days
-        }
+        metadata = _build_metadata(retrieval_timestamp, case_refs, top_k, max_age_days)
 
         query_hash = _compute_query_hash(query_embedding)
         _log_audit(conn, retrieval_timestamp, query_hash, case_refs, top_k, max_age_days, audit_context)
@@ -209,15 +205,45 @@ def stitch_memory_context(
                 conn.close()
             except Exception:
                 pass
+def _execute_similarity_query(cursor, embedding, cutoff, limit):
+    query = """
+        SELECT case_id, summary, cosine_distance(embedding, %s::vector) as dist
+        FROM case_embeddings
+        WHERE created_at >= %s
+        ORDER BY dist ASC
+        LIMIT %s;
+    """
+    cursor.execute(query, (embedding, cutoff, limit))
+    results = cursor.fetchall()
+    case_refs = [r[0] for r in results]
+    return results, case_refs
 
+def _format_context_blocks(results):
+    context_blocks = [f"<case_id={r[0]} dist={r[2]:.4f}>{escape(r[1])}</case_id>" for r in results]
+    return f"<memory_context>\n{''.join(context_blocks)}\n</memory_context>"
 
+def _build_metadata(timestamp, case_ids, top_k_val, max_age):
+    return {
+        "memory_retrieval_timestamp": timestamp.isoformat(),
+        "retrieved_case_ids": case_ids,
+        "top_k_requested": top_k_val,
+        "max_age_days": max_age
+    }
 def set_default_pool_factory(factory: Callable[[], psycopg2.pool.ThreadedConnectionPool]) -> None:
     """Set a custom default pool factory for testing or alternative configurations."""
-    global _DEFAULT_POOL_FACTORY, _DEFAULT_POOL
-    _DEFAULT_POOL_FACTORY = factory
-    _DEFAULT_POOL = None
-
-
+    import threading
+    global _DEFAULT_POOL_FACTORY, _DEFAULT_POOL, _DEFAULT_POOL_LOCK
+    # Ensure the lock exists
+    if '_DEFAULT_POOL_LOCK' not in globals():
+        _DEFAULT_POOL_LOCK = threading.Lock()
+    # Ensure the factory and pool globals exist
+    if '_DEFAULT_POOL_FACTORY' not in globals():
+        _DEFAULT_POOL_FACTORY = None
+    if '_DEFAULT_POOL' not in globals():
+        _DEFAULT_POOL = None
+    with _DEFAULT_POOL_LOCK:
+        _DEFAULT_POOL_FACTORY = factory
+        _DEFAULT_POOL = None
 def reset_default_pool() -> None:
     """Reset the default pool (useful for testing)."""
     global _DEFAULT_POOL, _DEFAULT_POOL_FACTORY

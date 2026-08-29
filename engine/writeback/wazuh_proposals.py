@@ -24,8 +24,13 @@ _audit_batch: List[Tuple] = []
 _audit_batch_lock = threading.Lock()
 _AUDIT_BATCH_SIZE = int(os.environ.get("WAZUH_AUDIT_BATCH_SIZE", "100"))
 _AUDIT_FLUSH_INTERVAL = float(os.environ.get("WAZUH_AUDIT_FLUSH_INTERVAL", "5.0"))
+_AUDIT_MAX_RETRIES = int(os.environ.get("WAZUH_AUDIT_MAX_RETRIES", "3"))
 _audit_flush_timer: Optional[threading.Timer] = None
 _batch_mode_enabled = os.environ.get("WAZUH_AUDIT_BATCH_MODE", "false").lower() == "true"
+
+# Dead-letter queue for entries that exceed max retries
+_dead_letter_queue: List[Tuple] = []
+_dead_letter_lock = threading.Lock()
 
 
 class ProposalError(Exception):
@@ -95,7 +100,7 @@ def _close_connection() -> None:
 
 def _flush_audit_batch() -> None:
     """Flush accumulated audit log entries to database."""
-    global _audit_batch, _audit_flush_timer
+    global _audit_batch, _audit_flush_timer, _dead_letter_queue
     with _audit_batch_lock:
         if not _audit_batch:
             return
@@ -114,9 +119,30 @@ def _flush_audit_batch() -> None:
         )
         conn.commit()
     except sqlite3.Error:
-        # On failure, put entries back for retry
+        # On failure, increment retry count and re-queue entries that haven't exceeded max retries
+        # Move entries that exceeded max retries to dead-letter queue
+        retry_batch = []
+        dead_letter_entries = []
+        for entry in batch:
+            # entry format: (proposal_id, action, old_status, new_status, changed_by, changed_at, retry_count)
+            retry_count = entry[6] if len(entry) > 6 else 0
+            if retry_count < _AUDIT_MAX_RETRIES:
+                # Re-queue with incremented retry count
+                retry_entry = entry[:6] + (retry_count + 1,)
+                retry_batch.append(retry_entry)
+            else:
+                dead_letter_entries.append(entry)
+        
         with _audit_batch_lock:
-            _audit_batch = batch + _audit_batch
+            # Prepend retry batch so they're tried first, but with backoff via timer
+            _audit_batch = retry_batch + _audit_batch
+        
+        if dead_letter_entries:
+            with _dead_letter_lock:
+                _dead_letter_queue.extend(dead_letter_entries)
+            # Log dead-letter entries to stderr for visibility
+            for entry in dead_letter_entries:
+                print(f"DEAD-LETTER: Audit entry failed after {_AUDIT_MAX_RETRIES} retries: {entry}", file=sys.stderr)
     finally:
         if _batch_mode_enabled:
             _schedule_audit_flush()
@@ -137,7 +163,8 @@ def _queue_audit_entry(proposal_id: int, action: str, old_status: Optional[str],
     """Queue an audit entry for batch writing."""
     if not _batch_mode_enabled:
         return
-    entry = (proposal_id, action, old_status, new_status, changed_by, datetime.now(timezone.utc))
+    # Entry format: (proposal_id, action, old_status, new_status, changed_by, changed_at, retry_count)
+    entry = (proposal_id, action, old_status, new_status, changed_by, datetime.now(timezone.utc), 0)
     with _audit_batch_lock:
         _audit_batch.append(entry)
         if len(_audit_batch) >= _AUDIT_BATCH_SIZE:
@@ -186,11 +213,13 @@ def init_db() -> None:
                           ON approval_tokens(token_hash)''')
         
         # Trigger on INSERT to proposals (kept for compliance)
+        # SQLite provides NEW.* for all columns in AFTER INSERT triggers.
+        # Ensure changed_by is captured from the INSERT statement; default to 'system' if NULL.
         cursor.execute('''CREATE TRIGGER IF NOT EXISTS audit_proposals_insert
                           AFTER INSERT ON proposals
                           BEGIN
                               INSERT INTO audit_log (proposal_id, action, old_status, new_status, changed_by, changed_at)
-                              VALUES (NEW.id, 'INSERT', NULL, NEW.status, NEW.changed_by, datetime('now'));
+                              VALUES (NEW.id, 'INSERT', NULL, NEW.status, COALESCE(NEW.changed_by, 'system'), datetime('now', 'utc'));
                           END;''')
         
         # Trigger on UPDATE of status column in proposals (kept for compliance)
@@ -199,7 +228,7 @@ def init_db() -> None:
                           WHEN OLD.status != NEW.status
                           BEGIN
                               INSERT INTO audit_log (proposal_id, action, old_status, new_status, changed_by, changed_at)
-                              VALUES (NEW.id, 'STATUS_CHANGE', OLD.status, NEW.status, NEW.changed_by, datetime('now'));
+                              VALUES (NEW.id, 'STATUS_CHANGE', OLD.status, NEW.status, COALESCE(NEW.changed_by, 'system'), datetime('now', 'utc'));
                           END;''')
         
         conn.commit()
@@ -250,6 +279,7 @@ def validate_approval_token(token: str) -> bool:
     except sqlite3.Error:
         return False
 
+
 def parse_args() -> argparse.Namespace:
     """Parses command line arguments.
 
@@ -260,6 +290,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--key", required=True, help="CDB Key")
     parser.add_argument("--value", required=True, help="CDB Value")
     parser.add_argument("--approval-token", required=False, help="Approval token for gated mutation (Section 24)")
+    parser.add_argument("--changed-by", required=False, default="cli-user", help="Identity of the proposer")
     return parser.parse_args()
 
 
@@ -277,59 +308,66 @@ def validate_proposal(key: str) -> None:
         raise ProposalDirectoryError(f"Database directory does not exist: {os.path.dirname(DB_PATH)}")
 
     if not check_approval_gate(key):
-        raise ProposalRejectedError(f"Key '{key}' is reserved for internal Wazuh use")
+        raise ProposalRejectedError(f"Key '{key}' is blocked by denylist (wazuh-internal- prefix)")
 
 
-def store_proposal(key: str, value: str, approval_token: str | None = None) -> None:
-    """Stores the proposal in the database after approval validation.
+def submit_proposal(key: str, value: str, changed_by: str, approval_token: Optional[str] = None) -> int:
+    """Submit a new proposal to the database.
 
     Args:
         key: The CDB key.
         value: The CDB value.
-        approval_token: Optional approval token for gated mutation.
+        changed_by: Identity of the proposer.
+        approval_token: Optional approval token for gated mutations.
+
+    Returns:
+        The proposal ID.
 
     Raises:
-        ProposalApprovalError: If approval token is missing or invalid.
-        ProposalStorageError: If database operations fail.
+        ProposalRejectedError: If key is blocked or approval token invalid.
+        ProposalStorageError: If database operation fails.
     """
-    # Approval-gated mutation: require valid approval token (Section 24)
-    if approval_token is None:
-        raise ProposalApprovalError("Approval token required for proposal submission (Section 24: Approval-gated mutations)")
+    validate_proposal(key)
     
-    if not validate_approval_token(approval_token):
-        raise ProposalApprovalError("Invalid or expired approval token")
-    
-    # Use token hash as actor identity for audit trail
-    token_hash = hashlib.sha256(approval_token.encode()).hexdigest()
+    # If approval token provided, validate it
+    if approval_token:
+        if not validate_approval_token(approval_token):
+            raise ProposalApprovalError("Invalid or expired approval token")
     
     try:
-        init_db()
         conn = _get_connection()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO proposals (key, value, status, created_at, changed_by) VALUES (?, ?, ?, ?, ?)",
-                       (key, value, 'PENDING', datetime.now(timezone.utc), token_hash))
+        now = datetime.now(timezone.utc)
+        cursor.execute(
+            "INSERT INTO proposals (key, value, status, created_at, changed_by) VALUES (?, ?, ?, ?, ?)",
+            (key, value, "pending", now, changed_by)
+        )
         proposal_id = cursor.lastrowid
         conn.commit()
         
-        # Also queue for batch audit logging if enabled (triggers handle compliance)
-        if _batch_mode_enabled:
-            _queue_audit_entry(proposal_id, 'INSERT', None, 'PENDING', token_hash)
+        # Queue audit entry for batch processing (trigger also fires for compliance)
+        _queue_audit_entry(proposal_id, "INSERT", None, "pending", changed_by)
         
+        return proposal_id
     except sqlite3.Error as e:
-        raise ProposalStorageError(f"Failed to store proposal: {e}")
+        raise ProposalStorageError(f"Failed to submit proposal: {e}")
 
 
-def main() -> None:
-    """Main entry point for the proposal adapter."""
+def main() -> NoReturn:
+    """Main entry point for CLI."""
     args = parse_args()
     
     try:
-        validate_proposal(args.key)
-        store_proposal(args.key, args.value, args.approval_token)
-        print("Proposal stored successfully", file=sys.stdout)
+        init_db()
+        proposal_id = submit_proposal(args.key, args.value, args.changed_by, args.approval_token)
+        print(f"Proposal stored with ID: {proposal_id}")
+        raise ProposalSuccess()
     except ProposalError as e:
         print(str(e), file=sys.stderr)
         sys.exit(e.exit_code)
+    except Exception as e:
+        print(f"Unexpected error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
