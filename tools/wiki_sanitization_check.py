@@ -118,6 +118,8 @@ def scan_text(text: str) -> list[tuple[str, str]]:
         if matched_value not in ALLOWLIST:
             found.append((pattern_name, matched_value))
     return found
+
+
 def scan_file(file_path: str) -> list[tuple[str, str]]:
     """
     Scan a single file for credential violations.
@@ -132,11 +134,9 @@ def scan_file(file_path: str) -> list[tuple[str, str]]:
         OSError: If the file cannot be read.
         UnicodeDecodeError: If the file cannot be decoded as UTF-8.
     """
-    found: list[tuple[str, str]] = []
     with open(file_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            found.extend(scan_text(line))
-    return found
+        content = f.read()
+    return scan_text(content)
 
 
 def scan_directory(dir_path: str, recursive: bool = True) -> list[tuple[str, str, str]]:
@@ -175,6 +175,7 @@ def scan_directory(dir_path: str, recursive: bool = True) -> list[tuple[str, str
                 continue
     
     return found
+
 
 def _generate_dry_run_payloads() -> list[str]:
     """
@@ -300,6 +301,7 @@ Examples:
             raise ScanExit(2)
 
     raise ScanExit(exit_code)
+
 
 if __name__ == "__main__":
     try:
