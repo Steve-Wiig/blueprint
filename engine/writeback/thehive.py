@@ -272,14 +272,13 @@ def parse_args() -> argparse.Namespace:
         - mode: Operation mode ('draft' or 'live')
         - log_path: Optional path to handoff log file
     """
-    parser = argparse.ArgumentParser(description="TheHive Case Writeback Adapter v11.6.0")
+    parser = argparse.ArgumentParser(description=f"TheHive Case Writeback Adapter v{__version__}")
     parser.add_argument("--case-data", required=True, help="JSON string of case data")
     parser.add_argument("--api-key", required=True, help="TheHive API Key")
     parser.add_argument("--url", required=True, help="TheHive Base URL")
     parser.add_argument("--mode", choices=['draft', 'live'], default='draft', help="Adapter mode")
     parser.add_argument("--log-path", help="Path to the handoff log file (overrides HANDOFF_LOG_PATH env var and default)")
     return parser.parse_args()
-
 
 def verify_sanitization(payload: Any, context: str = "payload") -> None:
     """Verify that payload contains no secrets or high-entropy tokens (module-level backward compatibility).
