@@ -11,6 +11,10 @@ import sys
 import argparse
 import json
 import os
+import time
+import urllib.request
+import urllib.error
+import socket
 from pathlib import Path
 from typing import Dict
 
@@ -85,11 +89,6 @@ def validate_against_service(prefixes: Dict[str, str]) -> bool:
     service_url = os.getenv("EMBEDDING_SERVICE_URL")
     if not service_url:
         return True
-
-    import time
-    import urllib.request
-    import urllib.error
-    import socket
 
     backoff_delays = [1, 2, 4]
     for attempt, delay in enumerate(backoff_delays, start=1):
