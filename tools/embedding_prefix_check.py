@@ -78,7 +78,7 @@ class EmbeddingService:
         768
     """
 
-    encoder: Callable[[str], Sequence[float]]
+    encoder: Callable[[str], list[float]]
     doc_prefix: str
     query_prefix: str
     strict: bool
@@ -86,7 +86,7 @@ class EmbeddingService:
 
     def __init__(
         self,
-        encoder: Callable[[str], Sequence[float]],
+        encoder: Callable[[str], list[float]],
         doc_prefix: Optional[str] = None,
         query_prefix: Optional[str] = None,
         strict: bool = False,
