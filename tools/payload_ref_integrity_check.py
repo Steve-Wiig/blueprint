@@ -97,5 +97,13 @@ def main() -> int:
     return verify_payload(ledger_file)
 
 
+def cli_main() -> None:
+    """CLI entry point that calls sys.exit with the result of main()."""
+    sys.exit(main())
+
+
+if __name__ == "__main__":
+    cli_main()
+
 if __name__ == "__main__":
     sys.exit(main())
