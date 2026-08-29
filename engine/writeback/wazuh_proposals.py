@@ -361,14 +361,15 @@ def main() -> NoReturn:
         init_db()
         proposal_id = submit_proposal(args.key, args.value, args.changed_by, args.approval_token)
         print(f"Proposal stored with ID: {proposal_id}")
-        raise ProposalSuccess()
+        sys.exit(0)
+    except ProposalSuccess:
+        sys.exit(0)
     except ProposalError as e:
         print(str(e), file=sys.stderr)
-        sys.exit(e.exit_code)
+        sys.exit(2)
     except Exception as e:
         print(f"Unexpected error: {e}", file=sys.stderr)
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()
