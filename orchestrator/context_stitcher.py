@@ -5,6 +5,7 @@ import sys
 import hashlib
 import json
 import struct
+import io
 from datetime import datetime, timezone, timedelta
 from typing import TypedDict, Optional, Callable
 from xml.sax.saxutils import escape
@@ -234,8 +235,12 @@ def _execute_similarity_query(cursor, embedding, cutoff, limit):
     return results, case_refs
 
 def _format_context_blocks(results):
-    context_blocks = [f"<case_id={r[0]} dist={r[2]:.4f}>{escape(r[1])}</case_id>" for r in results]
-    return f"<memory_context>\n{''.join(context_blocks)}\n</memory_context>"
+    buffer = io.StringIO()
+    buffer.write("<memory_context>\n")
+    for r in results:
+        buffer.write(f"<case_id={r[0]} dist={r[2]:.4f}>{escape(r[1])}</case_id>")
+    buffer.write("\n</memory_context>")
+    return buffer.getvalue()
 
 def _build_metadata(timestamp, case_ids, top_k_val, max_age):
     return {
