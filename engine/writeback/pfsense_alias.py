@@ -86,76 +86,95 @@ END;
 '''
 
 
-def init_db() -> None:
+def init_db(conn: sqlite3.Connection | None = None) -> None:
     """Initializes the SQLite database and creates tables, indexes, and triggers.
+
+    Args:
+        conn: Optional existing connection to use. If not provided, creates a new one.
 
     Raises RuntimeError if a database error occurs.
     """
+    own_conn = False
     try:
-        conn = sqlite3.connect(DB_PATH)
+        if conn is None:
+            conn = sqlite3.connect(DB_PATH)
+            own_conn = True
         conn.executescript(DDL_SCRIPT)
         conn.commit()
-        conn.close()
     except Exception:
         raise RuntimeError("Database initialization failed")
+    finally:
+        if own_conn and conn:
+            conn.close()
 
 
-def store_proposal(name: str, ip: str) -> None:
+def store_proposal(name: str, ip: str, conn: sqlite3.Connection | None = None) -> None:
     """Stores a new alias proposal in the database.
 
     Args:
         name: The name of the alias to be created.
         ip: The IP address associated with the alias.
+        conn: Optional existing connection to use. If not provided, creates a new one.
 
     Raises RuntimeError if a database error occurs.
     """
+    own_conn = False
     try:
-        conn = sqlite3.connect(DB_PATH)
+        if conn is None:
+            conn = sqlite3.connect(DB_PATH)
+            own_conn = True
         cursor = conn.cursor()
         cursor.execute(INSERT_PROPOSAL_SQL,
                        (name, ip, PROPOSAL_STATUS_PENDING, datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')))
         conn.commit()
-        conn.close()
         print(f"{MSG_PROPOSAL_STORED}: {name} -> {ip}")
     except Exception:
         raise RuntimeError("Failed to store proposal")
+    finally:
+        if own_conn and conn:
+            conn.close()
 
 
 def rollback_plan() -> None:
     """Prints instructions for rolling back pending alias proposals."""
     print(ROLLBACK_REFERENCE_MSG)
 
-def rollback_execute(approved: bool = False) -> int:
+def rollback_execute(approved: bool = False, conn: sqlite3.Connection | None = None) -> int:
     """Executes rollback of pending alias proposals.
 
     Args:
         approved: Must be True to confirm execution. If False, performs dry-run only.
+        conn: Optional existing connection to use. If not provided, creates a new one.
 
     Returns:
         Number of rows that would be deleted (dry-run) or were deleted (executed).
 
     Raises RuntimeError if a database error occurs or if not approved.
     """
+    own_conn = False
     try:
-        conn = sqlite3.connect(DB_PATH)
+        if conn is None:
+            conn = sqlite3.connect(DB_PATH)
+            own_conn = True
         cursor = conn.cursor()
         
         cursor.execute(SELECT_PENDING_COUNT_SQL, (PROPOSAL_STATUS_PENDING,))
         count = cursor.fetchone()[0]
         
         if not approved:
-            conn.close()
             logging.info(MSG_ROLLBACK_DRYRUN + ": Would delete " + str(count) + " pending proposal(s)")
             return count
         
         cursor.execute(DELETE_PENDING_SQL, (PROPOSAL_STATUS_PENDING,))
         deleted = cursor.rowcount
         conn.commit()
-        conn.close()
         logging.info(MSG_ROLLBACK_EXECUTED + ": Deleted " + str(deleted) + " pending proposal(s)")
         return deleted
     except Exception:
         raise RuntimeError("Rollback execution failed")
+    finally:
+        if own_conn and conn:
+            conn.close()
 
 
 def main() -> None:
@@ -171,17 +190,21 @@ def main() -> None:
     
     args = parser.parse_args()
     
-    init_db()
-    
-    if args.mode == 'proposal':
-        store_proposal(args.name, args.ip)
-        rollback_plan()
-    elif args.mode == 'rollback':
-        if not args.approved:
-            raise RuntimeError("Rollback requires --approved flag for confirmation")
-        rollback_execute(approved=True)
-    else:
-        raise RuntimeError("Invalid operation mode")
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        init_db(conn)
+        
+        if args.mode == 'proposal':
+            store_proposal(args.name, args.ip, conn)
+            rollback_plan()
+        elif args.mode == 'rollback':
+            if not args.approved:
+                raise RuntimeError("Rollback requires --approved flag for confirmation")
+            rollback_execute(approved=True, conn=conn)
+        else:
+            raise RuntimeError("Invalid operation mode")
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
     main()
