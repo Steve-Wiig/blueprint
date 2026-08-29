@@ -38,10 +38,6 @@ from typing import List, Optional
 # MAX_CONCURRENT_THREADS increased default to 100, configurable via --threads
 DEFAULT_MAX_CONCURRENT_THREADS = 100
 DEFAULT_STRESS_ITERATIONS = 10
-MIN_LOCK_ACQUISITION_MS = 5
-MIN_IO_LATENCY_MS = 1
-MAX_IO_LATENCY_MS = 10
-MAX_LOCK_ACQUISITION_MULTIPLIER = 2
 
 
 class HashChainLedger:
@@ -69,8 +65,8 @@ class HashChainLedger:
     def append_hash(self, hash_val: str) -> int:
         """Append a hash value to the chain atomically.
 
-        Acquires the internal lock, simulates ledger I/O latency, and appends
-        the hash to the chain. Returns the 1-based index of the appended entry.
+        Acquires the internal lock and appends the hash to the chain.
+        Returns the 1-based index of the appended entry.
 
         Args:
             hash_val: A string representation of the hash to append (e.g., 'sha256:...').
@@ -80,10 +76,6 @@ class HashChainLedger:
             1-based index of the new hash.
         """
         with self.lock:
-            # Simulate lock acquisition overhead
-            time.sleep(random.uniform(MIN_LOCK_ACQUISITION_MS / 1000, MIN_LOCK_ACQUISITION_MS * MAX_LOCK_ACQUISITION_MULTIPLIER / 1000))
-            # Simulate I/O latency for ledger write
-            time.sleep(random.uniform(MIN_IO_LATENCY_MS / 1000, MAX_IO_LATENCY_MS / 1000))
             self.chain.append(hash_val)
             return len(self.chain)
 
