@@ -124,6 +124,20 @@ def check_service(service: str, cfg: dict, lab_url: str, session: "requests.Sess
 
 
 def main() -> int:
+    def create_session(max_workers: int) -> requests.Session:
+        session = requests.Session()
+        adapter = HTTPAdapter(pool_connections=max_workers, pool_maxsize=max_workers)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        return session
+
+    def process_results(results: list[tuple[str, bool]]) -> int:
+        success = all(r[1] for r in results)
+        for service, ok in results:
+            status = "PASS" if ok else "FAIL"
+            print(f"{status}: {service}")
+        return 0 if success else 1
+
     parser = argparse.ArgumentParser(description="Verify credential permissions for services.")
     parser.add_argument("--config", "-c", help="Path to config JSON file", default=None)
     parser.add_argument("--lab-url", "-l", required=True, help="Base URL of lab environment")
@@ -135,10 +149,7 @@ def main() -> int:
     max_workers = len(config)
     session = None
     if not args.dry_run:
-        session = requests.Session()
-        adapter = HTTPAdapter(pool_connections=max_workers, pool_maxsize=max_workers)
-        session.mount("https://", adapter)
-        session.mount("http://", adapter)
+        session = create_session(max_workers)
 
     results = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -152,13 +163,7 @@ def main() -> int:
                 logging.error("FAIL: %s raised exception: %s", service, exc)
                 results.append((service, False))
 
-    success = all(r[1] for r in results)
-    for service, ok in results:
-        status = "PASS" if ok else "FAIL"
-        print(f"{status}: {service}")
-
-    return 0 if success else 1
-
+    return process_results(results)
 
 if __name__ == "__main__":
     sys.exit(main())
