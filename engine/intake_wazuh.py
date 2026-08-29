@@ -191,7 +191,8 @@ def intake_adapter(raw_payload: str) -> int:
     except sqlite3.Error as e:
         logging.critical(f"Database error: {e}")
         raise RuntimeError("Library code called exit(1)")
-
+    finally:
+        conn.close()
 if __name__ == "__main__":
     _load_config()
     try:
