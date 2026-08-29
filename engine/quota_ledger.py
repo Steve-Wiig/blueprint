@@ -132,6 +132,13 @@ def init_db(db_path: Optional[str] = None) -> None:
         raise QuotaLedgerError(f"Database initialization failed: {e}") from e
 
 
+def _reset_daily_if_needed(used: int, last_reset: str, today: str) -> int:
+    """Reset daily usage to zero if the reset date differs from today."""
+    if last_reset != today:
+        return 0
+    return used
+
+
 def check_quota(adapter_id: str, estimated_tokens: int, db_path: Optional[str] = None) -> bool:
     """Checks if an adapter has sufficient quota for a given token usage.
 
@@ -158,15 +165,13 @@ def check_quota(adapter_id: str, estimated_tokens: int, db_path: Optional[str] =
             return False
 
         daily_limit, job_limit, used, last_reset = row
-        if last_reset != today:
-            used = 0
+        used = _reset_daily_if_needed(used, last_reset, today)
 
         if (used + estimated_tokens) > daily_limit or estimated_tokens > job_limit:
             return False
         return True
     except sqlite3.Error as e:
         raise QuotaLedgerError(f"Database error during quota check: {e}") from e
-
 
 def record_usage(adapter_id: str, tokens_used: int, db_path: Optional[str] = None) -> None:
     """Records token usage for a specific adapter in the database.
