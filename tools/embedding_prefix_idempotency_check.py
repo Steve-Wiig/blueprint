@@ -177,12 +177,8 @@ def run_tests(test_cases, dry_run: bool) -> bool:
     for text, prefix, expected_valid in test_cases:
         is_valid = check_idempotency(text, prefix)
         if is_valid != expected_valid:
-            print(f"FAIL: Expected valid={expected_valid}, got valid={is_valid} for: {text}")
             all_passed = False
-        elif dry_run:
-            print(f"  OK: {text!r} with {prefix!r} -> valid={is_valid}")
     return all_passed
-
 
 def _report(all_passed: bool, dry_run: bool) -> int:
     if dry_run:
