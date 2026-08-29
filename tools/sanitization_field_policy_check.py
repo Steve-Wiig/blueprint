@@ -242,7 +242,6 @@ def check_ci_context() -> None:
     if not os.getenv("CI_PIPELINE_ID"):
         raise CIMissingError("ENV_NOT_AVAILABLE: CI context missing")
 
-
 def main() -> int:
     """Run the sanitization field policy check.
 
