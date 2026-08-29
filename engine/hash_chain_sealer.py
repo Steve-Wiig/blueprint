@@ -20,6 +20,16 @@ logger = logging.getLogger(__name__)
 
 
 class JsonFormatter(logging.Formatter):
+    # Known standard LogRecord attributes (whitelist of standard fields)
+    # Source: Python logging.LogRecord documentation
+    _STANDARD_ATTRS = {
+        "name", "msg", "args", "created", "filename", "funcName",
+        "levelname", "levelno", "lineno", "module", "msecs",
+        "message", "pathname", "process", "processName",
+        "relativeCreated", "thread", "threadName", "exc_info",
+        "exc_text", "stack_info", "asctime", "relativeCreated"
+    }
+
     def format(self, record: logging.LogRecord) -> str:
         log_data = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -32,16 +42,9 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
         for key, value in record.__dict__.items():
-            if key not in {
-                "name", "msg", "args", "created", "filename", "funcName",
-                "levelname", "levelno", "lineno", "module", "msecs",
-                "message", "pathname", "process", "processName",
-                "relativeCreated", "thread", "threadName", "exc_info",
-                "exc_text", "stack_info"
-            }:
+            if key not in self._STANDARD_ATTRS:
                 log_data[key] = value
         return json.dumps(log_data)
-
 
 def _acquire_lock(cur: psycopg2.extensions.cursor, lock_id: int) -> None:
     cur.execute("SELECT pg_advisory_lock(%s)", (lock_id,))
