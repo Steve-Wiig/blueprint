@@ -1,9 +1,8 @@
-"""Module for managing and tracking adapter usage quotas using a SQLite database."""
-
 import sqlite3
 import argparse
 import sys
 import os
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Generator, Optional
@@ -14,7 +13,14 @@ def _get_default_db_path() -> str:
     return os.environ.get("QUOTA_LEDGER_DB_PATH", "quota_ledger.db")
 
 
+def _get_pool_enabled() -> bool:
+    """Check if connection pooling is enabled via environment variable."""
+    return os.environ.get("QUOTA_LEDGER_POOL_CONNECTIONS", "false").lower() in ("1", "true", "yes")
+
+
 DB_PATH = _get_default_db_path()
+_POOL_ENABLED = _get_pool_enabled()
+_thread_local = threading.local()
 
 
 class QuotaLedgerError(Exception):
@@ -32,18 +38,63 @@ class QuotaAdapterNotFoundError(QuotaLedgerError):
     pass
 
 
+def _get_pooled_connection(db_path: str) -> sqlite3.Connection:
+    """Get or create a thread-local pooled connection."""
+    if not hasattr(_thread_local, 'conn') or _thread_local.conn is None:
+        _thread_local.conn = sqlite3.connect(db_path, check_same_thread=False)
+        _thread_local.conn.execute("PRAGMA foreign_keys = ON")
+    elif _thread_local.db_path != db_path:
+        _thread_local.conn.close()
+        _thread_local.conn = sqlite3.connect(db_path, check_same_thread=False)
+        _thread_local.conn.execute("PRAGMA foreign_keys = ON")
+    _thread_local.db_path = db_path
+    return _thread_local.conn
+
+
+def _release_pooled_connection() -> None:
+    """Close and clear the thread-local pooled connection."""
+    if hasattr(_thread_local, 'conn') and _thread_local.conn is not None:
+        _thread_local.conn.close()
+        _thread_local.conn = None
+        _thread_local.db_path = None
+
+
 @contextmanager
 def get_db_connection(db_path: Optional[str] = None) -> Generator[sqlite3.Connection, None, None]:
-    """Context manager for database connections with automatic commit/rollback."""
-    conn = sqlite3.connect(db_path or DB_PATH)
-    try:
-        yield conn
-        conn.commit()
-    except sqlite3.Error as e:
-        conn.rollback()
-        raise QuotaLedgerError(f"Database error: {e}") from e
-    finally:
-        conn.close()
+    """Context manager for database connections with automatic commit/rollback.
+
+    If connection pooling is enabled (QUOTA_LEDGER_POOL_CONNECTIONS=1), reuses a
+    thread-local connection instead of creating a new one each time.
+    """
+    resolved_path = db_path or DB_PATH
+
+    if _POOL_ENABLED:
+        conn = _get_pooled_connection(resolved_path)
+        try:
+            yield conn
+            conn.commit()
+        except sqlite3.Error as e:
+            conn.rollback()
+            raise QuotaLedgerError(f"Database error: {e}") from e
+    else:
+        conn = sqlite3.connect(resolved_path)
+        try:
+            yield conn
+            conn.commit()
+        except sqlite3.Error as e:
+            conn.rollback()
+            raise QuotaLedgerError(f"Database error: {e}") from e
+        finally:
+            conn.close()
+
+
+def close_connection_pool() -> None:
+    """Close the thread-local pooled connection if pooling is enabled.
+
+    Call this at thread shutdown or application exit to clean up resources.
+    """
+    if _POOL_ENABLED:
+        _release_pooled_connection()
 
 
 def init_db(db_path: Optional[str] = None) -> None:
@@ -187,4 +238,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    finally:
+        close_connection_pool()
