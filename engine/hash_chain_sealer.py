@@ -352,7 +352,7 @@ def configure_logging() -> None:
 
 def main() -> None:
     configure_logging()
-    config = load_config()
+    config = _load_config()
     seal_audit_chain(config["db_config"], batch_size=config["batch_size"])
 
 
