@@ -117,7 +117,7 @@ def worker(ledger: HashChainLedger, results: List[Optional[int]]) -> None:
         results.append(None)
 
 
-def run_stress_test(num_threads: int) -> bool:
+def run_stress_test(executor: ThreadPoolExecutor, num_threads: int) -> bool:
     """Run a single stress test iteration with the given number of threads.
 
     Creates a fresh HashChainLedger and spawns `num_threads` workers to
@@ -125,6 +125,7 @@ def run_stress_test(num_threads: int) -> bool:
     unique indices, and no operations fail.
 
     Args:
+        executor: ThreadPoolExecutor to use for submitting worker tasks.
         num_threads: Number of concurrent threads to use for the test.
 
     Returns:
@@ -132,10 +133,9 @@ def run_stress_test(num_threads: int) -> bool:
     """
     ledger = HashChainLedger()
     results: List[Optional[int]] = []
-    with ThreadPoolExecutor(max_workers=num_threads) as executor:
-        futures = [executor.submit(worker, ledger, results) for _ in range(num_threads)]
-        for future in futures:
-            future.result()
+    futures = [executor.submit(worker, ledger, results) for _ in range(num_threads)]
+    for future in futures:
+        future.result()
 
     if len(results) != num_threads:
         return False
@@ -191,10 +191,11 @@ def main() -> int:
         return 2
 
     # Run stress test multiple times to increase exposure to concurrency issues
-    for iteration in range(DEFAULT_STRESS_ITERATIONS):
-        if not run_stress_test(args.threads):
-            print(f"FAIL: Race condition detected in hash chain indexing (iteration {iteration + 1})")
-            return 1
+    with ThreadPoolExecutor(max_workers=args.threads) as executor:
+        for iteration in range(DEFAULT_STRESS_ITERATIONS):
+            if not run_stress_test(executor, args.threads):
+                print(f"FAIL: Race condition detected in hash chain indexing (iteration {iteration + 1})")
+                return 1
 
     print(f"PASS: Hash chain concurrency verified with {args.threads} threads over {DEFAULT_STRESS_ITERATIONS} iterations")
     return 0
