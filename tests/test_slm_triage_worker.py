@@ -4,7 +4,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import sqlite3
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 from engine.slm_triage_worker import get_db, heartbeat, reap_stale, run_worker
 
@@ -51,7 +51,7 @@ def test_heartbeat(db_conn):
     assert row["lease_expires_at"] is not None
 
 def test_reap_stale(db_conn):
-    past = datetime.now() - timedelta(minutes=10)
+    past = (datetime.now(timezone.utc) - timedelta(minutes=10)).strftime('%Y-%m-%d %H:%M:%S')
     db_conn.execute(
         "INSERT INTO triage_queue (id, status, lease_expires_at) VALUES (1, 'processing', ?)",
         (past,)

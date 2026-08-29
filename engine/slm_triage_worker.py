@@ -99,10 +99,13 @@ def heartbeat(conn: sqlite3.Connection, job_id: int, lease_interval: int) -> Non
         lease_interval: The duration in seconds to extend the lease.
     """
     try:
-        expiry = datetime.now(timezone.utc) + timedelta(seconds=lease_interval)
+        now = datetime.now(timezone.utc)
+        expiry = now + timedelta(seconds=lease_interval)
+        now_str = now.strftime('%Y-%m-%d %H:%M:%S')
+        expiry_str = expiry.strftime('%Y-%m-%d %H:%M:%S')
         conn.execute(
             "UPDATE triage_queue SET last_heartbeat_at = ?, lease_expires_at = ? WHERE id = ?",
-            (datetime.now(timezone.utc), expiry, job_id)
+            (now_str, expiry_str, job_id)
         )
         conn.commit()
     except Exception as e:
@@ -114,9 +117,10 @@ def reap_stale(conn: sqlite3.Connection) -> None:
     Args:
         conn: The active sqlite3.Connection object.
     """
+    now_str = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     conn.execute(
         "UPDATE triage_queue SET status = 'pending', lease_expires_at = NULL WHERE status = 'processing' AND lease_expires_at < ?",
-        (datetime.now(timezone.utc),)
+        (now_str,)
     )
     conn.commit()
 

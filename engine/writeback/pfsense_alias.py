@@ -98,7 +98,7 @@ def store_proposal(name: str, ip: str) -> None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute(f"INSERT INTO {TABLE_ALIAS_PROPOSALS} (alias_name, ip_address, status, created_at) VALUES (?, ?, ?, ?)",
-                       (name, ip, PROPOSAL_STATUS_PENDING, datetime.now(timezone.utc)))
+                       (name, ip, PROPOSAL_STATUS_PENDING, datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')))
         conn.commit()
         conn.close()
         print(f"{MSG_PROPOSAL_STORED}: {name} -> {ip}")
