@@ -313,7 +313,7 @@ def _load_config() -> Dict[str, Any]:
         'batch_size' (int).
 
     Raises:
-        RuntimeError: If required environment variables are missing.
+        RuntimeError: If required environment variables are missing or SOC_BATCH_SIZE is invalid.
     """
     required_vars = ["SOC_DBNAME", "SOC_USER"]
     missing = [var for var in required_vars if not os.getenv(var)]
@@ -335,11 +335,10 @@ def _load_config() -> Dict[str, Any]:
     if batch_size_env := os.getenv("SOC_BATCH_SIZE"):
         try:
             batch_size = int(batch_size_env)
-        except ValueError:
-            pass
+        except ValueError as e:
+            raise RuntimeError(f"Invalid SOC_BATCH_SIZE value '{batch_size_env}': must be an integer") from e
 
     return {"db_config": db_config, "batch_size": batch_size}
-
 def configure_logging() -> None:
     root_logger = logging.getLogger()
     if root_logger.handlers:
