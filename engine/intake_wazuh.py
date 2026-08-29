@@ -1,7 +1,6 @@
 import sqlite3
 import json
 import uuid
-import sys
 import logging
 import os
 from datetime import datetime, timezone
@@ -194,6 +193,7 @@ def intake_adapter(raw_payload: str) -> int:
     finally:
         conn.close()
 if __name__ == "__main__":
+    import sys
     _load_config()
     try:
         input_data = sys.stdin.read()
