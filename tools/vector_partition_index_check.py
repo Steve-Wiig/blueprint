@@ -141,17 +141,40 @@ def _get_required_partitions(defaults: Optional[Dict[str, Any]] = None) -> List[
     Returns:
         List[str]: List of required partition names (e.g., ['alerts', 'threat_intel', 'audit_logs']).
     """
-    env_val = os.environ.get("SLM_REQUIRED_PARTITIONS")
-    if env_val:
-        return [p.strip() for p in env_val.split(",") if p.strip()]
+    def _get_config_value(
+        env_var: str,
+        defaults_key: str,
+        default_value: Any,
+        env_parser: Callable[[str], Any],
+        defaults_parser: Optional[Callable[[Any], Any]] = None,
+    ) -> Any:
+        env_val = os.environ.get(env_var)
+        if env_val:
+            try:
+                return env_parser(env_val)
+            except (ValueError, TypeError):
+                pass
 
-    if defaults is None:
-        defaults = _load_defaults_config()
-    if "required_partitions" in defaults:
-        return defaults["required_partitions"]
+        current_defaults = defaults if defaults is not None else _load_defaults_config()
+        if defaults_key in current_defaults:
+            val = current_defaults[defaults_key]
+            if defaults_parser is not None:
+                try:
+                    return defaults_parser(val)
+                except (ValueError, TypeError):
+                    pass
+            else:
+                return val
 
-    return DEFAULTS["required_partitions"]
+        return default_value
 
+    return _get_config_value(
+        env_var="SLM_REQUIRED_PARTITIONS",
+        defaults_key="required_partitions",
+        default_value=DEFAULTS["required_partitions"],
+        env_parser=lambda v: [p.strip() for p in v.split(",") if p.strip()],
+        defaults_parser=None,
+    )
 
 def _get_max_shard_size_gb(defaults: Optional[Dict[str, Any]] = None) -> int:
     """
