@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from enum import Enum
-from functools import wraps
+from functools import wraps, lru_cache
 from typing import Tuple, Dict, List, Optional, Any, Callable, Union
 
 try:
@@ -97,8 +97,114 @@ def _load_sensitive_patterns_from_env() -> List[Union[str, re.Pattern]]:
         logger.warning("Failed to parse SENSITIVE_PATTERNS env var: %s", e)
         return []
 
+
+class Sanitizer:
+    """Sanitizes dictionaries by redacting sensitive fields.
+
+    Encapsulates pattern compilation and caching logic for better testability
+    and maintainability.
+    """
+
+    def __init__(self, sensitive_patterns: Optional[List[Union[str, re.Pattern]]] = None) -> None:
+        """Initialize the sanitizer with optional custom patterns.
+
+        Args:
+            sensitive_patterns: List of substring patterns or compiled regex objects
+                to detect sensitive keys. If None, uses default organizational patterns
+                plus any patterns loaded from the SENSITIVE_PATTERNS environment variable.
+        """
+        if sensitive_patterns is None:
+            sensitive_patterns = _DEFAULT_SENSITIVE_PATTERNS.copy()
+            sensitive_patterns.extend(_load_sensitive_patterns_from_env())
+        self._raw_patterns = sensitive_patterns
+        self._string_patterns: List[str] = []
+        self._regex_patterns: List[re.Pattern] = []
+        self._compiled_string_regex: Optional[re.Pattern] = None
+        self._separate_patterns()
+
+    def _separate_patterns(self) -> None:
+        """Separate string patterns from compiled regex patterns."""
+        self._string_patterns = [p for p in self._raw_patterns if isinstance(p, str)]
+        self._regex_patterns = [p for p in self._raw_patterns if isinstance(p, re.Pattern)]
+
+    @lru_cache(maxsize=1)
+    def _compile_string_patterns(self, patterns_tuple: Tuple[str, ...]) -> Optional[re.Pattern]:
+        """Compile string patterns into a single case-insensitive regex.
+
+        Uses lru_cache to avoid recompilation when patterns haven't changed.
+
+        Args:
+            patterns_tuple: Tuple of string patterns for cache key.
+
+        Returns:
+            Compiled regex pattern or None if no patterns.
+        """
+        if not patterns_tuple:
+            return None
+        return re.compile('|'.join(map(re.escape, patterns_tuple)), re.IGNORECASE)
+
+    def compile_patterns(self) -> None:
+        """Compile string patterns into a single regex for efficient matching."""
+        self._compiled_string_regex = self._compile_string_patterns(tuple(self._string_patterns))
+
+    def is_sensitive(self, key: str) -> bool:
+        """Check if a key matches any sensitive pattern.
+
+        Args:
+            key: The dictionary key to check.
+
+        Returns:
+            True if the key is considered sensitive, False otherwise.
+        """
+        if self._compiled_string_regex is None:
+            self.compile_patterns()
+        key_lower = key.lower()
+        if self._compiled_string_regex and self._compiled_string_regex.search(key_lower):
+            return True
+        for pat in self._regex_patterns:
+            if pat.search(key):
+                return True
+        return False
+
+    def sanitize(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Recursively sanitize a dictionary by redacting sensitive fields.
+
+        Args:
+            data: The dictionary to sanitize.
+
+        Returns:
+            A new dictionary with sensitive values redacted.
+        """
+        if self._compiled_string_regex is None:
+            self.compile_patterns()
+
+        def _sanitize(obj: Any) -> Any:
+            if isinstance(obj, dict):
+                result = {}
+                for k, v in obj.items():
+                    if self.is_sensitive(k):
+                        result[k] = "***REDACTED***"
+                    else:
+                        result[k] = _sanitize(v)
+                return result
+            elif isinstance(obj, list):
+                return [_sanitize(item) for item in obj]
+            elif isinstance(obj, str):
+                for pat in self._regex_patterns:
+                    if pat.search(obj):
+                        return "***REDACTED***"
+                return obj
+            else:
+                return obj
+
+        return _sanitize(data)
+
+
 def sanitize(data: Dict[str, Any], sensitive_patterns: Optional[List[Union[str, re.Pattern]]] = None) -> Dict[str, Any]:
     """Recursively sanitize a dictionary by redacting sensitive fields.
+
+    This function maintains backward compatibility with the original API.
+    For more control over pattern compilation and caching, use the Sanitizer class directly.
 
     Args:
         data: The dictionary to sanitize.
@@ -109,51 +215,9 @@ def sanitize(data: Dict[str, Any], sensitive_patterns: Optional[List[Union[str, 
     Returns:
         A new dictionary with sensitive values redacted.
     """
-    if sensitive_patterns is None:
-        sensitive_patterns = _DEFAULT_SENSITIVE_PATTERNS.copy()
-        sensitive_patterns.extend(_load_sensitive_patterns_from_env())
+    sanitizer = Sanitizer(sensitive_patterns)
+    return sanitizer.sanitize(data)
 
-    string_patterns = [p for p in sensitive_patterns if isinstance(p, str)]
-    regex_patterns = [p for p in sensitive_patterns if isinstance(p, re.Pattern)]
-
-    cache_key = tuple(string_patterns)
-    if not hasattr(sanitize, '_string_regex_cache') or sanitize._string_regex_cache.get('key') != cache_key:
-        if string_patterns:
-            compiled = re.compile('|'.join(map(re.escape, string_patterns)), re.IGNORECASE)
-        else:
-            compiled = None
-        sanitize._string_regex_cache = {'key': cache_key, 'regex': compiled}
-    compiled_string_regex = sanitize._string_regex_cache['regex']
-
-    def _is_sensitive(key: str) -> bool:
-        key_lower = key.lower()
-        if compiled_string_regex and compiled_string_regex.search(key_lower):
-            return True
-        for pat in regex_patterns:
-            if pat.search(key):
-                return True
-        return False
-
-    def _sanitize(obj: Any) -> Any:
-        if isinstance(obj, dict):
-            result = {}
-            for k, v in obj.items():
-                if _is_sensitive(k):
-                    result[k] = "***REDACTED***"
-                else:
-                    result[k] = _sanitize(v)
-            return result
-        elif isinstance(obj, list):
-            return [_sanitize(item) for item in obj]
-        elif isinstance(obj, str):
-            for pat in regex_patterns:
-                if pat.search(obj):
-                    return "***REDACTED***"
-            return obj
-        else:
-            return obj
-
-    return _sanitize(data)
 
 def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple["psycopg2.extensions.connection", sqlite3.Connection]:
     """Establishes connections to PostgreSQL and SQLite databases.
@@ -184,6 +248,7 @@ def get_db_connections(pg_dsn: str, sqlite_path: str) -> Tuple["psycopg2.extensi
     except Exception as e:
         logger.exception("Unexpected connection error")
         raise RuntimeError("Failed to establish database connections") from e
+
 
 @contextmanager
 def initialize_connections(pg_dsn: str, sqlite_path: str):
@@ -295,6 +360,7 @@ def _fetch_provider_values(
     _fetch_cache.set(cache_key, result)
     return result
 
+
 def update_quota(
     sq_conn: sqlite3.Connection,
     provider: str,
@@ -353,42 +419,16 @@ def _check_batch_quota(
 
     Raises:
         ProviderNotConfiguredError: If a provider is not in quota_ledger.
-        ValueError: If a provider has insufficient quota.
     """
-    if not providers_in_batch:
-        return
-
-    quota_dict = _fetch_provider_values(sq_conn, providers_in_batch, 'quota_ledger', 'remaining', cursor)
-    cost_dict = _fetch_provider_values(sq_conn, providers_needed, 'provider_costs', 'cost', cursor) if providers_needed else {}
+    quota_map = _fetch_provider_values(sq_conn, providers_in_batch, "quota_ledger", "remaining", cursor)
+    cost_map = _fetch_provider_values(sq_conn, providers_needed, "enrichment_costs", "cost", cursor)
 
     for provider in providers_in_batch:
-        if provider not in quota_dict:
+        if provider not in quota_map:
             raise ProviderNotConfiguredError(f"Provider '{provider}' not configured in quota_ledger")
 
-        if provider in providers_needed:
-            cost = cost_dict.get(provider, 0)
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Demonstrate proper database connection initialization.")
-    parser.add_argument('--pg-dsn', default=os.getenv('PG_DSN', 'postgresql://user:pass@localhost/db'),
-                        help='PostgreSQL DSN (default: PG_DSN env var or localhost)')
-    parser.add_argument('--sqlite-path', default=os.getenv('SQLITE_PATH', ':memory:'),
-                        help='SQLite database path (default: SQLITE_PATH env var or :memory:)')
-    args = parser.parse_args()
-
-    logging.basicConfig(level=logging.INFO)
-
-    logger.info("Demonstrating correct usage pattern for database connections")
-    logger.info("Using PG_DSN: %s", args.pg_dsn)
-    logger.info("Using SQLite path: %s", args.sqlite_path)
-
-    try:
-        with initialize_connections(args.pg_dsn, args.sqlite_path) as (pg_conn, sq_conn):
-            logger.info("Successfully established database connections")
-            logger.info("PostgreSQL connection: %s", pg_conn)
-            logger.info("SQLite connection: %s", sq_conn)
-            # Perform database operations here
-    except RuntimeError as e:
-        logger.error("Failed to establish connections: %s", e)
-        raise SystemExit(1)
+    for provider in providers_needed:
+        cost = cost_map.get(provider, 0)
+        remaining = quota_map.get(provider, 0)
+        if remaining < cost:
+            raise ValueError(f"Insufficient quota for provider '{provider}': {remaining} remaining, {cost} required")
