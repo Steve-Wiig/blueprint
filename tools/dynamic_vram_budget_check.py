@@ -214,7 +214,6 @@ def main(dry_run: bool = False) -> int:
     print(result.message)
     return result.exit_code
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dynamic VRAM Budget Check")
     parser.add_argument("--dry-run", action="store_true", help="Mock nvidia-smi and run full validation")
