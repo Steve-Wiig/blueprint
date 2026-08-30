@@ -355,8 +355,10 @@ def main() -> Union[str, int]:
         Case ID string on success, or integer exit code on failure.
     """
     args = parse_args()
+    if getattr(args, 'test_sanitization', False):
+        print("Error: --test-sanitization is no longer supported. Use pytest for test discovery.", file=sys.stderr)
+        return 1
     return _default_adapter.main(args)
-
 
 __version__ = "1.0.0"
 
