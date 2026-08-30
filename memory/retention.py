@@ -8,6 +8,7 @@ import datetime
 from datetime import timezone
 import psycopg2
 from psycopg2.extensions import connection as PgConnection
+from psycopg2.pool import ThreadedConnectionPool
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
@@ -163,31 +164,23 @@ def archive_partition(conn: PgConnection, partition_name: str, dry_run: bool = F
         raise RuntimeError(f"Archive failed for {partition_name}: {e}") from e
 
 
-def archive_partition_with_connection(db_url: str, partition_name: str, dry_run: bool = False) -> None:
+def _archive_partition_worker(pool: ThreadedConnectionPool, partition_name: str, dry_run: bool = False) -> None:
     """
-    Archive a partition using a dedicated connection (for parallel processing).
+    Worker function that archives a partition using a connection from the pool.
     
     Args:
-        db_url: PostgreSQL connection string.
+        pool: ThreadedConnectionPool to get connections from.
         partition_name: Name of the partition table to archive.
         dry_run: If True, log actions without executing them.
         
     Raises:
         RuntimeError: If the archiving process fails.
     """
-    if dry_run:
-        date_part = partition_name.replace('iocs_', '')
-        archive_dir = Path(ARCHIVE_BASE) / date_part[:7]
-        output_file = archive_dir / f"{partition_name}.jsonl.zst"
-        sys.stdout.write(f"[DRY-RUN] Would archive {partition_name} to {output_file}\n")
-        sys.stdout.write(f"[DRY-RUN] Would execute: DROP TABLE {partition_name};\n")
-        return
-
-    conn = psycopg2.connect(db_url)
+    conn = pool.getconn()
     try:
-        archive_partition(conn, partition_name, dry_run=False)
+        archive_partition(conn, partition_name, dry_run=dry_run)
     finally:
-        conn.close()
+        pool.putconn(conn)
 
 
 def get_partitions_to_archive(db_url: str, retention_days: int, conn: PgConnection = None) -> List[str]:
@@ -237,7 +230,7 @@ def execute_archive_plan(db_url: str, partitions: List[str], max_workers: int, d
     """
     Execute archiving plan for given partitions.
     
-    Handles dry-run logging and parallel/single execution.
+    Handles dry-run logging and parallel/single execution using a connection pool.
     
     Args:
         db_url: PostgreSQL connection string.
@@ -261,20 +254,28 @@ def execute_archive_plan(db_url: str, partitions: List[str], max_workers: int, d
         return
 
     if len(partitions) == 1:
-        archive_partition_with_connection(db_url, partitions[0])
+        conn = psycopg2.connect(db_url)
+        try:
+            archive_partition(conn, partitions[0], dry_run=False)
+        finally:
+            conn.close()
     else:
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(archive_partition_with_connection, db_url, part): part
-                for part in partitions
-            }
-            for future in as_completed(futures):
-                part = futures[future]
-                try:
-                    future.result()
-                except Exception as e:
-                    sys.stderr.write(f"Failed to archive {part}: {e}\n")
-                    raise
+        pool = ThreadedConnectionPool(minconn=1, maxconn=max_workers, dsn=db_url)
+        try:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(_archive_partition_worker, pool, part): part
+                    for part in partitions
+                }
+                for future in as_completed(futures):
+                    part = futures[future]
+                    try:
+                        future.result()
+                    except Exception as e:
+                        sys.stderr.write(f"Failed to archive {part}: {e}\n")
+                        raise
+        finally:
+            pool.closeall()
 
 
 def run_retention(db_url: str, retention_days: int = None, max_workers: int = 4, dry_run: bool = False) -> None:
@@ -315,11 +316,21 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="IOC Retention Manager")
     parser.add_argument("--db-url", required=True, help="Postgres connection string")
     parser.add_argument("--retention-days", type=int, default=90, help="Retention period in days (default: 90). Overrides RETENTION_DAYS env var.")
-    parser.add_argument("--max-workers", type=int, default=4, help="Maximum parallel workers for archiving (default: 4)")
-    parser.add_argument("--dry-run", action="store_true", help="Log actions without executing archive or DROP TABLE")
+    parser.add_argument("--max-workers", type=int, default=4, help="Maximum parallel workers (default: 4)")
+    parser.add_argument("--dry-run", action="store_true", help="Log actions without executing")
+    parser.add_argument("--skip-mount-check", action="store_true", help="Skip CMR mount verification")
     args = parser.parse_args()
-    
-    run_retention(args.db_url, retention_days=args.retention_days, max_workers=args.max_workers, dry_run=args.dry_run)
+
+    if not args.skip_mount_check:
+        check_cmr_mount()
+    validate_commands()
+
+    run_retention(
+        db_url=args.db_url,
+        retention_days=args.retention_days,
+        max_workers=args.max_workers,
+        dry_run=args.dry_run
+    )
 
 
 if __name__ == "__main__":
