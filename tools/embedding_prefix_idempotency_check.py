@@ -162,11 +162,15 @@ def _validate(prefixes: Dict[str, str]) -> bool:
     if not validate_against_service(prefixes):
         raise RuntimeError("Prefix validation against embedding service failed")
     return True
-def _load_cases(prefixes: Dict[str, str], dry_run: bool):
+def _load_cases(prefixes: Dict[str, str], dry_run: bool = False, test_cases=None):
     doc_prefix = prefixes["document"]
     query_prefix = prefixes["query"]
-    return get_mock_test_cases(doc_prefix, query_prefix) if dry_run else get_production_test_cases(doc_prefix)
-
+    
+    if test_cases is not None:
+        return test_cases
+    if dry_run:
+        return get_mock_test_cases(doc_prefix, query_prefix)
+    return get_production_test_cases(doc_prefix)
 
 def run_tests(test_cases: list[tuple[str, str, bool]], dry_run: bool) -> bool:
     all_passed = True
