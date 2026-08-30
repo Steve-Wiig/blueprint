@@ -226,6 +226,24 @@ def get_partitions_to_archive(db_url: str, retention_days: int, conn: PgConnecti
             conn.close()
 
 
+from typing import Tuple, List
+import argparse
+import subprocess
+import sys
+import os
+import shutil
+import datetime
+from datetime import timezone
+import psycopg2
+from psycopg2.extensions import connection as PgConnection
+from psycopg2.pool import ThreadedConnectionPool
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+ARCHIVE_BASE = '/archive/iocs'
+CMR_MOUNT = '/mnt/cmr'
+ZSTD_COMMAND = 'zstd'
+import logging
 def execute_archive_plan(db_url: str, partitions: List[str], max_workers: int, dry_run: bool) -> None:
     """
     Execute archiving plan for given partitions.
@@ -260,11 +278,18 @@ def execute_archive_plan(db_url: str, partitions: List[str], max_workers: int, d
         finally:
             conn.close()
     else:
+        def _worker_wrapper(pool, part):
+            conn = pool.getconn()
+            try:
+                archive_partition(conn, part, dry_run=False)
+            finally:
+                pool.putconn(conn)
+        
         pool = ThreadedConnectionPool(minconn=1, maxconn=max_workers, dsn=db_url)
         try:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
-                    executor.submit(_archive_partition_worker, pool, part): part
+                    executor.submit(_worker_wrapper, pool, part): part
                     for part in partitions
                 }
                 for future in as_completed(futures):
@@ -276,7 +301,6 @@ def execute_archive_plan(db_url: str, partitions: List[str], max_workers: int, d
                         raise
         finally:
             pool.closeall()
-
 
 def run_retention(db_url: str, retention_days: int = None, max_workers: int = 4, dry_run: bool = False) -> None:
     """
