@@ -288,15 +288,43 @@ def main() -> None:
     """
     global LOGGER
 
-    # Load allowlist configuration
-    ALLOWLIST_SHA256 = [
-        # Example SHA256 hash, replace with actual values and comments
-        # 'hash1'  # Allowlisted due to specific use case in project XYZ
-    ]
-    ALLOWLIST_UUID = [
-        # Example UUID, replace with actual values and comments
-        # 'uuid1'  # Allowlisted due to specific use case in project ABC
-    ]
+    # Load allowlist configuration from external config file
+    # Config file locations (checked in order):
+    #   1. ~/.config/credential_sanitizer/allowlist.json
+    #   2. /etc/credential_sanitizer/allowlist.json
+    # Config file format (JSON):
+    # {
+    #     "allowlist_sha256": [
+    #         "hash1",  # Allowlisted due to specific use case in project XYZ
+    #         "hash2"   # Allowlisted for legacy compatibility
+    #     ],
+    #     "allowlist_uuid": [
+    #         "uuid1",  # Allowlisted due to specific use case in project ABC
+    #         "uuid2"   # Allowlisted for testing purposes
+    #     ]
+    # }
+    # Each entry MUST include a comment explaining its origin and justification.
+    import json
+    from pathlib import Path
+
+    def _load_allowlist_config() -> dict:
+        """Load allowlist from config file with fallback to empty lists."""
+        config_paths = [
+            Path.home() / ".config" / "credential_sanitizer" / "allowlist.json",
+            Path("/etc/credential_sanitizer/allowlist.json"),
+        ]
+        for config_path in config_paths:
+            if config_path.exists():
+                try:
+                    with config_path.open("r", encoding="utf-8") as f:
+                        return json.load(f)
+                except (json.JSONDecodeError, OSError) as e:
+                    LOGGER.warning("Failed to load allowlist config from %s: %s", config_path, e)
+        return {"allowlist_sha256": [], "allowlist_uuid": []}
+
+    allowlist_config = _load_allowlist_config()
+    ALLOWLIST_SHA256 = allowlist_config.get("allowlist_sha256", [])
+    ALLOWLIST_UUID = allowlist_config.get("allowlist_uuid", [])
     ALLOWLIST = set(ALLOWLIST_SHA256 + ALLOWLIST_UUID)
 
     parser = argparse.ArgumentParser(
@@ -356,7 +384,6 @@ Examples:
             raise ScanExit(2)
 
     raise ScanExit(exit_code)
-
 
 if __name__ == "__main__":
     try:
