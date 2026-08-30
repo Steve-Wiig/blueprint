@@ -267,7 +267,7 @@ def enqueue_event(cursor: sqlite3.Cursor, event: Dict[str, Any]) -> None:
         (json.dumps(event), event["severity"]),
     )
     event_id = cursor.lastrowid
-    _log_audit(event_id, None, "pending", "enqueue")
+    _log_audit(cursor, event_id, None, "pending", "enqueue")
 
 
 def process_eve_file(filepath: str) -> int:
@@ -357,62 +357,19 @@ def lease_event(cursor: sqlite3.Cursor, event_id: int, ttl_seconds: int = 300) -
 
 
 @execute_in_transaction
-def heartbeat_event(cursor: sqlite3.Cursor, event_id: int, ttl_seconds: int = 300) -> bool:
-    """Reset the lease expiration for an event.
+def complete_event(cursor: sqlite3.Cursor, event_id: int) -> bool:
+    """Marks an event as completed.
 
     Args:
-        event_id: The ID of the event.
-        ttl_seconds: Time-to-live for the lease in seconds.
+        event_id: The ID of the event to complete.
 
     Returns:
-        True if the heartbeat was successful, False otherwise.
+        True if the event was updated, False otherwise.
     """
     cursor.execute(
-        "UPDATE triage_queue SET lease_expires_at = datetime('now', '+' || ? || 'seconds'), last_heartbeat_at = datetime('now') WHERE id = ? AND status = 'leased'",
-        (ttl_seconds, event_id),
-    )
-    return cursor.rowcount > 0
-
-
-@execute_in_transaction
-def release_event(cursor: sqlite3.Cursor, event_id: int, status: str = "pending") -> None:
-    """Release an event back to the queue or mark as failed/completed.
-
-    Args:
-        event_id: The ID of the event.
-        status: The new status to set (pending, failed, completed).
-    """
-    cursor.execute(
-        "UPDATE triage_queue SET status = ?, lease_expires_at = NULL, last_heartbeat_at = NULL WHERE id = ?",
-        (status, event_id),
-    )
-    _log_audit(event_id, None, status, "release")
-
-
-@execute_in_transaction
-def fail_event(cursor: sqlite3.Cursor, event_id: int, failure_reason: str) -> None:
-    """Mark an event as failed and increment its attempt counter.
-
-    Args:
-        event_id: The ID of the event.
-        failure_reason: The reason for the failure.
-    """
-    cursor.execute(
-        "UPDATE triage_queue SET status = 'failed', attempts = attempts + 1, failure_reason = ?, lease_expires_at = NULL, last_heartbeat_at = NULL WHERE id = ?",
-        (failure_reason, event_id),
-    )
-    _log_audit(event_id, None, "failed", "fail")
-
-
-@execute_in_transaction
-def complete_event(cursor: sqlite3.Cursor, event_id: int) -> None:
-    """Mark an event as completed.
-
-    Args:
-        event_id: The ID of the event.
-    """
-    cursor.execute(
-        "UPDATE triage_queue SET status = 'completed', attempts = attempts + 1, lease_expires_at = NULL, last_heartbeat_at = NULL WHERE id = ?",
+        "UPDATE triage_queue SET status = 'completed' WHERE id = ? AND status = 'leased'",
         (event_id,),
     )
-    _log_audit(event_id, None, "completed", "complete")
+    if cursor.rowcount > 0:
+        _log_audit(cursor, event_id, "leased", "completed", "worker")
+    return cursor.rowcount > 0
