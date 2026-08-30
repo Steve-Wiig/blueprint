@@ -162,13 +162,13 @@ def rollback_execute(approved: bool = False, conn: sqlite3.Connection | None = N
         count = cursor.fetchone()[0]
         
         if not approved:
-            logging.info(MSG_ROLLBACK_DRYRUN + ": Would delete " + str(count) + " pending proposal(s)")
+            print(f"{MSG_ROLLBACK_DRYRUN}: Would delete {count} pending proposal(s)")
             return count
         
         cursor.execute(DELETE_PENDING_SQL, (PROPOSAL_STATUS_PENDING,))
         deleted = cursor.rowcount
         conn.commit()
-        logging.info(MSG_ROLLBACK_EXECUTED + ": Deleted " + str(deleted) + " pending proposal(s)")
+        print(f"{MSG_ROLLBACK_EXECUTED}: Deleted {deleted} pending proposal(s)")
         return deleted
     except Exception:
         raise RuntimeError("Rollback execution failed")
@@ -182,6 +182,8 @@ def main() -> None:
 
     Raises RuntimeError if an invalid mode is provided.
     """
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+    
     parser = argparse.ArgumentParser(description="pfSense Alias Writeback Adapter")
     parser.add_argument("--name", required=True, help="Alias name")
     parser.add_argument("--ip", required=True, help="IP address to add")
