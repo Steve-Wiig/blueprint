@@ -201,4 +201,7 @@ def main() -> int:
     return 0
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise RuntimeError(main())
+    except RuntimeError as e:
+        sys.exit(e.args[0] if isinstance(e.args[0], int) else 1)
