@@ -604,9 +604,14 @@ def apply_auto_fix(file_path, issue, api_keys):
 
             try:
                 ast.parse(fix_code)
+                if attempt == 0:
+                    print("       [METRIC] WHOLE-FILE attempt 1 success")
+                else:
+                    print("       [METRIC] WHOLE-FILE repaired successfully on attempt 2")
                 break
             except SyntaxError as e:
                 if attempt == 0:
+                    print(f"       [METRIC] Syntax error type: {type(e).__name__}, msg: {e.msg}, line: {e.lineno}")
                     offending_line = ""
                     code_lines = fix_code.splitlines()
 
@@ -634,6 +639,7 @@ def apply_auto_fix(file_path, issue, api_keys):
                     )
                     continue
 
+                print("       [METRIC] WHOLE-FILE rejected after attempt 2")
                 print(
                     f"       X Fix is not valid Python after repair attempt "
                     f"({e.msg}, line {e.lineno}) — rejecting"
