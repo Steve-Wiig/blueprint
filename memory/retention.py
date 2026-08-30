@@ -41,6 +41,15 @@ def _load_config() -> dict:
         'CMR_MOUNT': os.environ.get('CMR_MOUNT', CMR_MOUNT),
         'ZSTD_COMMAND': os.environ.get('ZSTD_COMMAND', ZSTD_COMMAND),
     }
+
+
+try:
+    import zstandard as zstd
+    _HAS_ZSTANDARD = True
+except ImportError:
+    _HAS_ZSTANDARD = False
+
+
 def validate_commands() -> None:
     """
     Verify that required external commands are available in PATH.
@@ -48,10 +57,10 @@ def validate_commands() -> None:
     Raises:
         RuntimeError: If any required command is not found.
     """
-    if not shutil.which(ZSTD_COMMAND):
+    if not _HAS_ZSTANDARD and not shutil.which(ZSTD_COMMAND):
         raise RuntimeError(
-            f"Required command '{ZSTD_COMMAND}' not found in PATH. "
-            f"Set ZSTD_COMMAND environment variable to override."
+            f"Required command '{ZSTD_COMMAND}' not found in PATH and zstandard Python bindings not available. "
+            f"Set ZSTD_COMMAND environment variable to override or install zstandard package."
         )
 
 
@@ -92,19 +101,29 @@ def _get_archive_paths(partition_name: str) -> Tuple[Path, Path]:
     output_file = archive_dir / f"{partition_name}.jsonl.zst"
     return archive_dir, output_file
 
+
 def _stream_and_compress(conn: PgConnection, partition_name: str, output_file: Path) -> None:
     """Stream partition data from Postgres and compress it with zstd."""
     query = f"COPY (SELECT * FROM {partition_name}) TO STDOUT WITH (FORMAT JSON);"
-    with open(output_file, 'wb') as f:
-        zstd = subprocess.Popen([ZSTD_COMMAND, "--rm"], stdin=subprocess.PIPE, stdout=f)
-        try:
-            with conn.cursor() as cur:
-                cur.copy_expert(query, zstd.stdin)
-        finally:
-            zstd.stdin.close()
-            zstd.wait()
-            if zstd.returncode != 0:
-                raise Exception("zstd compression failed")
+    
+    if _HAS_ZSTANDARD:
+        cctx = zstd.ZstdCompressor(level=3)
+        with open(output_file, 'wb') as f:
+            with cctx.stream_writer(f) as compressor:
+                with conn.cursor() as cur:
+                    cur.copy_expert(query, compressor)
+    else:
+        with open(output_file, 'wb') as f:
+            zstd_proc = subprocess.Popen([ZSTD_COMMAND], stdin=subprocess.PIPE, stdout=f)
+            try:
+                with conn.cursor() as cur:
+                    cur.copy_expert(query, zstd_proc.stdin)
+            finally:
+                zstd_proc.stdin.close()
+                zstd_proc.wait()
+                if zstd_proc.returncode != 0:
+                    raise Exception("zstd compression failed")
+
 
 def _drop_partition_table(conn: PgConnection, partition_name: str) -> None:
     """Drop the partition table from the database."""
@@ -112,11 +131,13 @@ def _drop_partition_table(conn: PgConnection, partition_name: str) -> None:
         cur.execute(f"DROP TABLE {partition_name};")
     conn.commit()
 
+
 def archive_partition(conn: PgConnection, partition_name: str, dry_run: bool = False) -> None:
     """
     Archive a partition table to a compressed JSONL file and drop the table.
 
-    Uses psycopg2.copy_expert for efficient streaming without subprocess overhead.
+    Uses psycopg2.copy_expert for efficient streaming with in-process zstd compression
+    when zstandard Python bindings are available, otherwise falls back to subprocess.
 
     Args:
         conn: Active PostgreSQL connection.
@@ -140,6 +161,8 @@ def archive_partition(conn: PgConnection, partition_name: str, dry_run: bool = F
         _drop_partition_table(conn, partition_name)
     except Exception as e:
         raise RuntimeError(f"Archive failed for {partition_name}: {e}") from e
+
+
 def archive_partition_with_connection(db_url: str, partition_name: str, dry_run: bool = False) -> None:
     """
     Archive a partition using a dedicated connection (for parallel processing).
@@ -208,6 +231,8 @@ def get_partitions_to_archive(db_url: str, retention_days: int, conn: PgConnecti
     finally:
         if own_conn:
             conn.close()
+
+
 def execute_archive_plan(db_url: str, partitions: List[str], max_workers: int, dry_run: bool) -> None:
     """
     Execute archiving plan for given partitions.
