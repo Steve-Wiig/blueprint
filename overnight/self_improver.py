@@ -555,37 +555,90 @@ def apply_auto_fix(file_path, issue, api_keys):
 
     # ---------- WHOLE-FILE PATH (fallback) ----------
     if surgical_fix is None:
-        prompt = (
-            "You are a senior Python engineer. Fix the issue below in this file.\n"
-            "Return ONLY the complete fixed file content.\n"
-            "STRICT OUTPUT RULES:\n"
-            "- Your response must be ONLY valid Python code. Nothing else.\n"
-            "- No markdown fences, no explanations, no comments about the change.\n"
-            "- No reasoning, analysis, planning, or thinking process.\n"
-            "- Do NOT start with Let me / Here / I will / First or any prose.\n"
-            "- The first non-empty line MUST be Python code.\n"
-            "Preserve all unrelated behavior. Keep the module importable without "
-            "side effects. Use datetime.now(timezone.utc), never utcnow().\n"
-            f"{lessons_block}"
-            f"Issue: {issue.get('description', '')}\n"
-            f"Category: {issue.get('category', '')}\n"
-            f"Suggestion: {issue.get('suggestion', '')}\n\n"
-            f"Current file content:\n{original[:12000]}\n"
-        )
-        print(f"       WHOLE-FILE Generating fix: {issue.get('description', '')[:80]}")
-        fix_code = generate(prompt, api_keys, temperature=0.2)
-        if not fix_code:
-            print(f"       X Fix generation failed")
-            return False
-        fix_code = strip_fences(fix_code)
-        if len(fix_code) < 0.5 * len(original):
-            print(f"       X Fix suspiciously short ({len(fix_code)} vs {len(original)} chars) — rejecting")
-            return False
-        try:
-            ast.parse(fix_code)
-        except SyntaxError as e:
-            print(f"       X Fix is not valid Python ({e.msg}, line {e.lineno}) — rejecting")
-            return False
+        feedback = ""
+        for attempt in range(2):
+            prompt = (
+                "You are a senior Python engineer. Fix the issue below in this file.\n"
+                "Return ONLY the complete fixed file content.\n"
+                "STRICT OUTPUT RULES:\n"
+                "- Your response must be ONLY valid Python code. Nothing else.\n"
+                "- No markdown fences, no explanations, no comments about the change.\n"
+                "- No reasoning, analysis, planning, or thinking process.\n"
+                "- Do NOT start with Let me / Here / I will / First or any prose.\n"
+                "- The first non-empty line MUST be Python code.\n"
+                "Preserve all unrelated behavior. Keep the module importable without "
+                "side effects. Use datetime.now(timezone.utc), never utcnow().\n"
+                f"{lessons_block}"
+                f"Issue: {issue.get('description', '')}\n"
+                f"Category: {issue.get('category', '')}\n"
+                f"Suggestion: {issue.get('suggestion', '')}\n\n"
+                f"{feedback}"
+                f"Current file content:\n{original[:12000]}\n"
+            )
+
+            if attempt == 0:
+                print(
+                    f"       WHOLE-FILE Generating fix (attempt 1/2): "
+                    f"{issue.get('description', '')[:80]}"
+                )
+            else:
+                print(
+                    "       WHOLE-FILE Retrying with syntax feedback "
+                    "(attempt 2/2)..."
+                )
+
+            fix_code = generate(prompt, api_keys, temperature=0.2)
+
+            if not fix_code:
+                print("       X Fix generation failed")
+                return False
+
+            fix_code = strip_fences(fix_code)
+
+            if len(fix_code) < 0.5 * len(original):
+                print(
+                    f"       X Fix suspiciously short "
+                    f"({len(fix_code)} vs {len(original)} chars) — rejecting"
+                )
+                return False
+
+            try:
+                ast.parse(fix_code)
+                break
+            except SyntaxError as e:
+                if attempt == 0:
+                    offending_line = ""
+                    code_lines = fix_code.splitlines()
+
+                    if e.lineno and 0 < e.lineno <= len(code_lines):
+                        offending_line = code_lines[e.lineno - 1]
+
+                    err_msg = (
+                        f"{e.msg} "
+                        f"(line {e.lineno}, offset {e.offset})"
+                    )
+
+                    feedback = (
+                        "CRITICAL: Your previous attempt failed syntax validation!\n"
+                        f"SyntaxError: {err_msg}\n"
+                        f"Offending line: {offending_line}\n\n"
+                        "Here is the broken code you just generated. "
+                        "You MUST repair the syntax error and return the "
+                        "fully corrected file.\n"
+                        f"Broken code:\n{fix_code[:12000]}\n\n"
+                    )
+
+                    print(
+                        f"       ⚠️ Syntax error ({err_msg}). "
+                        "Retrying as repair loop..."
+                    )
+                    continue
+
+                print(
+                    f"       X Fix is not valid Python after repair attempt "
+                    f"({e.msg}, line {e.lineno}) — rejecting"
+                )
+                return False
     else:
         print(f"       + Surgical fix prepared (saved {len(original) - len(surgical_fix)} chars of generation)")
         fix_code = surgical_fix
