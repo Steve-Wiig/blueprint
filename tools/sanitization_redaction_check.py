@@ -1,10 +1,11 @@
 import json
+import logging
 import os
 import re
 import sys
 import threading
 from pathlib import Path
-from typing import TypedDict, Dict, Pattern, Optional
+from typing import TypedDict, Dict, Pattern, Optional, Callable
 from enum import IntEnum
 
 
@@ -132,18 +133,27 @@ class Sanitizer:
     always use the provided methods to modify patterns.
     """
 
-    def __init__(self, patterns: Optional[Dict[str, PatternConfig]] = None, redaction_token: str = '[REDACTED]'):
+    def __init__(
+        self,
+        patterns: Optional[Dict[str, PatternConfig]] = None,
+        redaction_token: str = '[REDACTED]',
+        audit_logger: Optional[Callable[[str, int, int], None]] = None,
+    ):
         """Initialize sanitizer with custom or default patterns.
 
         Args:
             patterns: Optional dict of pattern configurations. If None, uses global PATTERNS.
                       A copy is made to avoid external mutations affecting compiled patterns.
             redaction_token: Token used to replace sensitive data.
+            audit_logger: Optional callable(pattern_key: str, position: int, length: int) -> None
+                          invoked for each redaction. Receives pattern key, match start position,
+                          and match length. The secret value is never logged.
         """
         self._patterns = dict(patterns) if patterns is not None else dict(PATTERNS)
         self._compiled_patterns: Dict[str, Pattern[str]] = {}
         self._pattern_hashes: Dict[str, int] = {}
         self._redaction_token = redaction_token
+        self._audit_logger = audit_logger
         self._lock = threading.RLock()
         self.recompile()
 
@@ -249,6 +259,16 @@ class Sanitizer:
                 raise KeyError(pattern_key)
             redaction_type = self._patterns[pattern_key]["redaction_type"]
             token = redaction_token if redaction_token is not None else self._redaction_token
+
+            if self._audit_logger is not None:
+                def _audit_repl(match: re.Match[str]) -> str:
+                    start, end = match.span()
+                    self._audit_logger(pattern_key, start, end - start)
+                    if redaction_type == "group":
+                        return match.group(1) + token
+                    return token
+                return pattern.sub(_audit_repl, text)
+
             if redaction_type == "group":
                 return pattern.sub(r"\1" + token, text)
             return pattern.sub(token, text)
@@ -314,26 +334,85 @@ def redact(pattern_key: str, text: str, redaction_token: Optional[str] = None) -
         Text with sensitive portions replaced by the redaction token. For "group" redaction
         types (auth_header, api_key_query, password_query), the prefix (e.g.,
         "Authorization: Bearer ", "api_key=", "password=") is preserved.
-
-    Raises:
-        KeyError: If pattern_key is not found in PATTERNS.
     """
     return _get_default_sanitizer().redact(pattern_key, text, redaction_token)
 
 
-def run_sanitization_check() -> CheckResult:
-    """Run sanitization verification against known test payloads using default patterns.
+def run_sanitization_check(test_payloads: Optional[Dict[str, str]] = None) -> CheckResult:
+    """Run sanitization verification using default patterns and payloads.
+
+    Args:
+        test_payloads: Optional dict of test payloads. If None, uses global TEST_PAYLOADS.
 
     Returns:
         CheckResult enum indicating verification status.
     """
-    return _get_default_sanitizer().run_sanitization_check()
+    return _get_default_sanitizer().run_sanitization_check(test_payloads)
+
+
+def add_pattern(key: str, pattern: str, redaction_type: str) -> None:
+    """Add a new pattern to the default sanitizer.
+
+    Args:
+        key: Unique identifier for the pattern.
+        pattern: Regex pattern string.
+        redaction_type: Either "full" or "group".
+    """
+    _get_default_sanitizer().add_pattern(key, pattern, redaction_type)
+
+
+def update_pattern(key: str, pattern: Optional[str] = None, redaction_type: Optional[str] = None) -> None:
+    """Update an existing pattern in the default sanitizer.
+
+    Args:
+        key: Identifier of the pattern to update.
+        pattern: New regex pattern string (optional).
+        redaction_type: New redaction type (optional).
+    """
+    _get_default_sanitizer().update_pattern(key, pattern, redaction_type)
+
+
+def remove_pattern(key: str) -> None:
+    """Remove a pattern from the default sanitizer.
+
+    Args:
+        key: Identifier of the pattern to remove.
+    """
+    _get_default_sanitizer().remove_pattern(key)
+
+
+def reload_config(config_path: Optional[str] = None) -> None:
+    """Reload configuration from file and reset default sanitizer.
+
+    Args:
+        config_path: Optional path to config file. If None, uses standard search paths.
+    """
+    global _default_sanitizer, _CONFIG_LOADED
+    _CONFIG_LOADED = False
+    _load_config(config_path)
+    _default_sanitizer = None
 
 
 def main() -> int:
-    """CLI entry point: load config and run sanitization check."""
+    """CLI entry point for sanitizer verification.
+
+    Returns:
+        Exit code (0 for PASS, non-zero for failures).
+    """
     _load_config()
-    return int(run_sanitization_check())
+    result = run_sanitization_check()
+    if result == CheckResult.PASS:
+        print("Sanitization check: PASS")
+        return 0
+    elif result == CheckResult.PATTERN_MISSING:
+        print("Sanitization check: FAIL - Pattern missing or not matching")
+        return 1
+    elif result == CheckResult.PAYLOAD_MISSING:
+        print("Sanitization check: FAIL - Test payload missing")
+        return 2
+    else:
+        print("Sanitization check: FAIL - Internal error")
+        return 3
 
 
 if __name__ == "__main__":
