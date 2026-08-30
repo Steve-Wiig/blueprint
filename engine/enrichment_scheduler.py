@@ -120,6 +120,7 @@ class Sanitizer:
         self._string_patterns: List[str] = []
         self._regex_patterns: List[re.Pattern] = []
         self._compiled_string_regex: Optional[re.Pattern] = None
+        self._compiled_regex_patterns: Optional[re.Pattern] = None
         self._separate_patterns()
 
     def _separate_patterns(self) -> None:
@@ -143,9 +144,27 @@ class Sanitizer:
             return None
         return re.compile('|'.join(map(re.escape, patterns_tuple)), re.IGNORECASE)
 
+    @lru_cache(maxsize=1)
+    def _compile_regex_patterns(self, patterns_tuple: Tuple[str, ...]) -> Optional[re.Pattern]:
+        """Compile regex patterns into a single combined regex.
+
+        Uses lru_cache to avoid recompilation when patterns haven't changed.
+
+        Args:
+            patterns_tuple: Tuple of regex pattern strings for cache key.
+
+        Returns:
+            Compiled regex pattern or None if no patterns.
+        """
+        if not patterns_tuple:
+            return None
+        return re.compile('|'.join(f'(?:{p})' for p in patterns_tuple))
+
     def compile_patterns(self) -> None:
         """Compile string patterns into a single regex for efficient matching."""
         self._compiled_string_regex = self._compile_string_patterns(tuple(self._string_patterns))
+        regex_pattern_strings = tuple(p.pattern for p in self._regex_patterns)
+        self._compiled_regex_patterns = self._compile_regex_patterns(regex_pattern_strings)
 
     def is_sensitive(self, key: str) -> bool:
         """Check if a key matches any sensitive pattern.
@@ -161,9 +180,8 @@ class Sanitizer:
         key_lower = key.lower()
         if self._compiled_string_regex and self._compiled_string_regex.search(key_lower):
             return True
-        for pat in self._regex_patterns:
-            if pat.search(key):
-                return True
+        if self._compiled_regex_patterns and self._compiled_regex_patterns.search(key):
+            return True
         return False
 
     def sanitize(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -190,15 +208,13 @@ class Sanitizer:
             elif isinstance(obj, list):
                 return [_sanitize(item) for item in obj]
             elif isinstance(obj, str):
-                for pat in self._regex_patterns:
-                    if pat.search(obj):
-                        return "***REDACTED***"
+                if self._compiled_regex_patterns and self._compiled_regex_patterns.search(obj):
+                    return "***REDACTED***"
                 return obj
             else:
                 return obj
 
         return _sanitize(data)
-
 
 def sanitize(data: Dict[str, Any], sensitive_patterns: Optional[List[Union[str, re.Pattern]]] = None) -> Dict[str, Any]:
     """Recursively sanitize a dictionary by redacting sensitive fields.
