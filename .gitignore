@@ -23,3 +23,5 @@ __pycache__/
 handoff_log.txt
 overnight/*.json
 overnight/*.lock
+overnight/*.json
+overnight/*.lock
