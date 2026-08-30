@@ -38,6 +38,18 @@ def configure_logging() -> None:
         logger.setLevel(logging.INFO)
 
 
+@contextmanager
+def transaction(conn: sqlite3.Connection) -> Generator[sqlite3.Cursor, None, None]:
+    """Provide a transactional scope around a series of operations."""
+    cursor = conn.cursor()
+    try:
+        yield cursor
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
 def get_connection() -> Generator[sqlite3.Connection, None, None]:
     """Context manager for database connections with automatic cleanup."""
     conn = sqlite3.connect(DB_PATH)
@@ -61,26 +73,21 @@ def with_db(transaction: bool = False) -> Callable[[Callable[..., T]], Callable[
                         return func(conn, *args, **kwargs)
             except Exception as e:
                 logger.error(f"{func.__name__} error: {e}")
-                raise RuntimeError("Library code called exit(2)")
+                raise RuntimeError(f"Database operation {func.__name__} failed: {e}") from e
         return wrapper
     return decorator
 
 
 def execute_in_transaction(func: Callable[..., T]) -> Callable[..., T]:
     """Decorator that provides a connection with transaction handling."""
-    def _execute_with_error_handling(operation: Callable[[], T], func_name: str) -> T:
-        try:
-            return operation()
-        except Exception as e:
-            logger.error(f"{func_name} error: {e}")
-            raise RuntimeError("Library code called exit(2)")
-
     def wrapper(*args: Any, **kwargs: Any) -> T:
-        def operation():
+        try:
             with get_connection() as conn:
                 with transaction(conn) as cursor:
                     return func(cursor, *args, **kwargs)
-        return _execute_with_error_handling(operation, func.__name__)
+        except Exception as e:
+            logger.error(f"{func.__name__} error: {e}")
+            raise RuntimeError(f"Database operation {func.__name__} failed: {e}") from e
     return wrapper
 
 
@@ -92,20 +99,7 @@ def execute_with_connection(func: Callable[..., T]) -> Callable[..., T]:
                 return func(conn, *args, **kwargs)
         except Exception as e:
             logger.error(f"{func.__name__} error: {e}")
-            raise RuntimeError("Library code called exit(2)")
-    return wrapper
-
-
-def execute_in_transaction(func: Callable[..., T]) -> Callable[..., T]:
-    """Decorator that provides a connection with transaction handling."""
-    def wrapper(*args: Any, **kwargs: Any) -> T:
-        try:
-            with get_connection() as conn:
-                with transaction(conn) as cursor:
-                    return func(cursor, *args, **kwargs)
-        except Exception as e:
-            logger.error(f"{func.__name__} error: {e}")
-            raise RuntimeError("Library code called exit(2)")
+            raise RuntimeError(f"Database operation {func.__name__} failed: {e}") from e
     return wrapper
 
 
@@ -307,7 +301,7 @@ def process_eve_file(filepath: str) -> int:
                     continue
     except Exception as e:
         logger.error(f"File read error: {e}")
-        raise RuntimeError("Library code called exit(2)")
+        raise RuntimeError(f"Database operation process_eve_file failed: {e}") from e
 
     if not rows:
         return 0
@@ -322,7 +316,7 @@ def process_eve_file(filepath: str) -> int:
         return len(rows)
     except Exception as e:
         logger.error(f"Bulk insert error: {e}")
-        raise RuntimeError("Library code called exit(2)")
+        raise RuntimeError(f"Database operation process_eve_file failed: {e}") from e
 
 
 def get_pending_events(conn: sqlite3.Connection, limit: int = 100) -> List[Dict[str, Any]]:
@@ -356,45 +350,69 @@ def lease_event(cursor: sqlite3.Cursor, event_id: int, ttl_seconds: int = 300) -
         True if the lease was acquired, False otherwise.
     """
     cursor.execute(
-        "SELECT status FROM triage_queue WHERE id = ?",
-        (event_id,),
+        "UPDATE triage_queue SET status = 'leased', lease_expires_at = datetime('now', '+' || ? || 'seconds') WHERE id = ? AND status = 'pending'",
+        (ttl_seconds, event_id),
     )
-    row = cursor.fetchone()
-    old_status = row[0] if row else None
-
-    cursor.execute(
-        """
-        UPDATE triage_queue
-        SET status = 'processing',
-            lease_expires_at = datetime('now', ?),
-            last_heartbeat_at = datetime('now')
-        WHERE id = ? AND status = 'pending'
-        """,
-        (f"+{ttl_seconds} seconds", event_id),
-    )
-    if cursor.rowcount > 0:
-        _log_audit(event_id, old_status, "processing", "lease")
     return cursor.rowcount > 0
 
 
 @execute_in_transaction
 def heartbeat_event(cursor: sqlite3.Cursor, event_id: int, ttl_seconds: int = 300) -> bool:
-    """Extends the lease on a processing event.
+    """Reset the lease expiration for an event.
 
     Args:
-        event_id: The ID of the event to heartbeat.
-        ttl_seconds: Additional time-to-live for the lease in seconds.
+        event_id: The ID of the event.
+        ttl_seconds: Time-to-live for the lease in seconds.
 
     Returns:
         True if the heartbeat was successful, False otherwise.
     """
     cursor.execute(
-        """
-        UPDATE triage_queue
-        SET lease_expires_at = datetime('now', ?),
-            last_heartbeat_at = datetime('now')
-        WHERE id = ? AND status = 'processing'
-        """,
-        (f"+{ttl_seconds} seconds", event_id),
+        "UPDATE triage_queue SET lease_expires_at = datetime('now', '+' || ? || 'seconds'), last_heartbeat_at = datetime('now') WHERE id = ? AND status = 'leased'",
+        (ttl_seconds, event_id),
     )
     return cursor.rowcount > 0
+
+
+@execute_in_transaction
+def release_event(cursor: sqlite3.Cursor, event_id: int, status: str = "pending") -> None:
+    """Release an event back to the queue or mark as failed/completed.
+
+    Args:
+        event_id: The ID of the event.
+        status: The new status to set (pending, failed, completed).
+    """
+    cursor.execute(
+        "UPDATE triage_queue SET status = ?, lease_expires_at = NULL, last_heartbeat_at = NULL WHERE id = ?",
+        (status, event_id),
+    )
+    _log_audit(event_id, None, status, "release")
+
+
+@execute_in_transaction
+def fail_event(cursor: sqlite3.Cursor, event_id: int, failure_reason: str) -> None:
+    """Mark an event as failed and increment its attempt counter.
+
+    Args:
+        event_id: The ID of the event.
+        failure_reason: The reason for the failure.
+    """
+    cursor.execute(
+        "UPDATE triage_queue SET status = 'failed', attempts = attempts + 1, failure_reason = ?, lease_expires_at = NULL, last_heartbeat_at = NULL WHERE id = ?",
+        (failure_reason, event_id),
+    )
+    _log_audit(event_id, None, "failed", "fail")
+
+
+@execute_in_transaction
+def complete_event(cursor: sqlite3.Cursor, event_id: int) -> None:
+    """Mark an event as completed.
+
+    Args:
+        event_id: The ID of the event.
+    """
+    cursor.execute(
+        "UPDATE triage_queue SET status = 'completed', attempts = attempts + 1, lease_expires_at = NULL, last_heartbeat_at = NULL WHERE id = ?",
+        (event_id,),
+    )
+    _log_audit(event_id, None, "completed", "complete")
