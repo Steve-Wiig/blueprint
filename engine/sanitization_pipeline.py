@@ -162,9 +162,10 @@ def _check_allowlist(token: str) -> bool:
     Returns:
         True if token matches an allowlist pattern, False otherwise.
     """
-    if not hasattr(_check_allowlist, "_compiled_regex"):
-        _check_allowlist._compiled_regex = re.compile(_COMBINED_REGEX_PATTERN)
-    return _check_allowlist._compiled_regex.match(token) is not None
+    return any(
+        pattern.match(token) is not None
+        for pattern in ALLOWLIST_PATTERNS_COMPILED.values()
+    )
 
 def _quick_diversity_check(token: str) -> bool:
     """Fast pre-filter: checks if token has sufficient character diversity.
@@ -245,7 +246,6 @@ def apply_quarantine_policy(payload: str, field_path: Optional[str], metadata: D
         return payload
         
     if len(payload) > MAX_QUARANTINE_PAYLOAD_LENGTH:
-        metadata["sanitization_action"] = "preserve_allowlisted"
         metadata["quarantine_skipped_reason"] = "payload_too_large"
         return payload
         
