@@ -56,6 +56,11 @@ LIMITS = {
         "per_hour": 1500,       # Conservative: ~25 RPM sustained
         "per_day": 250,         # RPD: 250 requests per day (groq/compound)
     },
+    "mistral": {
+        "per_minute": 15,
+        "per_hour": 300,
+        "per_day": 1000,
+    },
     "groq_alt": {
         "per_minute": 30,       # RPM: 30 requests per minute
         "per_hour": 1500,       # Conservative

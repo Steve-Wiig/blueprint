@@ -651,8 +651,15 @@ The first non-empty line MUST be valid Python code
     if result:
         return result
 
+    # Step 3: Groq saturated -> try Mistral
+    print(f"    🔄 Groq busy → trying Mistral")
+    result = _call_mistral(prompt, api_keys.get("mistral", ""),
+                           system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)
+    if result:
+        return result
+
     # Step 3: Both busy → brief wait, one final retry
-    print(f"    ⏳ All providers busy. Waiting 30s...")
+    print(f"    ⏳ OpenRouter, Groq, and Mistral busy. Waiting 30s...")
     time.sleep(30)
     
     result = _call_openrouter(prompt, api_keys.get("openrouter", ""),
@@ -662,6 +669,53 @@ The first non-empty line MUST be valid Python code
     
     return _call_groq(prompt, api_keys.get("groq", ""),
                       system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)
+
+
+def _call_mistral(prompt, api_key, system_prompt="", max_tokens=8192, temperature=0.2):
+    """Call Mistral API directly (OpenAI-compatible)."""
+    import requests
+    if not api_key:
+        return ""
+    
+    url = "https://api.mistral.ai/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+    
+    payload = {
+        "model": "mistral-small-latest",
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature
+    }
+    
+    try:
+        from overnight.budget_manager import APIBudgetManager
+        budget = APIBudgetManager()
+        if not budget.can_proceed("mistral"):
+            print("    🔒 Mistral budget exhausted")
+            return ""
+        budget.wait_if_needed("mistral", timeout=30)
+        
+        resp = requests.post(url, headers=headers, json=payload, timeout=60)
+        budget.record_call("mistral")
+        
+        if resp.status_code == 200:
+            return resp.json()["choices"][0]["message"]["content"]
+        elif resp.status_code == 429:
+            print("    ⚠️ Mistral 429 Rate Limit")
+            return ""
+        else:
+            print(f"    ⚠️ Mistral error {resp.status_code}")
+            return ""
+    except Exception as e:
+        print(f"    ⚠️ Mistral exception: {e}")
+        return ""
 
 def strip_fences(text):
     """Remove markdown code fences."""
