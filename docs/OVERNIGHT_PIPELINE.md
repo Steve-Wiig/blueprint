@@ -543,3 +543,8 @@ Result: zero corrupted files across 90+ auto-fix commits.
 ---
 
 *Document version: v11.10 — Updated 2026-08-25 with overnight wrapper and safety hardening*
+
+## Telemetry & Observability
+The pipeline now records empirical efficacy data (first-pass success, repair-salvage rate, pytest failures) to `/mnt/backup-nas/soc-slm-telemetry/`. 
+- **Fail-Open:** Telemetry failures never block remediation.
+- **Root Disk Protection:** Local buffer is hard-capped at 50MB. Oldest data is dropped if NAS is unavailable for extended periods.

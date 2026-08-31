@@ -739,3 +739,15 @@ class SelfImprover:
         if not await self.quota.reserve_tokens(estimated=50000):
             logger.warning("Insufficient OpenRouter quota, deferring to backlog")
             return ImprovementReport
+## Recent Architectural Additions (v11.9+)
+
+### 1. Bounded Syntax-Repair Loop
+The `overnight/self_improver.py` whole-file generation path now includes a strictly bounded 2-attempt repair loop.
+- **Attempt 1:** Generates candidate. If `ast.parse()` fails, captures `SyntaxError.msg`, `lineno`, `offset`, and the broken code.
+- **Attempt 2:** Feeds the exact diagnostic feedback back to the LLM to repair its own truncation/syntax errors.
+- **Invariant:** Maximum 2 attempts. Never writes invalid syntax to disk. Downstream `pytest` gates remain untouched.
+
+### 2. Telemetry & NAS Evacuation (Outbox Pattern)
+To measure model efficacy without risking the 30GB root filesystem (`/dev/sda`), a fail-open telemetry system was deployed:
+- **Stage 1 (Writer):** `engine/telemetry.py` appends JSONL events to a local buffer capped strictly at 50MB.
+- **Stage 2 (Syncer):** `tools/sync_telemetry.py` runs via cron every 5 minutes. It verifies the NAS mount via `st_dev` comparison (Root=2050 vs NAS=2080) to prevent writing to the root disk if the NAS drops, then uses `rsync --remove-source-files` to evacuate to `/dev/sdc`.
