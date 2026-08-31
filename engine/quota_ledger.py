@@ -38,6 +38,11 @@ class QuotaAdapterNotFoundError(QuotaLedgerError):
     pass
 
 
+class ApprovalValidationError(QuotaLedgerError):
+    """Raised when an approval token is invalid or missing."""
+    pass
+
+
 def _get_pooled_connection(db_path: str) -> sqlite3.Connection:
     """Get or create a thread-local pooled connection."""
     if not hasattr(_thread_local, 'conn') or _thread_local.conn is None:
@@ -112,6 +117,18 @@ def init_db(db_path: Optional[str] = None) -> None:
                 )
             ''')
             cursor.execute('''
+                CREATE TABLE IF NOT EXISTS approvals (
+                    approval_id TEXT PRIMARY KEY,
+                    adapter_id TEXT NOT NULL,
+                    token TEXT NOT NULL UNIQUE,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT,
+                    used_at TEXT,
+                    max_tokens INTEGER NOT NULL CHECK (max_tokens > 0),
+                    tokens_used INTEGER DEFAULT 0
+                )
+            ''')
+            cursor.execute('''
                 CREATE TABLE IF NOT EXISTS quota_audit (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     adapter_id TEXT NOT NULL,
@@ -119,7 +136,9 @@ def init_db(db_path: Optional[str] = None) -> None:
                     tokens_delta INTEGER NOT NULL,
                     operation TEXT NOT NULL,
                     previous_total INTEGER NOT NULL,
-                    new_total INTEGER NOT NULL
+                    new_total INTEGER NOT NULL,
+                    approval_token TEXT,
+                    approval_id TEXT
                 )
             ''')
             cursor.execute('''
@@ -127,6 +146,12 @@ def init_db(db_path: Optional[str] = None) -> None:
             ''')
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_quota_audit_timestamp ON quota_audit(timestamp)
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_approvals_adapter_id ON approvals(adapter_id)
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_approvals_token ON approvals(token)
             ''')
     except sqlite3.Error as e:
         raise QuotaLedgerError(f"Database initialization failed: {e}") from e
@@ -137,6 +162,51 @@ def _reset_daily_if_needed(used: int, last_reset: str, today: str) -> int:
     if last_reset != today:
         return 0
     return used
+
+
+def _validate_approval(cursor: sqlite3.Cursor, adapter_id: str, approval_token: str, tokens_requested: int) -> str:
+    """Validate approval token and return approval_id.
+
+    Args:
+        cursor: Database cursor.
+        adapter_id: The adapter identifier.
+        approval_token: The approval token to validate.
+        tokens_requested: Number of tokens being requested.
+
+    Returns:
+        The approval_id if valid.
+
+    Raises:
+        ApprovalValidationError: If approval is invalid, expired, or exhausted.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    cursor.execute(
+        "SELECT approval_id, expires_at, max_tokens, tokens_used FROM approvals WHERE token = ? AND adapter_id = ?",
+        (approval_token, adapter_id)
+    )
+    row = cursor.fetchone()
+
+    if not row:
+        raise ApprovalValidationError("Invalid approval token for adapter")
+
+    approval_id, expires_at, max_tokens, tokens_used = row
+
+    if expires_at and expires_at < now:
+        raise ApprovalValidationError("Approval token has expired")
+
+    if (tokens_used + tokens_requested) > max_tokens:
+        raise ApprovalValidationError("Approval token token limit exceeded")
+
+    return approval_id
+
+
+def _mark_approval_used(cursor: sqlite3.Cursor, approval_token: str, tokens_used: int) -> None:
+    """Mark approval as used and update tokens_used."""
+    now = datetime.now(timezone.utc).isoformat()
+    cursor.execute(
+        "UPDATE approvals SET tokens_used = tokens_used + ?, used_at = ? WHERE token = ?",
+        (tokens_used, now, approval_token)
+    )
 
 
 def check_quota(adapter_id: str, estimated_tokens: int, db_path: Optional[str] = None) -> bool:
@@ -173,13 +243,19 @@ def check_quota(adapter_id: str, estimated_tokens: int, db_path: Optional[str] =
     except sqlite3.Error as e:
         raise QuotaLedgerError(f"Database error during quota check: {e}") from e
 
-def record_usage(adapter_id: str, tokens_used: int, db_path: Optional[str] = None) -> None:
+
+def record_usage(adapter_id: str, tokens_used: int, db_path: Optional[str] = None, approval_token: Optional[str] = None) -> None:
     """Records token usage for a specific adapter in the database.
 
     Args:
         adapter_id: The unique identifier for the adapter.
         tokens_used: The number of tokens to record.
         db_path: Optional database path for testing.
+        approval_token: Optional approval token for SOC audit compliance.
+
+    Raises:
+        ApprovalValidationError: If approval_token is provided but invalid.
+        QuotaLedgerError: If database error occurs.
     """
     try:
         with get_db_connection(db_path) as conn:
@@ -197,16 +273,50 @@ def record_usage(adapter_id: str, tokens_used: int, db_path: Optional[str] = Non
                 used, last_reset = row
                 previous_total = used if last_reset == today else 0
                 new_used = previous_total + tokens_used
+
+                approval_id = None
+                if approval_token:
+                    approval_id = _validate_approval(cursor, adapter_id, approval_token, tokens_used)
+                    _mark_approval_used(cursor, approval_token, tokens_used)
+
                 cursor.execute(
                     "UPDATE quota_ledger SET tokens_used_today = ?, last_reset_date = ? WHERE adapter_id = ?",
                     (new_used, today, adapter_id)
                 )
                 cursor.execute(
-                    "INSERT INTO quota_audit (adapter_id, timestamp, tokens_delta, operation, previous_total, new_total) VALUES (?, ?, ?, ?, ?, ?)",
-                    (adapter_id, timestamp, tokens_used, 'usage', previous_total, new_used)
+                    "INSERT INTO quota_audit (adapter_id, timestamp, tokens_delta, operation, previous_total, new_total, approval_token, approval_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (adapter_id, timestamp, tokens_used, 'usage', previous_total, new_used, approval_token, approval_id)
                 )
     except sqlite3.Error as e:
         raise QuotaLedgerError(f"Database error during usage recording: {e}") from e
+
+
+def create_approval(adapter_id: str, approval_token: str, max_tokens: int, expires_at: Optional[str] = None, db_path: Optional[str] = None) -> str:
+    """Create a new approval token for an adapter.
+
+    Args:
+        adapter_id: The adapter identifier.
+        approval_token: Unique token string for the approval.
+        max_tokens: Maximum tokens this approval allows.
+        expires_at: Optional ISO format expiration timestamp.
+        db_path: Optional database path for testing.
+
+    Returns:
+        The generated approval_id.
+    """
+    try:
+        with get_db_connection(db_path) as conn:
+            cursor = conn.cursor()
+            approval_id = f"appr_{adapter_id}_{int(datetime.now(timezone.utc).timestamp())}"
+            created_at = datetime.now(timezone.utc).isoformat()
+
+            cursor.execute(
+                "INSERT INTO approvals (approval_id, adapter_id, token, created_at, expires_at, max_tokens) VALUES (?, ?, ?, ?, ?, ?)",
+                (approval_id, adapter_id, approval_token, created_at, expires_at, max_tokens)
+            )
+            return approval_id
+    except sqlite3.Error as e:
+        raise QuotaLedgerError(f"Database error creating approval: {e}") from e
 
 
 def main() -> int:
@@ -223,6 +333,9 @@ def main() -> int:
     parser.add_argument("--init", action="store_true")
     parser.add_argument("--check", nargs=2, metavar=('ID', 'TOKENS'))
     parser.add_argument("--record", nargs=2, metavar=('ID', 'TOKENS'))
+    parser.add_argument("--approval-token", help="Approval token for SOC audit compliance")
+    parser.add_argument("--create-approval", nargs=3, metavar=('ID', 'TOKEN', 'MAX_TOKENS'), help="Create approval: adapter_id, token, max_tokens")
+    parser.add_argument("--expires-at", help="Expiration timestamp for approval (ISO format)")
     args = parser.parse_args()
 
     db_path = args.db_path
@@ -236,7 +349,11 @@ def main() -> int:
         else:
             return 1
     elif args.record:
-        record_usage(args.record[0], int(args.record[1]), db_path)
+        record_usage(args.record[0], int(args.record[1]), db_path, args.approval_token)
+        return 0
+    elif args.create_approval:
+        adapter_id, token, max_tokens = args.create_approval
+        create_approval(adapter_id, token, int(max_tokens), args.expires_at, db_path)
         return 0
     else:
         return 2
