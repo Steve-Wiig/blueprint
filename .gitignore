@@ -25,3 +25,6 @@ overnight/*.json
 overnight/*.lock
 overnight/*.json
 overnight/*.lock
+
+# Telemetry Buffer (Stage 1)
+overnight/.telemetry_buffer/

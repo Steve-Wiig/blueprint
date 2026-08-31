@@ -494,10 +494,28 @@ def _apply_surgical_splice(original_source, target_name, new_func_source):
 def apply_auto_fix(file_path, issue, api_keys):
     """Generate and apply a fix with surgical-mode attempt + whole-file fallback.
     Every exit path is deliberate; every failure rolls back cleanly."""
+    remediation_id = str(uuid.uuid4())
+    issue_desc = issue.get('description', '')
+    issue_hash = hashlib.sha256(issue_desc.encode()).hexdigest()[:16]
+    target_file = str(file_path.name)
+    category = issue.get('category', 'unknown')
+
+    def _tel(**kwargs):
+        base = {
+            "remediation_id": remediation_id, "target_file": target_file,
+            "issue_hash": issue_hash, "category": category, "ts": time.time()
+        }
+        base.update(kwargs)
+        try:
+            log_attempt(base)
+        except Exception:
+            pass  # Fail-open guarantee
+
     try:
         original = file_path.read_text()
     except Exception as e:
         print(f"       X Cannot read {file_path.name}: {e}")
+        _tel(stage="io", attempt_outcome="read_fail", issue_final_outcome="rejected")
         return False
 
     lessons_block = _lessons_block_for(file_path)
@@ -591,6 +609,7 @@ def apply_auto_fix(file_path, issue, api_keys):
 
             if not fix_code:
                 print("       X Fix generation failed")
+                _tel(stage="generation", attempt_num=attempt+1, attempt_outcome="generation_fail", issue_final_outcome="rejected")
                 return False
 
             fix_code = strip_fences(fix_code)
@@ -606,12 +625,15 @@ def apply_auto_fix(file_path, issue, api_keys):
                 ast.parse(fix_code)
                 if attempt == 0:
                     print("       [METRIC] WHOLE-FILE attempt 1 success")
+                    _tel(stage="generation", attempt_num=1, syntax_valid=True, attempt_outcome="syntax_success")
                 else:
                     print("       [METRIC] WHOLE-FILE repaired successfully on attempt 2")
+                    _tel(stage="generation", attempt_num=2, syntax_valid=True, attempt_outcome="repaired")
                 break
             except SyntaxError as e:
                 if attempt == 0:
                     print(f"       [METRIC] Syntax error type: {type(e).__name__}, msg: {e.msg}, line: {e.lineno}")
+                    _tel(stage="generation", attempt_num=1, syntax_valid=False, syntax_error_type=type(e).__name__, syntax_error_msg=str(e.msg), syntax_error_line=e.lineno, attempt_outcome="syntax_fail")
                     offending_line = ""
                     code_lines = fix_code.splitlines()
 
@@ -640,6 +662,7 @@ def apply_auto_fix(file_path, issue, api_keys):
                     continue
 
                 print("       [METRIC] WHOLE-FILE rejected after attempt 2")
+                _tel(stage="generation", attempt_num=2, syntax_valid=False, syntax_error_type=type(e).__name__, syntax_error_msg=str(e.msg), syntax_error_line=e.lineno, attempt_outcome="syntax_fail", issue_final_outcome="rejected")
                 print(
                     f"       X Fix is not valid Python after repair attempt "
                     f"({e.msg}, line {e.lineno}) — rejecting"
@@ -669,6 +692,7 @@ def apply_auto_fix(file_path, issue, api_keys):
         file_path.write_text(original)
         backup.unlink(missing_ok=True)
         print(f"       X Tests {'timed out (120s)' if timed_out else 'failed'} — reverting")
+        _tel(stage="pytest", pytest_passed=False, pytest_timed_out=timed_out, attempt_outcome="pytest_fail", issue_final_outcome="rejected")
         return False
 
     backup.unlink(missing_ok=True)
@@ -677,13 +701,16 @@ def apply_auto_fix(file_path, issue, api_keys):
         subprocess.run(["git", "commit", "-m", f"Auto-fix: {file_path.name}"],
                        cwd=ROOT, check=True, capture_output=True)
         print(f"       + Fix committed")
+        _tel(stage="commit", pytest_passed=True, attempt_outcome="commit_success", issue_final_outcome="committed")
         return True
     except subprocess.CalledProcessError as e:
         err = (e.stdout or b"") + (e.stderr or b"")
         if b"nothing to commit" in err or b"no changes" in err:
             print(f"       !  No-op fix (nothing changed) — treated as done")
+            _tel(stage="commit", pytest_passed=True, attempt_outcome="noop", issue_final_outcome="committed")
             return True
         print(f"       X git failed: {err.decode(errors='replace')[:200]}")
+        _tel(stage="commit", pytest_passed=True, attempt_outcome="git_fail", issue_final_outcome="rejected")
         return False
 
 
