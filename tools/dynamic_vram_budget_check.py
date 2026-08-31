@@ -29,21 +29,21 @@ class VramCheckResult:
 
 def get_gpu_info() -> Optional[ET.Element]:
     """
-    Execute nvidia-smi -q -x and return the parsed XML root element.
+    Execute nvidia-smi --query-gpu=memory.total,memory.used --format=xml and return the parsed XML root element.
 
     Returns:
         ET.Element | None: Root element of the parsed XML from nvidia-smi query,
-                           containing GPU information including memory usage.
+                           containing GPU memory information (total, used).
                            Returns None if nvidia-smi is not found, fails to execute,
                            or returns invalid XML that cannot be parsed.
 
     This function queries the NVIDIA System Management Interface for
-    detailed GPU information in XML format, which is then parsed for
+    GPU memory information in XML format, which is then parsed for
     VRAM budget checking.
     """
     try:
         result = subprocess.run(
-            ['nvidia-smi', '-q', '-x'],
+            ['nvidia-smi', '--query-gpu=memory.total,memory.used', '--format=xml'],
             capture_output=True,
             text=True,
             check=True
@@ -51,7 +51,6 @@ def get_gpu_info() -> Optional[ET.Element]:
         return ET.fromstring(result.stdout)
     except (subprocess.CalledProcessError, FileNotFoundError, ET.ParseError):
         return None
-
 
 def parse_mem_value(val_str: str) -> int:
     """
