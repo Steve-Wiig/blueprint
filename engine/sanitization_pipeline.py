@@ -82,31 +82,33 @@ MAX_QUARANTINE_TOKENS: int = _load_max_quarantine_tokens()
 MAX_QUARANTINE_PAYLOAD_LENGTH: int = _load_max_quarantine_payload_length()
 DIVERSITY_THRESHOLD: float = _load_diversity_threshold()
 
-# Regex patterns for known secret formats
-# Patterns are compiled at module load for performance
+# Regex patterns for known secret formats - single source of truth
+# Each entry: (name, pattern, flags) where flags='i' for case-insensitive, '' for case-sensitive
+_REGEX_PATTERN_SPECS = [
+    ("aws_key", r"AKIA[0-9A-Z]{16}", ""),
+    ("github_token", r"ghp_[a-zA-Z0-9]{36}", ""),
+    ("jwt", r"eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}", ""),
+    ("ssh_key", r"-----BEGIN [A-Z ]+ PRIVATE KEY-----", ""),
+    ("slack_token", r"xox[baprs]-[0-9a-zA-Z]{10,48}", ""),
+    ("auth_header", r"Authorization: (Bearer|Basic|Token) [a-zA-Z0-9\._\-]+", "i"),
+    ("api_key_param", r"(api_key|apikey|password|passwd|secret|token)=([a-zA-Z0-9]{16,})", "i"),
+    ("session_cookie", r"Cookie: (session_id|sid|session)=[a-zA-Z0-9\._\-]+", "i"),
+]
+
+# Generate REGEX_RULES dict with inline flags for standalone use
 REGEX_RULES: Dict[str, str] = {
-    "aws_key": r"AKIA[0-9A-Z]{16}",
-    "github_token": r"ghp_[a-zA-Z0-9]{36}",
-    "jwt": r"eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}",
-    "ssh_key": r"-----BEGIN [A-Z ]+ PRIVATE KEY-----",
-    "slack_token": r"xox[baprs]-[0-9a-zA-Z]{10,48}",
-    "auth_header": r"(?i)Authorization: (Bearer|Basic|Token) [a-zA-Z0-9\._\-]+",
-    "api_key_param": r"(?i)(api_key|apikey|password|passwd|secret|token)=([a-zA-Z0-9]{16,})",
-    "session_cookie": r"(?i)Cookie: (session_id|sid|session)=[a-zA-Z0-9\._\-]+"
+    name: (f"(?{flags}:{pattern})" if flags else pattern)
+    for name, pattern, flags in _REGEX_PATTERN_SPECS
 }
 
 # Build combined regex with named groups for single-pass scanning
 # Case-sensitive patterns use (?-i:...), case-insensitive use (?i:...)
 # Internal capturing groups converted to non-capturing (?:...)
 _COMBINED_REGEX_PARTS = [
-    r"(?-i:(?P<aws_key>AKIA[0-9A-Z]{16}))",
-    r"(?-i:(?P<github_token>ghp_[a-zA-Z0-9]{36}))",
-    r"(?-i:(?P<jwt>eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}))",
-    r"(?-i:(?P<ssh_key>-----BEGIN [A-Z ]+ PRIVATE KEY-----))",
-    r"(?-i:(?P<slack_token>xox[baprs]-[0-9a-zA-Z]{10,48}))",
-    r"(?i:(?P<auth_header>Authorization: (?:Bearer|Basic|Token) [a-zA-Z0-9\._\-]+))",
-    r"(?i:(?P<api_key_param>(?:api_key|apikey|password|passwd|secret|token)=[a-zA-Z0-9]{16,}))",
-    r"(?i:(?P<session_cookie>Cookie: (?:session_id|sid|session)=[a-zA-Z0-9\._\-]+))",
+    (f"(?{flags if flags else '-i'}:(?P<{name}>{pattern.replace('(', '(?:', pattern.count('(') - pattern.count('(?:'))}))"
+     if '(' in pattern and '(?:' not in pattern
+     else f"(?{flags if flags else '-i'}:(?P<{name}>{pattern}))")
+    for name, pattern, flags in _REGEX_PATTERN_SPECS
 ]
 
 _COMBINED_REGEX_PATTERN = "|".join(_COMBINED_REGEX_PARTS)
