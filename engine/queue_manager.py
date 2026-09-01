@@ -226,6 +226,14 @@ class TriageQueueManager:
         logger.info("Job enqueued: severity=%s, payload_ref=%s", severity, payload_ref)
         return 0
 
+    def _severity_order_sql(self) -> str:
+        """
+        Generate SQL CASE expression for severity priority ordering.
+        Uses SEVERITY_LEVELS tuple as single source of truth.
+        """
+        cases = " ".join(f"WHEN '{sev}' THEN {i+1}" for i, sev in enumerate(SEVERITY_LEVELS))
+        return f"CASE severity {cases} ELSE {len(SEVERITY_LEVELS)+1} END"
+
     def claim_job(self, worker_id: str) -> Optional[int]:
         """
         Claim the highest‑priority pending job for processing.
@@ -245,6 +253,7 @@ class TriageQueueManager:
         # atomically claims it under SQLite's write lock (no race window).
         # RETURNING id gives us the claimed job without a second query.
         now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+        severity_order = self._severity_order_sql()
         row = self.cursor.execute(
             f"""
             UPDATE triage_queue
@@ -256,13 +265,7 @@ class TriageQueueManager:
             WHERE id = (
                 SELECT id FROM triage_queue
                 WHERE status = 'pending'
-                ORDER BY CASE severity
-                    WHEN 'critical' THEN 1
-                    WHEN 'high' THEN 2
-                    WHEN 'medium' THEN 3
-                    WHEN 'low' THEN 4
-                    ELSE 5 END,
-                    created_at ASC
+                ORDER BY {severity_order}, created_at ASC
                 LIMIT 1
             )
             RETURNING id
