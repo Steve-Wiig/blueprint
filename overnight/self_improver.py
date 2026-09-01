@@ -32,6 +32,7 @@ import uuid
 import hashlib
 import time
 from engine.telemetry import log_attempt
+from engine.patch_parser import process_llm_patch, PatchParseError, PatchApplyError, ScopeBudgetExceededError
 
 ROOT = Path(__file__).resolve().parent.parent
 QUEUE_DIR = ROOT / "overnight" / "advisory_queue" / "pending"
@@ -581,13 +582,16 @@ def apply_auto_fix(file_path, issue, api_keys):
         for attempt in range(2):
             prompt = (
                 "You are a senior Python engineer. Fix the issue below in this file.\n"
-                "Return ONLY the complete fixed file content.\n"
+                "You MUST output ONLY Aider-style SEARCH/REPLACE blocks.\n"
                 "STRICT OUTPUT RULES:\n"
-                "- Your response must be ONLY valid Python code. Nothing else.\n"
-                "- No markdown fences, no explanations, no comments about the change.\n"
-                "- No reasoning, analysis, planning, or thinking process.\n"
-                "- Do NOT start with Let me / Here / I will / First or any prose.\n"
-                "- The first non-empty line MUST be Python code.\n"
+                "- Format:\n"
+                "<<<<<<< SEARCH\n"
+                "[exact existing lines, verbatim]\n"
+                "=======\n"
+                "[replacement lines]\n"
+                ">>>>>>> REPLACE\n"
+                "- Do NOT output the full file. Do NOT use markdown fences.\n"
+                "- No explanations, no prose. ONLY the blocks.\n"
                 "Preserve all unrelated behavior. Keep the module importable without "
                 "side effects. Use datetime.now(timezone.utc), never utcnow().\n"
                 f"{lessons_block}"
