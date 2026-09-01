@@ -735,7 +735,7 @@ def apply_auto_fix(file_path, issue, api_keys):
         timed_out = True
 
     if not tests_passed:
-        if attempt == 0:
+        if locals().get("attempt", -1) == 0:
             print("       🧠 CER PROTOCOL: Interrogating Meta-Critic for strategic constraint...")
             try:
                 tb_text = ""
