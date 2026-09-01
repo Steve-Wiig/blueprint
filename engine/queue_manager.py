@@ -30,6 +30,17 @@ SEVERITY_LEVELS = (
 
 _SEVERITY_CHECK_SQL = "CHECK (severity IN (" + ", ".join(f"'{s}'" for s in SEVERITY_LEVELS) + "))"
 
+# Status levels for CHECK constraint generation (single source of truth)
+STATUS_LEVELS = (
+    STATUS_PENDING,
+    STATUS_PROCESSING,
+    STATUS_COMPLETED,
+    STATUS_FAILED,
+    STATUS_SHED,
+)
+
+_STATUS_CHECK_SQL = "CHECK (status IN (" + ", ".join(f"'{s}'" for s in STATUS_LEVELS) + "))"
+
 
 class TriageQueueManager:
     """
@@ -95,7 +106,7 @@ class TriageQueueManager:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             severity TEXT NOT NULL {_SEVERITY_CHECK_SQL},
             payload_ref TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'shed')),
+            status TEXT NOT NULL DEFAULT 'pending' {_STATUS_CHECK_SQL},
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             started_at TIMESTAMP,
             completed_at TIMESTAMP,
