@@ -107,11 +107,6 @@ class TriageQueueManager:
             last_modified_by TEXT NOT NULL DEFAULT 'system'
         );
 
-        CREATE TABLE IF NOT EXISTS triage_queue_counters (
-            name TEXT PRIMARY KEY,
-            value INTEGER NOT NULL DEFAULT 0
-        );
-
         CREATE TABLE IF NOT EXISTS triage_queue_approvals (
             job_id INTEGER NOT NULL,
             target_status TEXT NOT NULL CHECK (target_status IN ('completed', 'failed')),
@@ -126,29 +121,6 @@ class TriageQueueManager:
 
         CREATE INDEX IF NOT EXISTS idx_triage_queue_lease_expires
             ON triage_queue (lease_expires_at) WHERE status = 'processing';
-
-        CREATE TRIGGER IF NOT EXISTS trg_triage_queue_pending_inc
-        AFTER INSERT ON triage_queue
-        WHEN NEW.status = 'pending'
-        BEGIN
-            UPDATE triage_queue_counters SET value = value + 1 WHERE name = 'pending_count';
-        END;
-
-        CREATE TRIGGER IF NOT EXISTS trg_triage_queue_pending_dec
-        AFTER UPDATE OF status ON triage_queue
-        WHEN OLD.status = 'pending' AND NEW.status != 'pending'
-        BEGIN
-            UPDATE triage_queue_counters SET value = value - 1 WHERE name = 'pending_count';
-        END;
-
-        CREATE TRIGGER IF NOT EXISTS trg_triage_queue_pending_dec_on_delete
-        AFTER DELETE ON triage_queue
-        WHEN OLD.status = 'pending'
-        BEGIN
-            UPDATE triage_queue_counters SET value = value - 1 WHERE name = 'pending_count';
-        END;
-
-        INSERT OR IGNORE INTO triage_queue_counters (name, value) VALUES ('pending_count', 0);
         """
         self.cursor.executescript(schema_sql)
         self.conn.commit()
@@ -218,7 +190,7 @@ class TriageQueueManager:
             1 if the job was shed due to backpressure, 0 otherwise.
         """
         depth = self.cursor.execute(
-            "SELECT value FROM triage_queue_counters WHERE name = 'pending_count'"
+            "SELECT COUNT(*) FROM triage_queue WHERE status = 'pending'"
         ).fetchone()[0]
         if depth >= self.emergency_depth and severity in ('low', 'informational'):
             self.cursor.execute(
