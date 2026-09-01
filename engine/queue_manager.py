@@ -330,13 +330,89 @@ class TriageQueueManager:
         )
         self.conn.commit()
         logger.debug("Heartbeat updated for job %d", job_id)
-
     def reap_stale_jobs(self) -> None:
         """
         Recover or fail jobs that have exceeded their lease without completion.
+        Critical jobs require approval to transition to failed; without approval,
+        they are moved back to pending with an escalation flag and alerted.
         """
         now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
-        # Reset stale jobs that haven't exhausted attempts
+        # Find all stale processing jobs
+        stale_jobs = self.cursor.execute(
+            """
+            SELECT id, severity, attempts FROM triage_queue
+            WHERE status = 'processing' AND lease_expires_at < ?
+            """,
+            (now,),
+        ).fetchall()
+
+        for job_id, severity, attempts in stale_jobs:
+            if attempts < self.max_attempts:
+                # Reset to pending for another attempt
+                self.cursor.execute(
+                    """
+                    UPDATE triage_queue
+                    SET status = 'pending',
+                        lease_expires_at = NULL,
+                        last_heartbeat_at = NULL,
+                        last_modified_by = 'system'
+                    WHERE id = ?
+                    """,
+                    (job_id,),
+                )
+                logger.info("Stale job %d reset to pending (attempt %d/%d)", job_id, attempts, self.max_attempts)
+            else:
+                # Max attempts exhausted - should fail
+                if severity == SEVERITY_CRITICAL:
+                    # Check for approval to fail
+                    if self._check_approval(job_id, 'failed'):
+                        self.cursor.execute(
+                            """
+                            UPDATE triage_queue
+                            SET status = 'failed',
+                                completed_at = ?,
+                                fail_reason = 'lease_expired_max_attempts',
+                                last_modified_by = 'system'
+                            WHERE id = ?
+                            """,
+                            (now, job_id),
+                        )
+                        logger.info("Critical stale job %d failed with approval", job_id)
+                    else:
+                        # No approval: move back to pending with escalation flag
+                        self.cursor.execute(
+                            """
+                            UPDATE triage_queue
+                            SET status = 'pending',
+                                lease_expires_at = NULL,
+                                last_heartbeat_at = NULL,
+                                fail_reason = 'critical_escalation_no_approval',
+                                last_modified_by = 'system'
+                            WHERE id = ?
+                            """,
+                            (job_id,),
+                        )
+                        logger.warning(
+                            "ALERT: Critical job %d exceeded max attempts but lacks approval to fail. "
+                            "Moved back to pending with escalation flag. Manual intervention required.",
+                            job_id,
+                        )
+                else:
+                    # Non-critical: fail directly
+                    self.cursor.execute(
+                        """
+                        UPDATE triage_queue
+                        SET status = 'failed',
+                            completed_at = ?,
+                            fail_reason = 'lease_expired_max_attempts',
+                            last_modified_by = 'system'
+                        WHERE id = ?
+                        """,
+                        (now, job_id),
+                    )
+                    logger.info("Stale job %d failed after max attempts", job_id)
+
+        self.conn.commit()
         self.cursor.execute(
             """
             UPDATE triage_queue
