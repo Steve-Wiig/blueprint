@@ -24,6 +24,31 @@ ALLOWED_PAYLOAD_KEYS = {'agent', 'rule_id', 'description', 'src_ip', 'dst_ip'}
 EXIT_PARSE_ERROR = 2
 EXIT_GENERAL_ERROR = 1
 
+
+class IntakeError(RuntimeError):
+    """Base exception for intake errors with an associated exit code."""
+    def __init__(self, message: str, exit_code: int = EXIT_GENERAL_ERROR):
+        super().__init__(message)
+        self.exit_code = exit_code
+
+
+class ParseError(IntakeError):
+    """Raised when JSON parsing fails."""
+    def __init__(self, message: str = "Invalid JSON payload"):
+        super().__init__(message, EXIT_PARSE_ERROR)
+
+
+class ValidationError(IntakeError):
+    """Raised when payload validation/sanitization fails."""
+    def __init__(self, message: str = "Payload validation failed"):
+        super().__init__(message, EXIT_GENERAL_ERROR)
+
+
+class DatabaseError(IntakeError):
+    """Raised when database operations fail."""
+    def __init__(self, message: str = "Database operation failed"):
+        super().__init__(message, EXIT_GENERAL_ERROR)
+
 def _load_config() -> dict[str, str]:
     if HAS_PLATFORMDIRS:
         data_dir = user_data_dir('local-soc', 'local-soc')
