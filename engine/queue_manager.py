@@ -159,6 +159,33 @@ class TriageQueueManager:
         ).fetchone()
         return row is not None
 
+    def require_approval(self, job_id: int, target_status: str) -> None:
+        """
+        Enforce approval requirement for critical jobs transitioning to target_status.
+
+        Parameters
+        ----------
+        job_id : int
+            Identifier of the job.
+        target_status : str
+            The target status ('completed' or 'failed').
+
+        Raises
+        ------
+        RuntimeError
+            If the job is critical and no approval exists for the target status.
+        ValueError
+            If target_status is not 'completed' or 'failed'.
+        """
+        if target_status not in ('completed', 'failed'):
+            raise ValueError("target_status must be 'completed' or 'failed'")
+        severity = self._get_job_severity(job_id)
+        if severity == SEVERITY_CRITICAL:
+            if not self._check_approval(job_id, target_status):
+                raise RuntimeError(
+                    f"Critical job {job_id} requires approval to transition to {target_status}"
+                )
+
     def approve_job(self, job_id: int, target_status: str, approver: str) -> None:
         """
         Record an approval for a critical job to transition to target_status.
