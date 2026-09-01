@@ -84,3 +84,21 @@ def check_and_record_defeat(file_path: str, source_code: str, traceback_text: st
             
     is_defeated = ledger[signature]['attempts'] >= DEFEAT_THRESHOLD
     return is_defeated
+
+def is_ast_defeated(source_code: str) -> bool:
+    """
+    Pre-flight check: Returns True if this file's AST is already quarantined.
+    Prevents wasting API tokens on poisoned files.
+    """
+    ast_hash = hash_ast(source_code)
+    if not LEDGER_PATH.exists():
+        return False
+    try:
+        for line in LEDGER_PATH.read_text().splitlines():
+            if line.strip():
+                entry = json.loads(line)
+                if entry.get('ast_hash') == ast_hash and entry.get('attempts', 0) >= DEFEAT_THRESHOLD:
+                    return True
+    except Exception:
+        pass
+    return False

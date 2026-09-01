@@ -2,7 +2,7 @@ import pytest
 import shutil
 from pathlib import Path
 from engine.defeat_ledger import (
-    hash_ast, normalize_traceback, check_and_record_defeat, 
+    hash_ast, normalize_traceback, check_and_record_defeat, is_ast_defeated,
     LEDGER_PATH, DEFEAT_THRESHOLD
 )
 
@@ -61,3 +61,16 @@ def test_formatting_shift_does_not_reset_strikes():
     
     # Strike 3 should trigger defeat
     assert check_and_record_defeat("foo.py", code_base, tb1) is True 
+
+def test_is_ast_defeated_quarantines_file():
+    """If an AST hash is marked defeated, is_ast_defeated must return True."""
+    code = "def broken(): return 1 / 0"
+    tb = "ZeroDivisionError"
+    
+    assert is_ast_defeated(code) is False # Not defeated yet
+    
+    check_and_record_defeat("foo.py", code, tb) # Strike 1
+    check_and_record_defeat("foo.py", code, tb) # Strike 2
+    check_and_record_defeat("foo.py", code, tb) # Strike 3
+    
+    assert is_ast_defeated(code) is True # QUARANTINED!

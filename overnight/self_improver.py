@@ -33,6 +33,7 @@ import hashlib
 import time
 from engine.telemetry import log_attempt
 from engine.patch_parser import process_llm_patch, PatchParseError, PatchApplyError, ScopeBudgetExceededError
+from engine.defeat_ledger import is_ast_defeated, check_and_record_defeat
 
 ROOT = Path(__file__).resolve().parent.parent
 QUEUE_DIR = ROOT / "overnight" / "advisory_queue" / "pending"
@@ -523,6 +524,13 @@ def apply_auto_fix(file_path, issue, api_keys):
         _tel(stage="io", attempt_outcome="read_fail", issue_final_outcome="rejected")
         return False
 
+    # PILLAR 1: Pre-Flight Quarantine
+    if is_ast_defeated(original):
+        print(f"       🗃️ DEFEATED: File AST is quarantined in ledger. Skipping generation.")
+        try: _tel(stage="ledger", attempt_outcome="quarantined", issue_final_outcome="rejected")
+        except: pass
+        return False
+
     lessons_block = _lessons_block_for(file_path)
 
     # ---------- SURGICAL PATH (primary) ----------
@@ -715,6 +723,9 @@ def apply_auto_fix(file_path, issue, api_keys):
         timed_out = True
 
     if not tests_passed:
+        # PILLAR 1: Record the defeat in the ledger
+        tb_text = (result.stdout.decode(errors='replace') + result.stderr.decode(errors='replace')) if 'result' in locals() else ""
+        check_and_record_defeat(str(file_path), fix_code, tb_text)
         file_path.write_text(original)
         backup.unlink(missing_ok=True)
         print(f"       X Tests {'timed out (120s)' if timed_out else 'failed'} — reverting")
