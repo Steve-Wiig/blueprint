@@ -507,8 +507,13 @@ def apply_auto_fix(file_path, issue, api_keys):
     category = issue.get('category', 'unknown')
 
     def _tel(**kwargs):
+        try:
+            from overnight.llm_client import LAST_MODEL_USED
+            model_name = LAST_MODEL_USED
+        except Exception:
+            model_name = "unknown"
         base = {
-            "remediation_id": remediation_id, "target_file": target_file,
+            "model": model_name, "remediation_id": remediation_id, "target_file": target_file,
             "issue_hash": issue_hash, "category": category, "ts": time.time()
         }
         base.update(kwargs)
