@@ -206,6 +206,11 @@ def sanitize_pass(text: str) -> str:
             output.write(token)
             continue
 
+        # Guard clause: tokens shorter than 23 chars cannot exceed 4.5 entropy
+        if len(token) < 23:
+            output.write(token)
+            continue
+
         entropy = calculate_entropy(token)
         if entropy > ENTROPY_THRESHOLD:
             output.write(REDACTION_TOKEN)
@@ -255,6 +260,11 @@ def sanitize_stream(input_stream: TextIO) -> str:
             first_token = False
             
             if is_allowlisted(token):
+                output.write(token)
+                continue
+
+            # Guard clause: tokens shorter than 23 chars cannot exceed 4.5 entropy
+            if len(token) < 23:
                 output.write(token)
                 continue
 
