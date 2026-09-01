@@ -28,6 +28,10 @@ from overnight.llm_client import (
 )
 from overnight.budget_manager import APIBudgetManager
 from overnight.code_reviewer import review_file, extract_json_from_response, build_review_prompt, get_file_context, count_lines
+import uuid
+import hashlib
+import time
+from engine.telemetry import log_attempt
 
 ROOT = Path(__file__).resolve().parent.parent
 QUEUE_DIR = ROOT / "overnight" / "advisory_queue" / "pending"
