@@ -28,7 +28,7 @@ from typing import List, Iterator, TextIO
 # Threshold tuned for base64 (max 6.0 bits/char) vs hex (max 4.0 bits/char);
 # 4.5 catches base64-encoded secrets but allows hex-encoded data and normal text.
 # Configurable via ENTROPY_THRESHOLD environment variable.
-_ENTROPY_THRESHOLD_ENV = os.environ.get("ENTROPY_THRESHOLD")
+_ENTROPY_THRESHOLD_ENV: str | None = os.environ.get("ENTROPY_THRESHOLD")
 ENTROPY_THRESHOLD: float = float(_ENTROPY_THRESHOLD_ENV) if _ENTROPY_THRESHOLD_ENV is not None else 4.5
 
 # Redaction token used to replace high-entropy secrets.
@@ -44,7 +44,7 @@ ALLOWLIST_PATTERNS: List[str] = [
 
 # Combined into a single alternation regex: one fullmatch per token
 # instead of iterating every pattern (O(patterns) -> O(1) per token).
-ALLOWLIST_REGEX = re.compile(
+ALLOWLIST_REGEX: re.Pattern[str] = re.compile(
     r"(?:" + "|".join(f"(?:{pat})" for pat in ALLOWLIST_PATTERNS) + r")"
 )
 
