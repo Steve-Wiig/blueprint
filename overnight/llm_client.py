@@ -1,4 +1,3 @@
-LAST_MODEL_USED = "unknown"
 """
 Dual-Model LLM Client with DYNAMIC model discovery and fallback.
 
@@ -643,8 +642,6 @@ The first non-empty line MUST be valid Python code
     result = _call_openrouter(prompt, api_keys.get("openrouter", ""),
                               system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)
     if result:
-        global LAST_MODEL_USED
-        LAST_MODEL_USED = "openrouter"
         return result
 
     # Step 2: OpenRouter saturated → try Groq immediately
@@ -652,8 +649,6 @@ The first non-empty line MUST be valid Python code
     result = _call_groq(prompt, api_keys.get("groq", ""),
                         system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)
     if result:
-        global LAST_MODEL_USED
-        LAST_MODEL_USED = "groq"
         return result
 
     # Step 3: Groq saturated -> try Mistral
@@ -661,8 +656,6 @@ The first non-empty line MUST be valid Python code
     result = _call_mistral(prompt, api_keys.get("mistral", ""),
                            system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)
     if result:
-        global LAST_MODEL_USED
-        LAST_MODEL_USED = "mistral"
         return result
 
     # Step 3: Both busy → brief wait, one final retry
@@ -672,8 +665,6 @@ The first non-empty line MUST be valid Python code
     result = _call_openrouter(prompt, api_keys.get("openrouter", ""),
                               system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)
     if result:
-        global LAST_MODEL_USED
-        LAST_MODEL_USED = "openrouter"
         return result
     
     return _call_groq(prompt, api_keys.get("groq", ""),
