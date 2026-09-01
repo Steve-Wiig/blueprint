@@ -28,3 +28,4 @@ overnight/*.lock
 
 # Telemetry Buffer (Stage 1)
 overnight/.telemetry_buffer/
+overnight/defeat_ledger.jsonl

@@ -735,6 +735,18 @@ def apply_auto_fix(file_path, issue, api_keys):
         timed_out = True
 
     if not tests_passed:
+        if attempt == 0:
+            print("       🧠 CER PROTOCOL: Interrogating Meta-Critic for strategic constraint...")
+            try:
+                tb_text = ""
+                if 'result' in locals() and hasattr(result, 'stderr'):
+                    tb_text = result.stderr.decode(errors='replace') + result.stdout.decode(errors='replace')
+                cer_constraint = generate_strategic_constraint(fix_code, tb_text, issue_desc)
+                print(f"       🧠 Meta-Critic Constraint: {cer_constraint[:80]}...")
+            except Exception as e:
+                cer_constraint = "CRITICAL STRATEGY SHIFT: Adopt a fundamentally different algorithmic strategy."
+                print(f"       ⚠️ Meta-Critic failed ({e}), using fallback.")
+
         # PILLAR 1: Record the defeat in the ledger
         tb_text = (result.stdout.decode(errors='replace') + result.stderr.decode(errors='replace')) if 'result' in locals() else ""
         check_and_record_defeat(str(file_path), fix_code, tb_text)
