@@ -12,27 +12,39 @@ CompiledRegexDict: TypeAlias = Dict[str, Pattern[str]]
 AllowlistPatternDict: TypeAlias = Dict[str, Pattern[str]]
 
 # Configurable thresholds loaded from environment variables with validation
-def _load_entropy_threshold() -> float:
-    """Load and validate entropy threshold from environment."""
-    env_var = 'SANITIZER_ENTROPY_THRESHOLD'
-    raw = os.getenv(env_var, '4.5')
+def _load_env_float(name: str, default: str, min_val: float, max_val: float) -> float:
+    """Load and validate a float from environment variable."""
+    raw = os.getenv(name, default)
     try:
         value = float(raw)
     except ValueError:
-        raise ValueError(f"{env_var} must be a valid float, got '{raw}'")
-    if not (0.0 < value <= 8.0):
-        raise ValueError(f"{env_var} must be in range (0.0, 8.0], got {value}")
+        raise ValueError(f"{name} must be a valid float, got '{raw}'")
+    if not (min_val < value <= max_val):
+        raise ValueError(f"{name} must be in range ({min_val}, {max_val}], got {value}")
     return value
-def _load_min_token_length() -> int:
-    """Load and validate minimum token length from environment."""
-    raw = os.getenv('SANITIZER_MIN_TOKEN_LENGTH', '17')
+
+
+def _load_env_int(name: str, default: str, min_val: int, max_val: int) -> int:
+    """Load and validate an integer from environment variable."""
+    raw = os.getenv(name, default)
     try:
         value = int(raw)
     except ValueError:
-        raise ValueError(f"SANITIZER_MIN_TOKEN_LENGTH must be a valid integer, got '{raw}'")
-    if not (1 <= value <= 1000):
-        raise ValueError(f"SANITIZER_MIN_TOKEN_LENGTH must be in range [1, 1000], got {value}")
+        raise ValueError(f"{name} must be a valid integer, got '{raw}'")
+    if not (min_val <= value <= max_val):
+        raise ValueError(f"{name} must be in range [{min_val}, {max_val}], got {value}")
     return value
+
+
+def _load_entropy_threshold() -> float:
+    """Load and validate entropy threshold from environment."""
+    return _load_env_float('SANITIZER_ENTROPY_THRESHOLD', '4.5', 0.0, 8.0)
+
+
+def _load_min_token_length() -> int:
+    """Load and validate minimum token length from environment."""
+    return _load_env_int('SANITIZER_MIN_TOKEN_LENGTH', '17', 1, 1000)
+
 
 def _load_analytical_fields() -> set[str]:
     """Load analytical fields from environment variable."""
@@ -41,38 +53,20 @@ def _load_analytical_fields() -> set[str]:
     fields = {field.strip() for field in raw.split(',') if field.strip()}
     return fields
 
+
 def _load_max_quarantine_tokens() -> int:
     """Load and validate maximum tokens to check for quarantine from environment."""
-    raw = os.getenv('SANITIZER_MAX_QUARANTINE_TOKENS', '100')
-    try:
-        value = int(raw)
-    except ValueError:
-        raise ValueError(f"SANITIZER_MAX_QUARANTINE_TOKENS must be a valid integer, got '{raw}'")
-    if not (1 <= value <= 10000):
-        raise ValueError(f"SANITIZER_MAX_QUARANTINE_TOKENS must be in range [1, 10000], got {value}")
-    return value
+    return _load_env_int('SANITIZER_MAX_QUARANTINE_TOKENS', '100', 1, 10000)
+
 
 def _load_max_quarantine_payload_length() -> int:
     """Load and validate maximum payload length for quarantine scanning from environment."""
-    raw = os.getenv('SANITIZER_MAX_QUARANTINE_PAYLOAD_LENGTH', '100000')
-    try:
-        value = int(raw)
-    except ValueError:
-        raise ValueError(f"SANITIZER_MAX_QUARANTINE_PAYLOAD_LENGTH must be a valid integer, got '{raw}'")
-    if not (1 <= value <= 10000000):
-        raise ValueError(f"SANITIZER_MAX_QUARANTINE_PAYLOAD_LENGTH must be in range [1, 10000000], got {value}")
-    return value
+    return _load_env_int('SANITIZER_MAX_QUARANTINE_PAYLOAD_LENGTH', '100000', 1, 10000000)
+
 
 def _load_diversity_threshold() -> float:
     """Load and validate character diversity threshold for fast pre-filter from environment."""
-    raw = os.getenv('SANITIZER_DIVERSITY_THRESHOLD', '0.3')
-    try:
-        value = float(raw)
-    except ValueError:
-        raise ValueError(f"SANITIZER_DIVERSITY_THRESHOLD must be a valid float, got '{raw}'")
-    if not (0.0 < value <= 1.0):
-        raise ValueError(f"SANITIZER_DIVERSITY_THRESHOLD must be in range (0.0, 1.0], got {value}")
-    return value
+    return _load_env_float('SANITIZER_DIVERSITY_THRESHOLD', '0.3', 0.0, 1.0)
 
 # Module-level constants initialized with validation at import time
 ENTROPY_THRESHOLD: float = _load_entropy_threshold()
