@@ -11,8 +11,10 @@ def log(msg): print(f"[TELEMETRY SYNC] {msg}", flush=True)
 
 def verify_nas_mount():
     try:
-        if not NAS_DEST.exists(): return False
-        nas_dev = os.stat(str(NAS_DEST)).st_dev
+        # FIX: Check the actual drive mount point, not the specific sub-directory
+        mount_point = Path("/mnt/backup-nas")
+        if not mount_point.exists(): return False
+        nas_dev = os.stat(str(mount_point)).st_dev
         root_dev = os.stat("/").st_dev
         if nas_dev == root_dev:
             log("CRITICAL: NAS mount lost (st_dev matches root). Aborting.")
