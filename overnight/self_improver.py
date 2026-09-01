@@ -536,6 +536,16 @@ def apply_auto_fix(file_path, issue, api_keys):
         except: pass
         return False
 
+    # NIGHTCAP FIX: Stylistic Noise Filter
+    # Prevents burning API tokens on linter complaints (type hints, complexity, style)
+    # for code that already passes pytest.
+    category = issue.get('category', '').lower()
+    if category in ['style', 'maintainability', 'complexity', 'documentation', 'refactor']:
+        print(f"       ⏭️ Skipping stylistic advisory ('{category}') to save API tokens.")
+        try: _tel(stage="filter", attempt_outcome="skipped_stylistic", issue_final_outcome="deferred")
+        except: pass
+        return False
+
     lessons_block = _lessons_block_for(file_path)
 
     # ---------- SURGICAL PATH (primary) ----------
