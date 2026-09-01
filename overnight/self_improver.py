@@ -34,6 +34,7 @@ import time
 from engine.telemetry import log_attempt
 from engine.patch_parser import process_llm_patch, PatchParseError, PatchApplyError, ScopeBudgetExceededError
 from engine.defeat_ledger import is_ast_defeated, check_and_record_defeat
+from engine.cer_critic import generate_strategic_constraint
 
 ROOT = Path(__file__).resolve().parent.parent
 QUEUE_DIR = ROOT / "overnight" / "advisory_queue" / "pending"
