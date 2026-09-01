@@ -561,13 +561,12 @@ def apply_auto_fix(file_path, issue, api_keys):
         surgical_prompt = (
             "You are a senior Python engineer performing a SURGICAL fix.\n"
             "You are shown ONLY imports, constants, and the target function/class.\n"
-            f"Fix ONLY the target '{primary}'. Return ONLY its complete fixed source.\n"
+            f"Fix ONLY the target '{primary}'.\n"
             "STRICT OUTPUT RULES:\n"
-            "- Your response must be ONLY valid Python code (the function/class).\n"
-            "- No markdown fences, no prose, no explanations, no thinking.\n"
-            "- No extra imports outside the function body.\n"
-            "- Preserve the exact original indentation level and function signature.\n"
-            "- Do NOT return the whole file. Do NOT include any surrounding code.\n"
+            "- You MUST output ONLY Aider-style SEARCH/REPLACE blocks.\n"
+            "- Format:\n<<<<<<< SEARCH\n[exact existing lines from context]\n=======\n[replacement lines]\n>>>>>>> REPLACE\n"
+            "- Do NOT output the full file. Do NOT use markdown fences.\n"
+            "- No explanations, no prose. ONLY the blocks.\n"
             f"{lessons_block}"
             f"Issue: {issue.get('description', '')}\n"
             f"Category: {issue.get('category', '')}\n"
@@ -584,16 +583,13 @@ def apply_auto_fix(file_path, issue, api_keys):
             max_growth = max(int(len(focus_text) * 0.3), 500)
             if len(raw) > len(focus_text) + max_growth:
                 print(f"       SURGICAL fix grew too much ({len(raw)} vs {len(focus_text)} focus, max allowed {len(focus_text) + max_growth}) - falling back")
-            elif len(raw) > 80:
-                spliced = _apply_surgical_splice(original, primary, raw)
-                if spliced:
-                    try:
-                        ast.parse(spliced)
-                        surgical_fix = spliced
-                    except SyntaxError as e:
-                        print(f"       SURGICAL splice failed syntax ({e.msg}, line {e.lineno}) — falling back")
-                else:
-                    print(f"       SURGICAL splice could not locate/replace target — falling back")
+            elif len(raw) > 30:
+                try:
+                    patch_result = process_llm_patch(original, raw)
+                    surgical_fix = patch_result.modified_content
+                    print(f"       [METRIC] SURGICAL Patch applied exactly (Scope: {patch_result.total_lines_changed} lines)")
+                except (PatchParseError, PatchApplyError, ScopeBudgetExceededError) as e:
+                    print(f"       SURGICAL patch failed ({str(e)[:60]}) — falling back")
             else:
                 print(f"       SURGICAL response too short ({len(raw)} chars) — falling back")
         else:
