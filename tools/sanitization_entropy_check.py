@@ -283,6 +283,9 @@ def main(input_data: str) -> int:
     Performs two sanitization passes on the provided input and verifies
     idempotency (pass1 == pass2). Returns exit code indicating result.
 
+    This function returns an exit code for use by a __main__ block
+    which should call sys.exit() with the returned value.
+
     Args:
         input_data: The input text to sanitize and verify.
                     Can be any string including Unicode.
