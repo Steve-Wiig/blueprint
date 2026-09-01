@@ -622,12 +622,30 @@ def apply_auto_fix(file_path, issue, api_keys):
 
             fix_code = strip_fences(fix_code)
 
-            if len(fix_code) < 0.5 * len(original):
-                print(
-                    f"       X Fix suspiciously short "
-                    f"({len(fix_code)} vs {len(original)} chars) — rejecting"
-                )
-                return False
+# PILLAR 2: Apply the Patch-Diff Contract
+            try:
+                patch_result = process_llm_patch(original, fix_code)
+                fix_code = patch_result.modified_content
+                if patch_result.blocks and any(b.is_fuzzy_match for b in patch_result.blocks):
+                    print(f"       [METRIC] Patch applied with fuzzy matching (Scope: {patch_result.total_lines_changed} lines)")
+                else:
+                    print(f"       [METRIC] Patch applied exactly (Scope: {patch_result.total_lines_changed} lines)")
+            except (PatchParseError, PatchApplyError, ScopeBudgetExceededError) as e:
+                err_msg = str(e)
+                print(f"       ⚠️ Patch contract failed ({err_msg[:80]}). Retrying as repair loop...")
+                
+                if attempt == 0:
+                    feedback = (
+                        "CRITICAL: Your previous attempt failed the SEARCH/REPLACE contract!\n"
+                        f"Error: {err_msg}\n\n"
+                        "You MUST output ONLY valid <<<<<<< SEARCH / >>>>>>> REPLACE blocks.\n"
+                        "Do NOT output the full file. Do NOT use markdown fences.\n"
+                        f"Original file content for context:\n{original[:12000]}\n\n"
+                    )
+                    continue
+                else:
+                    print("       [METRIC] WHOLE-FILE rejected after attempt 2 (Patch Contract Fail)")
+                    return False
 
             try:
                 ast.parse(fix_code)
