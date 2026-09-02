@@ -563,11 +563,22 @@ def _prune_ast_context(source: str, issue_desc: str, max_chars: int = 12000) -> 
 
 def _generate_tdd_test(issue_desc: str, target_file: str, api_keys: dict) -> str:
     """Spawns a sub-agent to write a minimal failing pytest test."""
+    # Read the target file to get the actual function signature
+    try:
+        with open(ROOT / target_file, 'r') as f:
+            source_lines = f.readlines()
+            signatures = [l.strip() for l in source_lines if l.strip().startswith('def ')]
+            sig_context = "\n".join(signatures[:5])
+    except:
+        sig_context = "Unable to read source"
+    
     prompt = (
         "You are a senior QA engineer. Write a minimal, failing pytest test case "
         "that reproduces this specific bug:\n"
         f"ISSUE: {issue_desc}\n"
         f"TARGET FILE: {target_file}\n"
+        f"ACTUAL FUNCTION SIGNATURES IN FILE:\n{sig_context}\n\n"
+        "IMPORTANT: Your test MUST call functions with the correct signatures shown above.\n"
         "RULES:\n"
         "- Import the necessary modules from the target file.\n"
         "- The test MUST fail in the current broken state.\n"
