@@ -95,10 +95,12 @@ def triage_backlog():
 
 def _generate_tdd_test(issue_desc: str, target_file: str, api_keys: dict) -> str:
     try:
-        with open(ROOT / target_file, 'r') as f:
+        with open(ROOT / target_file, 'r', encoding='utf-8') as f:
             sigs = [l.strip() for l in f.readlines() if l.strip().startswith('def ')]
             sig_context = "\n".join(sigs[:5])
-    except: sig_context = ""
+    except Exception as e:
+        print(f"       ⚠️ TDD sig read failed: {e}")
+        sig_context = ""
     
     prompt = (
         f"You are a senior QA engineer. Write a minimal failing pytest test for:\n"
