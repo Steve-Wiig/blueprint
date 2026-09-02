@@ -3,7 +3,7 @@ import json
 import urllib.request
 
 # We use a fast, cheap model for the Critic role to save heavy-model budget
-CRITIC_MODEL = "meta-llama/meta-llama/llama-3.1-8b-instruct"
+CRITIC_MODEL = "meta-llama/meta-llama/llama-3.1-8b-instruct:free"
 
 def generate_strategic_constraint(failed_code: str, traceback: str, original_prompt: str) -> str:
     api_key = os.getenv("OPENROUTER_API_KEY")

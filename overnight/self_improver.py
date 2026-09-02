@@ -709,7 +709,7 @@ def apply_auto_fix(file_path, issue, api_keys):
             else:
                 # Attempt 2 also failed pytest
                 tb_text = (result.stdout.decode(errors='replace') + result.stderr.decode(errors='replace')) if not timed_out else "Pytest timed out"
-                check_and_record_defeat(str(file_path), fix_code, tb_text)
+                check_and_record_defeat(str(file_path), original, tb_text)
                 _tel(stage="pytest", pytest_passed=False, pytest_timed_out=timed_out, attempt_outcome="pytest_fail", issue_final_outcome="rejected")
                 return False
 
@@ -734,7 +734,7 @@ def apply_auto_fix(file_path, issue, api_keys):
             file_path.write_text(original)
             backup.unlink(missing_ok=True)
             tb_text = (result.stdout.decode(errors='replace') + result.stderr.decode(errors='replace')) if not timed_out else "Pytest timed out"
-            check_and_record_defeat(str(file_path), fix_code, tb_text)
+            check_and_record_defeat(str(file_path), original, tb_text)
             _tel(stage="pytest", pytest_passed=False, pytest_timed_out=timed_out, attempt_outcome="pytest_fail", issue_final_outcome="rejected")
             return False
 
