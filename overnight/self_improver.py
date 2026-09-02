@@ -138,8 +138,10 @@ def apply_auto_fix(file_path, issue, api_keys):
     if baseline_tb is None:
         print(f"       ✅ Baseline tests passed. Stale advisory.")
         return True
+    print(f"       🔴 Baseline failure captured ({len(baseline_tb)} chars)")
 
     # 2. TDD SUB-AGENT
+    print(f"       🧪 Spawning TDD Sub-Agent...")
     tdd_test_code = _generate_tdd_test(issue.get('description', ''), str(file_path.relative_to(ROOT)), api_keys)
     tdd_block = ""
     if tdd_test_code:
@@ -261,27 +263,31 @@ def prefill_advisory_queue(files, api_keys, budget):
 
 def process_advisory_queue(api_keys, budget, state):
     pending = sorted(QUEUE_DIR.glob("*.json")) if QUEUE_DIR.exists() else []
+    print(f"======================================================================\nPHASE B: OPENROUTER PROCESSING ({len(pending)} pending advisories)\n======================================================================")
     for i, qpath in enumerate(pending[:10], 1):
         if not budget.wait_if_needed("openrouter", timeout=120): break
         budget.record_call("openrouter")
         try:
             data = json.loads(qpath.read_text())
             source_file = ROOT / data["file_path"]
+            print(f"  [{i}/{len(pending)}] 🔍 {data['file_path']}")
             if not source_file.exists(): qpath.unlink(); continue
             
             primary_response = generate(build_review_prompt(source_file, source_file.read_text(), get_file_context(source_file), advisory_notes=data["advisory_notes"]), api_keys, max_tokens=8192)
-            if not primary_response: continue
+            if not primary_response: print("       ⚠️ Primary analysis failed"); continue
             
             improvements = extract_json_from_response(primary_response)
-            if not improvements: qpath.unlink(); continue
+            if not improvements: print("       ⚠️ Parse failed"); qpath.unlink(); continue
             
             auto_fixable = [imp for imp in improvements if isinstance(imp, dict) and imp.get("category") in SAFE_CATEGORIES]
+            print(f"       📥 {len(auto_fixable)} fixable issues queued to backlog")
             if auto_fixable:
                 backlog = _load_json(FIX_BACKLOG)
                 for issue in auto_fixable: backlog.append({"file": str(source_file.relative_to(ROOT)), "issue": issue})
                 _save_json(FIX_BACKLOG, backlog)
             qpath.unlink()
-        except: pass
+        except Exception as e:
+            print(f"       ❌ Queue Error: {e}")
         time.sleep(2)
 
 def discover_files():
