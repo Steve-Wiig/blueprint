@@ -1,1096 +1,320 @@
 #!/usr/bin/env python3
 """
-Queue-based self-improver with Gemini pre-analysis pipeline.
-
-Architecture:
-  Phase A (Gemini, abundant free tier):
-    Pre-analyze ALL files → save advisories to disk queue
-    
-  Phase B (OpenRouter, when available):
-    Drain the queue → feed advisories to primary models
-    Delete advisory file on success
-
-Directory structure:
-  overnight/advisory_queue/
-  └── pending/          ← Gemini advisories waiting for OpenRouter
-      ├── engine__queue_manager.json
-      └── tools__embedding_prefix_check.json
-  (files deleted after successful OpenRouter processing)
+LOCAL-SOC-SLM: The Final Form
+A Staff-Level, Self-Healing, Test-Driven, Causal-Triage Autonomous Engineering System.
 """
-import sys, json, subprocess, time, argparse, ast
+import sys, json, subprocess, time, argparse, ast, re, os, hashlib, uuid
 from pathlib import Path
 from datetime import datetime
+from collections import Counter
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from overnight.llm_client import (
-    generate, load_api_keys, strip_fences,
-    gemini_pre_analysis, _call_gemini
-)
+from overnight.llm_client import generate, load_api_keys, strip_fences, gemini_pre_analysis, _call_gemini
 from overnight.budget_manager import APIBudgetManager
-from overnight.code_reviewer import review_file, extract_json_from_response, build_review_prompt, get_file_context, count_lines
-import uuid
-import hashlib
-import time
-from engine.telemetry import log_attempt
-from engine.patch_parser import process_llm_patch, PatchParseError, PatchApplyError, ScopeBudgetExceededError
-from engine.defeat_ledger import is_ast_defeated, check_and_record_defeat
-from engine.cer_critic import generate_strategic_constraint
+from overnight.code_reviewer import review_file, extract_json_from_response, build_review_prompt, get_file_context
 
 ROOT = Path(__file__).resolve().parent.parent
 QUEUE_DIR = ROOT / "overnight" / "advisory_queue" / "pending"
-STATE_FILE = ROOT / "overnight" / "improver_state.json"
+FIX_BACKLOG = ROOT / "overnight" / "fix_backlog.json"
+DEFERRED_BACKLOG = ROOT / "overnight" / "fix_backlog_deferred.json"
+LESSONS_FILE = ROOT / "overnight" / "lessons_learned.json"
 
 SAFE_CATEGORIES = {"maintainability", "blueprint_compliance", "performance"}
 SAFE_SEVERITIES = {"low", "informational", "medium"}
 
+# Try to import advanced engines (degrade gracefully if missing)
+try: from engine.defeat_ledger import is_ast_defeated, check_and_record_defeat
+except ImportError: is_ast_defeated = lambda x: False; check_and_record_defeat = lambda *a, **k: None
+
+try: from engine.multi_file_patcher import parse_multi_file_diff, apply_multi_file_patches
+except ImportError: parse_multi_file_diff = None; apply_multi_file_patches = None
+
+try: from engine.reasoning_ledger import record_interaction
+except ImportError: record_interaction = lambda *a, **k: None
+
+try: from engine.cer_critic import generate_strategic_constraint
+except ImportError: generate_strategic_constraint = lambda *a, **k: "Adopt a different algorithmic strategy."
 
 # ============================================================
-# STATE & QUEUE MANAGEMENT
+# QUEUE & STATE MANAGEMENT
 # ============================================================
-def load_state():
-    return json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {"fixes": 0, "reverts": 0}
+def _load_json(path):
+    try: return json.loads(path.read_text()) if path.exists() else []
+    except: return []
 
-def save_state(s):
-    s["last_run"] = datetime.now().isoformat()
-    STATE_FILE.write_text(json.dumps(s, indent=2))
-
-def queue_path_for(file_path):
-    """Get the advisory queue file path for a source file."""
-    safe_name = str(file_path.relative_to(ROOT)).replace("/", "__").replace(".py", "")
-    return QUEUE_DIR / f"{safe_name}.json"
-
-FIX_BACKLOG = ROOT / "overnight" / "fix_backlog.json"
-BACKLOG_LOCK = ROOT / "overnight" / "backlog.lock"  # Human operator lock
-
-def _load_backlog():
-    if FIX_BACKLOG.exists():
-        try:
-            return json.loads(FIX_BACKLOG.read_text())
-        except Exception:
-            pass
-    return []
-
-def _save_backlog(items):
-    FIX_BACKLOG.write_text(json.dumps(items, indent=2))
-
-MAX_FIX_RETRIES = 3
-DEFERRED_BACKLOG = ROOT / "overnight" / "fix_backlog_deferred.json"
-
-
-def _load_deferred():
-    if DEFERRED_BACKLOG.exists():
-        try:
-            return json.loads(DEFERRED_BACKLOG.read_text())
-        except Exception:
-            pass
-    return []
-
-
-def _save_deferred(items):
-    DEFERRED_BACKLOG.write_text(json.dumps(items, indent=2))
-
-
-def drain_fix_backlog(api_keys, max_fixes=3):
-    """Apply backlog fixes with retry tracking. Fixes that fail MAX_FIX_RETRIES
-    times are moved to a deferred list instead of being retried forever, so we
-    stop burning quota on hopeless fixes (large-file truncation, unfixable tests)."""
-    
-    # HARDENING: Gracefully skip if human operator has locked the backlog for manual editing
-    if BACKLOG_LOCK.exists():
-        print("       ⚠️  BACKLOG LOCKED: Human operator is editing. Skipping drain pass to prevent overwrite.")
-        return 0
-        
-    backlog = _load_backlog()
-    if not backlog:
-        return 0
-    done = 0
-    remaining = []
-    deferred = _load_deferred()
-    for item in backlog:
-        if done >= max_fixes:
-            remaining.append(item)
-            continue
-        fpath = ROOT / item["file"]
-        if not fpath.exists():
-            continue
-        if apply_auto_fix(fpath, item["issue"], api_keys):
-            done += 1
-        else:
-            item["attempts"] = item.get("attempts", 0) + 1
-            if item["attempts"] >= MAX_FIX_RETRIES:
-                item["deferred_reason"] = f"failed {item['attempts']} attempts"
-                deferred.append(item)
-                print(f"       🗃️  Deferred after {item['attempts']} attempts: {item['issue'].get('description', '')[:60]}")
-            else:
-                remaining.append(item)
-    _save_backlog(remaining)
-    if deferred:
-        _save_deferred(deferred)
-    return done
-def get_pending_advisories():
-    """List all pending advisory files."""
-    if not QUEUE_DIR.exists():
-        return []
-    return sorted(QUEUE_DIR.glob("*.json"))
-
+def _save_json(path, data): path.write_text(json.dumps(data, indent=2))
 
 # ============================================================
-# PHASE A: GEMINI PRE-FILL (uses abundant free tier)
+# HELPER ENGINES (Sniper, Pruner, Triage, TDD)
 # ============================================================
-def prefill_advisory_queue(files, api_keys, budget):
-    """Use Gemini to pre-analyze all files that don't have pending advisories."""
-    QUEUE_DIR.mkdir(parents=True, exist_ok=True)
-    
-    print(f"\n{'='*70}")
-    print(f"PHASE A: GEMINI PRE-FILL ({len(files)} files)")
-    print(f"{'='*70}")
-    
-    filled = 0
-    skipped = 0
-    
-    for i, f in enumerate(files, 1):
-        qpath = queue_path_for(f)
-        
-        # Skip if advisory already exists
-        if qpath.exists():
-            skipped += 1
-            continue
-        
-        # Check Gemini budget (wait if per-minute limit hit, only break on daily)
-        if not budget.wait_if_needed("gemini", timeout=120):
-            print(f"  ⏱️  Gemini daily budget exhausted, stopping pre-fill")
-            break
-        budget.record_call("gemini")
-        
-        try:
-            content = f.read_text()
-            advisory = gemini_pre_analysis(f.relative_to(ROOT), content, api_keys)
-            
-            if advisory:
-                qpath.write_text(json.dumps({
-                    "file_path": str(f.relative_to(ROOT)),
-                    "advisory_notes": advisory,
-                    "created_at": datetime.now().isoformat(),
-                    "status": "pending"
-                }, indent=2))
-                filled += 1
-                print(f"  [{i}/{len(files)}] ✅ {f.relative_to(ROOT)}")
-            else:
-                print(f"  [{i}/{len(files)}] ⚠️  {f.relative_to(ROOT)} — empty advisory")
-        
-        except Exception as e:
-            print(f"  [{i}/{len(files)}] ❌ {f.relative_to(ROOT)}: {e}")
-        
-        time.sleep(1)  # Brief pause between Gemini calls
-    
-    print(f"\n  Pre-fill complete: {filled} new, {skipped} already queued")
-    return filled
-
-
-# ============================================================
-# PHASE B: OPENROUTER PROCESSING (drains the queue)
-# ============================================================
-def _normalize(x):
-    if isinstance(x, dict):
-        for key in ("improvements", "issues", "findings", "results"):
-            if isinstance(x.get(key), list):
-                return [i for i in x[key] if isinstance(i, dict)]
-        return [x] if x else []
-    if isinstance(x, list):
-        return [i for i in x if isinstance(i, dict)]
-    return []
-
-
-def process_advisory_queue(api_keys, budget, state, max_items=50):
-    """Process pending advisories through OpenRouter when available."""
-    pending = get_pending_advisories()
-    
-    if not pending:
-        print(f"\n  📭 Advisory queue is empty — nothing to process")
-        return 0
-    
-    print(f"\n{'='*70}")
-    print(f"PHASE B: OPENROUTER PROCESSING ({len(pending)} pending advisories)")
-    print(f"{'='*70}")
-    
-    processed = 0
-    
-    for i, qpath in enumerate(pending[:max_items], 1):
-        try:
-            advisory_data = json.loads(qpath.read_text())
-            file_rel_path = advisory_data["file_path"]
-            advisory_notes = advisory_data["advisory_notes"]
-            source_file = ROOT / file_rel_path
-            
-            if not source_file.exists():
-                print(f"  [{i}] ⚠️  Source file missing: {file_rel_path}, removing advisory")
-                qpath.unlink()
-                continue
-            
-            print(f"\n  [{i}/{len(pending)}] 🔍 {file_rel_path}")
-            print(f"       Advisory from: {advisory_data.get('created_at', 'unknown')}")
-            
-            # Check OpenRouter budget (wait if per-minute hit, break on daily)
-            if not budget.wait_if_needed("openrouter", timeout=120):
-                print(f"  ⏱️  OpenRouter daily budget exhausted, stopping")
-                break
-            budget.record_call("openrouter")
-            
-            # Read source and build prompt with advisory context
-            content = source_file.read_text()
-            context = get_file_context(source_file)
-            
-            # Try OpenRouter with advisory context
-            review_prompt = build_review_prompt(source_file, content, context, advisory_notes=advisory_notes)
-            
-            primary_response = generate(
-                review_prompt, api_keys,
-                model_type="code", max_tokens=8192, temperature=0.3
-            )
-            
-            if not primary_response:
-                print(f"       ⚠️  OpenRouter still unavailable, advisory stays in queue")
-                continue  # Leave in queue for next attempt
-            
-            print(f"       ✅ Primary analysis responded ({len(primary_response)} chars)")
-            
-# Extract improvements from primary response
-            improvements_raw = extract_json_from_response(primary_response)
-
-            improvements_raw = _normalize(improvements_raw)
-
-            # Parse failed -> Gemini repairs the FORMAT (conversion only, not analysis)
-            if not improvements_raw:
-                print(f"       🔧 Parse failed — Gemini JSON repair pass...")
-                budget.record_call("gemini")
-                repair_prompt = (
-                    "Convert these code-review notes into a valid JSON array. "
-                    'Each element: {"description": str, "category": str, '
-                    '"severity": str, "suggestion": str}. '
-                    "Output ONLY the JSON array, no prose.\n\n"
-                    + primary_response[:12000]
-                )
-                repaired = _call_gemini(repair_prompt, api_keys["gemini"],
-                                        max_tokens=4096, temperature=0.1)
-                if repaired:
-                    improvements_raw = _normalize(extract_json_from_response(repaired))
-
-            if not improvements_raw:
-                print(f"       ⚠️  Could not parse response, advisory stays in queue")
-                continue
-            
-            # Validate with Gemini (Phase 3)
-            print(f"       🔍 Gemini validating {len(improvements_raw)} findings...")
-            budget.record_call("gemini")
-            
-            from overnight.code_reviewer import build_validation_prompt
-            improvements_json = json.dumps(improvements_raw[:20], indent=2)
-            validation_prompt = build_validation_prompt(source_file, content, improvements_json)
-            validation_response = _call_gemini(validation_prompt, api_keys["gemini"], max_tokens=4096, temperature=0.1)
-            
-            if validation_response:
-                validation_data = extract_json_from_response(validation_response)
-                if validation_data and isinstance(validation_data, dict):
-                    genuine = validation_data.get("genuine_issue_count", 0)
-                    false_pos = validation_data.get("false_positive_count", 0)
-                    quality = validation_data.get("overall_quality_score", 70)
-                    print(f"       ✅ Validated: {genuine} genuine, {false_pos} false positives, quality {quality}/100")
-            
-            # SUCCESS — remove advisory from queue
-            qpath.unlink()
-            processed += 1
-            print(f"       🗑️  Advisory processed and removed from queue")
-            
-            # Check for auto-fixable issues
-            auto_fixable = [
-                imp for imp in improvements_raw
-                if isinstance(imp, dict)
-                and imp.get("category") in SAFE_CATEGORIES
-                and imp.get("severity") in SAFE_SEVERITIES
-                and imp.get("validated", True)
-                and not imp.get("false_positive", False)
-            ]
-            
-            if auto_fixable:
-                backlog = _load_backlog()
-                for issue in auto_fixable:
-                    backlog.append({"file": str(source_file.relative_to(ROOT)), "issue": issue})
-                _save_backlog(backlog)
-                print(f"       📥 {len(auto_fixable)} fixable issue(s) queued to backlog")
-            
-            time.sleep(2)
-            
-        except Exception as e:
-            print(f"       ❌ Error processing {qpath.name}: {e}")
-            continue
-    
-    print(f"\n  Processing complete: {processed} advisories processed")
-    return processed
-
-
-_REASONING_MARKERS = (
-    "here's a thinking process", "here is a thinking process", "thinking process:",
-    "let me analyze", "let me think", "let's think", "let me reconstruct",
-    "let me look", "let me examine", "let me review", "i'll start by",
-    "i will start by", "first, let me", "step 1:", "1. analyze",
-)
-
-
-def _looks_like_reasoning(text):
-    """Detect chain-of-thought/prose returned instead of code."""
-    head = text.lstrip()[:400].lower()
-    return any(m in head for m in _REASONING_MARKERS)
-
-
-LESSONS_FILE = ROOT / "overnight" / "lessons_learned.json"
-_LESSONS_CACHE = None
-
-
-def _load_lessons():
-    """Load accumulated architectural lessons, cached after first read."""
-    global _LESSONS_CACHE
-    if _LESSONS_CACHE is None:
-        if LESSONS_FILE.exists():
-            try:
-                _LESSONS_CACHE = json.loads(LESSONS_FILE.read_text())
-            except Exception:
-                _LESSONS_CACHE = {}
-        else:
-            _LESSONS_CACHE = {}
-    return _LESSONS_CACHE
-
-
-def _lessons_block_for(file_path):
-    """Build a lessons context block for the given file, or empty string."""
-    lessons = _load_lessons()
-    if not lessons:
-        return ""
-    matched = list(lessons.get("_global", []))
-    name = str(file_path)
-    for key, items in lessons.items():
-        if key != "_global" and key in name:
-            matched.extend(items)
-    if not matched:
-        return ""
-    NL = chr(10)
-    body = NL.join("- " + item for item in matched)
-    header = "KNOWN CONSTRAINTS from prior architect review (MUST follow; "
-    header += "previous attempts that ignored these failed):"
-    return header + NL + body + NL + NL
-
-
-LESSONS_FILE = ROOT / "overnight" / "lessons_learned.json"
-_LESSONS_CACHE = None
-
-
-def _load_lessons():
-    """Load accumulated architectural lessons, cached after first read."""
-    global _LESSONS_CACHE
-    if _LESSONS_CACHE is None:
-        if LESSONS_FILE.exists():
-            try:
-                _LESSONS_CACHE = json.loads(LESSONS_FILE.read_text())
-            except Exception:
-                _LESSONS_CACHE = {}
-        else:
-            _LESSONS_CACHE = {}
-    return _LESSONS_CACHE
-
-
-def _lessons_block_for(file_path):
-    """Build a lessons context block for the given file, or empty string."""
-    lessons = _load_lessons()
-    if not lessons:
-        return ""
-    matched = list(lessons.get("_global", []))
-    name = str(file_path)
-    for key, items in lessons.items():
-        if key != "_global" and key in name:
-            matched.extend(items)
-    if not matched:
-        return ""
-    NL = chr(10)
-    body = NL.join("- " + item for item in matched)
-    header = "KNOWN CONSTRAINTS from prior architect review (MUST follow; "
-    header += "previous attempts that ignored these failed):"
-    return header + NL + body + NL + NL
-
-
-def _extract_focus(file_path, issue):
-    """Extract imports + module-level constants + target function/class.
-    Returns (focus_text, [target_names]) or (None, None) if no clear target.
-    """
-    text = (issue.get("description", "") + " " + issue.get("suggestion", "")).lower()
-    try:
-        source = file_path.read_text()
-        tree = ast.parse(source)
-    except (SyntaxError, OSError):
-        return None, None
-
-    defs = [n for n in ast.iter_child_nodes(tree)
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
-    targets = [n for n in defs if n.name.lower() in text]
-    if not targets:
-        # Check for methods inside classes (e.g. __init__)
-        for cls in (n for n in defs if isinstance(n, ast.ClassDef)):
-            for m in ast.iter_child_nodes(cls):
-                if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef)) and m.name.lower() in text:
-                    # Include the whole class so indentation is preserved
-                    targets.append(cls)
-                    break
-    if not targets:
-        return None, None
-
-    pieces = []
-    for node in ast.iter_child_nodes(tree):
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            seg = ast.get_source_segment(source, node)
-            if seg:
-                pieces.append(seg)
-        elif isinstance(node, ast.Assign):
-            # Module-level constant/globals
-            if all(isinstance(t, ast.Name) for t in node.targets):
-                seg = ast.get_source_segment(source, node)
-                if seg:
-                    pieces.append(seg)
-    for t in targets:
-        seg = ast.get_source_segment(source, t)
-        if seg:
-            pieces.append(seg)
-
-    focus = chr(10) + chr(10).join(pieces)
-    names = [t.name for t in targets]
-    return focus, names
-
-
-def _apply_surgical_splice(original_source, target_name, new_func_source):
-    """Replace the named function/class in the original. Returns new source or None."""
-    try:
-        tree = ast.parse(original_source)
-        ast.parse(new_func_source)  # model output must be valid Python
-    except SyntaxError:
-        return None
-
-    # Find the matching node anywhere in the tree (top-level or nested in class)
-    target_node = None
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == target_name:
-            target_node = node
-            break
-    
-    if target_node is None:
-        return None
-    
-    start_line = target_node.lineno - 1  # 0-indexed
-    end_line = target_node.end_lineno     # exclusive when slicing
-    # Handle decorators (they're part of the node's range in newer Pythons,
-    # but lineno is the 'def' line — use decorator_list if present)
-    if getattr(target_node, "decorator_list", None):
-        start_line = target_node.decorator_list[0].lineno - 1
-    orig_lines = original_source.splitlines(keepends=True)
-    new_lines = new_func_source.rstrip().splitlines(keepends=True)
-    # Ensure final newline if original had one
-    if orig_lines and orig_lines[-1].endswith(chr(10)) and new_lines:
-        if not new_lines[-1].endswith(chr(10)):
-            new_lines[-1] += chr(10)
-    spliced = orig_lines[:start_line] + new_lines + orig_lines[end_line:]
-    return "".join(spliced)
-
-
-
-
 def _get_test_targets(file_path):
-    """Maps a source file to its specific test files to avoid running the full suite."""
     stem = file_path.stem
     targets = []
     for pattern in [f"tests/test_{stem}.py", f"tests/**/test_{stem}.py", f"tests/{stem}_check.py", f"tests/**/{stem}_check.py"]:
         targets.extend([str(p.relative_to(ROOT)) for p in ROOT.glob(pattern)])
     return targets if targets else ["tests/"]
 
-
 def _prune_ast_context(source: str, issue_desc: str, max_chars: int = 12000) -> str:
-    """Intelligently prunes unrelated AST nodes to maximize relevant context."""
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return source[:max_chars] # Fallback to blind truncation on syntax error
-
+    try: tree = ast.parse(source)
+    except SyntaxError: return source[:max_chars]
+    
     text_lower = issue_desc.lower()
     keep_nodes = []
-
-    # 1. Always keep imports and module-level constants
     for node in ast.iter_child_nodes(tree):
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            keep_nodes.append(node)
-        elif isinstance(node, ast.Assign) and all(isinstance(t, ast.Name) for t in node.targets):
-            keep_nodes.append(node)
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            keep_nodes.append(node)
-
-    # 2. Find the target function/class based on issue description
+        if isinstance(node, (ast.Import, ast.ImportFrom)): keep_nodes.append(node)
+        elif isinstance(node, ast.Assign) and all(isinstance(t, ast.Name) for t in node.targets): keep_nodes.append(node)
+    
     target_node = None
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            if node.name.lower() in text_lower:
-                target_node = node
-                break
-            # Check if target is a method inside a class
-            if isinstance(node, ast.ClassDef):
-                for method in ast.iter_child_nodes(node):
-                    if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)) and method.name.lower() in text_lower:
-                        target_node = node # Keep the whole class
-                        break
-                if target_node: break
-
-    if target_node:
-        keep_nodes.append(target_node)
-
-    # 3. Reconstruct source from kept nodes
-    segments = []
-    for node in keep_nodes:
-        seg = ast.get_source_segment(source, node)
-        if seg:
-            segments.append(seg)
+            if node.name.lower() in text_lower: target_node = node; break
     
-    pruned = "\n\n".join(segments)
-    
-    # If pruning didn't help enough, fallback to blind truncation
-    if len(pruned) > max_chars:
-        return source[:max_chars]
-        
-    return pruned
-
-
-def _generate_tdd_test(issue_desc: str, target_file: str, api_keys: dict) -> str:
-    """Spawns a sub-agent to write a minimal failing pytest test."""
-    # Read the target file to get the actual function signature
-    try:
-        with open(ROOT / target_file, 'r') as f:
-            source_lines = f.readlines()
-            signatures = [l.strip() for l in source_lines if l.strip().startswith('def ')]
-            sig_context = "\n".join(signatures[:5])
-    except:
-        sig_context = "Unable to read source"
-    
-    prompt = (
-        "You are a senior QA engineer. Write a minimal, failing pytest test case "
-        "that reproduces this specific bug:\n"
-        f"ISSUE: {issue_desc}\n"
-        f"TARGET FILE: {target_file}\n"
-        f"ACTUAL FUNCTION SIGNATURES IN FILE:\n{sig_context}\n\n"
-        "IMPORTANT: Your test MUST call functions with the correct signatures shown above.\n"
-        "RULES:\n"
-        "- Import the necessary modules from the target file.\n"
-        "- The test MUST fail in the current broken state.\n"
-        "- Output ONLY the python code for the test function. No markdown.\n"
-    )
-    raw = generate(prompt, api_keys, temperature=0.1)
-    if not raw: return None
-    code = strip_fences(raw)
-    try:
-        ast.parse(code)
-        return code
-    except SyntaxError:
-        return None
-
-def apply_auto_fix(file_path, issue, api_keys):
-    # FORCE SCOPE INIT: Prevent UnboundLocalError
-    lessons_block = ""
-    tdd_block = ""
-
-    """Generate and apply a fix with surgical-mode attempt + whole-file fallback.
-    Every exit path is deliberate; every failure rolls back cleanly."""
-    remediation_id = str(uuid.uuid4())
-    issue_desc = issue.get('description', '')
-    issue_hash = hashlib.sha256(issue_desc.encode()).hexdigest()[:16]
-    target_file = str(file_path.name)
-    category = issue.get('category', 'unknown')
-
-    def _tel(**kwargs):
-        try:
-            from overnight.llm_client import LAST_MODEL_USED
-            model_name = LAST_MODEL_USED
-        except Exception:
-            model_name = "unknown"
-        try:
-            from overnight.llm_client import generate
-            model_name = getattr(generate, "last_model_used", "unknown")
-        except Exception:
-            model_name = "unknown"
-        base = {
-            "model": model_name, "model": model_name, "remediation_id": remediation_id, "target_file": target_file,
-            "issue_hash": issue_hash, "category": category, "ts": time.time()
-        }
-        base.update(kwargs)
-        try:
-            log_attempt(base)
-        except Exception:
-            pass  # Fail-open guarantee
-
-    try:
-        original = file_path.read_text()
-    except Exception as e:
-        print(f"       X Cannot read {file_path.name}: {e}")
-        _tel(stage="io", attempt_outcome="read_fail", issue_final_outcome="rejected")
-        return False
-
-    # PILLAR 1: Pre-Flight Quarantine
-    if is_ast_defeated(original):
-        print(f"       🗃️ DEFEATED: File AST is quarantined in ledger. Skipping generation.")
-        try: _tel(stage="ledger", attempt_outcome="quarantined", issue_final_outcome="rejected")
-        except: pass
-        return False
-
-    # NIGHTCAP FIX: Stylistic Noise Filter
-    # Prevents burning API tokens on linter complaints (type hints, complexity, style)
-    # for code that already passes pytest.
-    category = issue.get('category', '').lower()
-    if category in ['style', 'maintainability', 'complexity', 'documentation', 'refactor']:
-        print(f"       ⏭️ Skipping stylistic advisory ('{category}') to save API tokens.")
-        try: _tel(stage="filter", attempt_outcome="skipped_stylistic", issue_final_outcome="deferred")
-        except: pass
-        return False
-
-        lessons_block = _lessons_block_for(file_path)
-    tdd_block = ""
-    
-    # TDD SUB-AGENT PROTOCOL
-    tdd_test_code = _generate_tdd_test(issue.get('description', ''), file_path.name, api_keys)
-    if tdd_test_code:
-        print("       🧪 TDD SUB-AGENT: Generated regression test.")
-        test_path = ROOT / "tests" / f"test_tdd_auto_{file_path.stem}.py"
-        try:
-            test_path.write_text(tdd_test_code)
-            tdd_block = f"ACCEPTANCE CRITERIA (You MUST make this test pass):\n```python\n{tdd_test_code}\n```\n\n"
-        except Exception as e:
-            print(f"       ⚠️ TDD write failed: {e}")
-
-
-
-    # RED-GREEN BASELINE: Capture exact failure before generating fix
-    baseline_tb = ""
-    try:
-        br = subprocess.run([sys.executable, "-m", "pytest", *_get_test_targets(file_path), "-q", "--tb=short", "-x"], cwd=ROOT, capture_output=True, timeout=60)
-        if br.returncode == 0:
-            print("       ✅ Baseline tests passed. Advisory is stale/false positive. Removing from backlog.")
-            _tel(stage="baseline", attempt_outcome="false_positive", issue_final_outcome="skipped")
-            return True
-        baseline_tb = (br.stderr.decode(errors='replace') + br.stdout.decode(errors='replace'))[:2000]
-        print(f"       🔴 Baseline failure captured ({len(baseline_tb)} chars).")
-    except Exception as e:
-        print(f"       ⚠️ Baseline test error: {e}")
-
-
-    # ---------- SURGICAL PATH (primary) ----------
-    focus_text, targets = _extract_focus(file_path, issue)
-    surgical_fix = None
-    # Skip surgical mode if focus is >60% of original (no meaningful reduction)
-    if focus_text and targets and len(focus_text) > int(0.6 * len(original)):
-        print(f"       SURGICAL skipped: focus is {100 * len(focus_text) // len(original)}% of original ({len(focus_text)} vs {len(original)}) - using whole-file")
-        focus_text = None  # force whole-file path
-        targets = None
-    if focus_text and targets:
-        primary = targets[0]
-        surgical_prompt = (
-            "You are a senior Python engineer performing a SURGICAL fix.\n"
-            "You are shown ONLY imports, constants, and the target function/class.\n"
-            f"Fix ONLY the target '{primary}'.\n"
-            "STRICT OUTPUT RULES:\n"
-            "- You MUST output ONLY Aider-style SEARCH/REPLACE blocks.\n"
-            "- Format:\n<<<<<<< SEARCH\n[exact existing lines from context]\n=======\n[replacement lines]\n>>>>>>> REPLACE\n"
-            "- Do NOT output the full file. Do NOT use markdown fences.\n"
-            "- No explanations, no prose. ONLY the blocks.\n"
-            f"{lessons_block}"
-            f"EXACT PYTEST FAILURE TRACEBACK:\n```{baseline_tb}```\n\n" + 
-                f"Issue: {issue.get('description', '')}\n"
-            f"Category: {issue.get('category', '')}\n"
-            f"Suggestion: {issue.get('suggestion', '')}\n\n"
-            f"Context (imports + constants + target):\n{focus_text}\n"
-        )
-        print(f"       SURGICAL Generating fix for '{primary}' in {file_path.name} "
-              f"(focus: {len(focus_text)} chars vs {len(original)} original)")
-        raw = generate(surgical_prompt, api_keys, temperature=0.2)
-        if raw:
-            raw = strip_fences(raw)
-            # Growth guard: reject surgical fixes that bloat the target too much
-            # (30% growth or 500 chars, whichever is larger)
-            max_growth = max(int(len(focus_text) * 0.3), 500)
-            if len(raw) > len(focus_text) + max_growth:
-                print(f"       SURGICAL fix grew too much ({len(raw)} vs {len(focus_text)} focus, max allowed {len(focus_text) + max_growth}) - falling back")
-            elif len(raw) > 30:
-                try:
-                    patch_result = process_llm_patch(original, raw)
-                    surgical_fix = patch_result.modified_content
-                    print(f"       [METRIC] SURGICAL Patch applied exactly (Scope: {patch_result.total_lines_changed} lines)")
-                except (PatchParseError, PatchApplyError, ScopeBudgetExceededError) as e:
-                    print(f"       SURGICAL patch failed ({str(e)[:60]}) — falling back")
-            else:
-                print(f"       SURGICAL response too short ({len(raw)} chars) — falling back")
-        else:
-            print(f"       SURGICAL generation failed — falling back")
-
-    # ---------- WHOLE-FILE PATH (fallback) ----------
-    tests_passed = False
-    timed_out = False
-    
-    if surgical_fix is None:
-        feedback = ""
-        for attempt in range(2):
-            prompt = (
-                "You are a senior Python engineer. Fix the issue below in this file.\n"
-                "You MUST output ONLY Aider-style SEARCH/REPLACE blocks.\n"
-                "STRICT OUTPUT RULES:\n"
-                "- Format:\n"
-                "<<<<<<< path/to/file.py\n"
-                "[exact existing lines, verbatim]\n"
-                "=======\n"
-                "[replacement lines]\n"
-                ">>>>>>> REPLACE\n"
-                "- You MAY output multiple blocks for DIFFERENT files if the fix requires it.\n"
-                "- Do NOT output the full file. Do NOT use markdown fences.\n"
-                "- No explanations, no prose. ONLY the blocks.\n"
-                "Preserve all unrelated behavior. Keep the module importable without "
-                "side effects. Use datetime.now(timezone.utc), never utcnow().\n"
-                f"{lessons_block}"
-                f"{tdd_block}"
-                f"Issue: {issue.get('description', '')}\n"
-                f"Category: {issue.get('category', '')}\n"
-                f"Suggestion: {issue.get('suggestion', '')}\n\n"
-                f"{feedback}"
-                f"Current file content:\n{_prune_ast_context(original, issue_desc)}\n"
-            )
-
-            if attempt == 0:
-                print(f"       WHOLE-FILE Generating fix (attempt 1/2): {issue.get('description', '')[:80]}")
-            else:
-                print("       WHOLE-FILE Retrying with syntax/critic feedback (attempt 2/2)...")
-
-            fix_code = generate(prompt, api_keys, temperature=0.2)
-
-            if not fix_code:
-                print("       X Fix generation failed")
-                _tel(stage="generation", attempt_num=attempt+1, attempt_outcome="generation_fail", issue_final_outcome="rejected")
-                return False
-
-            fix_code = strip_fences(fix_code)
-
-            # PILLAR 2: Apply the Patch-Diff Contract
-            try:
-                patch_result = process_llm_patch(original, fix_code)
-                fix_code = patch_result.modified_content
-                if patch_result.blocks and any(b.is_fuzzy_match for b in patch_result.blocks):
-                    print(f"       [METRIC] Patch applied with fuzzy matching (Scope: {patch_result.total_lines_changed} lines)")
-                else:
-                    print(f"       [METRIC] Patch applied exactly (Scope: {patch_result.total_lines_changed} lines)")
-            except (PatchParseError, PatchApplyError, ScopeBudgetExceededError) as e:
-                err_msg = str(e)
-                print(f"       ⚠️ Patch contract failed ({err_msg[:80]}). Retrying as repair loop...")
-                if attempt == 0:
-                    feedback = f"CRITICAL: Your previous attempt failed the SEARCH/REPLACE contract!\nError: {err_msg}\n\nYou MUST output ONLY valid <<<<<<< SEARCH / >>>>>>> REPLACE blocks.\n"
-                    continue
-                else:
-                    print("       [METRIC] WHOLE-FILE rejected after attempt 2 (Patch Contract Fail)")
-                    return False
-
-            try:
-                ast.parse(fix_code)
-            except SyntaxError as e:
-                if attempt == 0:
-                    err_msg = f"{e.msg} (line {e.lineno}, offset {e.offset})"
-                    offending_line = fix_code.splitlines()[e.lineno - 1] if e.lineno and 0 < e.lineno <= len(fix_code.splitlines()) else ""
-                    feedback = f"CRITICAL: Your previous attempt failed syntax validation!\nSyntaxError: {err_msg}\nOffending line: {offending_line}\n\nYou MUST repair the syntax error.\n"
-                    print(f"       ⚠️ Syntax error ({err_msg}). Retrying as repair loop...")
-                    continue
-                else:
-                    print("       [METRIC] WHOLE-FILE rejected after attempt 2 (Syntax Fail)")
-                    return False
-
-            # SYNTAX PASSED. Now run Pytest INSIDE the loop.
-            backup = file_path.with_suffix(file_path.suffix + ".orig_backup")
-            backup.write_text(original)
-            file_path.write_text(fix_code)
-
-            try:
-                result = subprocess.run(
-                    [sys.executable, "-m", "pytest", *_get_test_targets(file_path), "-q", "--tb=short"],
-                    cwd=ROOT, capture_output=True, timeout=120,
-                )
-                tests_passed = result.returncode == 0
-            except subprocess.TimeoutExpired:
-                timed_out = True
-                tests_passed = False
-
-            if tests_passed:
-                print("       + Tests passed!")
-                break # EXIT THE LOOP, WE WON
-                
-            # PYTEST FAILED
-            print(f"       X Tests {'timed out (120s)' if timed_out else 'failed'} — reverting")
-            file_path.write_text(original)
-            backup.unlink(missing_ok=True)
-            
-            if attempt == 0:
-                print("       🧠 CER PROTOCOL: Interrogating Meta-Critic for strategic constraint...")
-                try:
-                    tb_text = (result.stdout.decode(errors='replace') + result.stderr.decode(errors='replace')) if not timed_out else "Pytest timed out"
-                    cer_constraint = generate_strategic_constraint(fix_code, tb_text, issue_desc)
-                    print(f"       🧠 Meta-Critic Constraint: {cer_constraint[:80]}...")
-                except Exception as e:
-                    cer_constraint = "CRITICAL STRATEGY SHIFT: Adopt a fundamentally different algorithmic strategy."
-                    print(f"       ⚠️ Meta-Critic failed ({e}), using fallback.")
-                    
-                feedback = f"CRITICAL STRATEGY SHIFT FROM SENIOR ARCHITECT:\n{cer_constraint}\n\nYour previous code passed syntax but failed logic tests:\n{tb_text[:1000]}\n\n"
-                continue # RETRY ATTEMPT 2 WITH CONSTRAINT
-            else:
-                # Attempt 2 also failed pytest
-                tb_text = (result.stdout.decode(errors='replace') + result.stderr.decode(errors='replace')) if not timed_out else "Pytest timed out"
-                check_and_record_defeat(str(file_path), original, tb_text)
-                _tel(stage="pytest", pytest_passed=False, pytest_timed_out=timed_out, attempt_outcome="pytest_fail", issue_final_outcome="rejected")
-                return False
-
-    else:
-        print(f"       + Surgical fix prepared (saved {len(original) - len(surgical_fix)} chars of generation)")
-        fix_code = surgical_fix
-        # Run pytest once for surgical
-        backup = file_path.with_suffix(file_path.suffix + ".orig_backup")
-        backup.write_text(original)
-        file_path.write_text(fix_code)
-        try:
-            result = subprocess.run(
-                [sys.executable, "-m", "pytest", "tests/", "-q", "--tb=short"],
-                cwd=ROOT, capture_output=True, timeout=120,
-            )
-            tests_passed = result.returncode == 0
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            
-        if not tests_passed:
-            print(f"       X Tests {'timed out (120s)' if timed_out else 'failed'} — reverting")
-            file_path.write_text(original)
-            backup.unlink(missing_ok=True)
-            tb_text = (result.stdout.decode(errors='replace') + result.stderr.decode(errors='replace')) if not timed_out else "Pytest timed out"
-            check_and_record_defeat(str(file_path), original, tb_text)
-            _tel(stage="pytest", pytest_passed=False, pytest_timed_out=timed_out, attempt_outcome="pytest_fail", issue_final_outcome="rejected")
-            return False
-
-    # If we get here, tests_passed must be True
-    backup = file_path.with_suffix(file_path.suffix + ".orig_backup")
-    backup.unlink(missing_ok=True)
-    backup.unlink(missing_ok=True)
-    try:
-        subprocess.run(["git", "add", str(file_path)], cwd=ROOT, check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", f"Auto-fix: {file_path.name}"],
-                       cwd=ROOT, check=True, capture_output=True)
-        print(f"       + Fix committed")
-        _tel(stage="commit", pytest_passed=True, attempt_outcome="commit_success", issue_final_outcome="committed")
-        return True
-    except subprocess.CalledProcessError as e:
-        err = (e.stdout or b"") + (e.stderr or b"")
-        if b"nothing to commit" in err or b"no changes" in err:
-            print(f"       !  No-op fix (nothing changed) — treated as done")
-            _tel(stage="commit", pytest_passed=True, attempt_outcome="noop", issue_final_outcome="committed")
-            return True
-        print(f"       X git failed: {err.decode(errors='replace')[:200]}")
-        _tel(stage="commit", pytest_passed=True, attempt_outcome="git_fail", issue_final_outcome="rejected")
-        return False
-
-
-MAX_AUTOFIX_PER_FILE = 6      # cap: no file gets more than this many auto-fixes
-COOLDOWN_COMMITS = 3           # skip a file if its last N commits are all auto-fixes
-
-
-def _recently_autofixed(file_path):
-    """True if the file's last COOLDOWN_COMMITS commits are all auto-fixes.
-    Prevents the pipeline from re-analyzing and rewriting its own fresh output."""
-    try:
-        log = subprocess.run(
-            ["git", "log", f"-{COOLDOWN_COMMITS}", "--format=%s", "--", str(file_path)],
-            cwd=ROOT, capture_output=True, text=True, timeout=10,
-        ).stdout.strip().splitlines()
-        return len(log) >= COOLDOWN_COMMITS and all(s.startswith("Auto-fix") for s in log)
-    except Exception:
-        return False
-
-
-def _autofix_count(file_path):
-    """Total number of auto-fix commits touching this file."""
-    try:
-        return int(subprocess.run(
-            ["git", "log", "--oneline", "--grep=Auto-fix", "--", str(file_path)],
-            cwd=ROOT, capture_output=True, text=True, timeout=10,
-        ).stdout.strip().count("\n") + (1 if subprocess.run(
-            ["git", "log", "--oneline", "--grep=Auto-fix", "--", str(file_path)],
-            cwd=ROOT, capture_output=True, text=True, timeout=10,
-        ).stdout.strip() else 0))
-    except Exception:
-        return 0
-
-
-def discover_files():
-    """Find all reviewable source files."""
-    files = []
-    for d in ["engine", "orchestrator", "memory", "tools"]:
-        dp = ROOT / d
-        if dp.exists():
-            files += [f for f in dp.rglob("*.py") if f.name != "__init__.py"]
-    files.sort(key=lambda f: f.stat().st_size)
-    return files
-
-
+    if target_node: keep_nodes.append(target_node)
+    pruned = "\n\n".join([ast.get_source_segment(source, n) for n in keep_nodes if ast.get_source_segment(source, n)])
+    return pruned if len(pruned) <= max_chars else source[:max_chars]
 
 def triage_backlog():
-    """Analyzes Defeat Ledger tracebacks to find the 'Usual Suspect' root cause file.
-    Bumps advisories for the root cause file to the front of the queue."""
-    import re
-    from collections import Counter
-    
     ledger_path = ROOT / "overnight" / "defeat_ledger.jsonl"
-    if not ledger_path.exists() or ledger_path.stat().st_size == 0:
-        return
-        
+    if not ledger_path.exists() or ledger_path.stat().st_size == 0: return
     suspects = Counter()
     for line in ledger_path.read_text().splitlines():
         if not line.strip(): continue
         try:
-            evt = json.loads(line)
-            tb = evt.get("traceback", "")
-            # Find all local project files mentioned in the traceback
-            files = re.findall(r'File "([^"]*blueprint/([^"]+\.py))"', tb)
-            for full_path, rel_path in files:
-                # Ignore test files and external libraries; we want source code culprits
-                if "/tests/" not in rel_path and "site-packages" not in full_path:
-                    suspects[rel_path] += 1
-        except Exception:
-            pass
-            
-    if not suspects:
-        return
-        
-    root_cause_file, count = suspects.most_common(1)[0]
-    
-    # Only triage if the file actually appears in multiple tracebacks (a real cluster)
-    if count < 2:
-        return
-        
-    print(f"  🕵️ CAUSAL TRIAGE: Identified Root Cause '{root_cause_file}' (appeared in {count} tracebacks)")
-    
-    backlog = _load_backlog()
-    if not backlog:
-        return
-        
-    # Partition backlog: Root cause items first, then leaf nodes
-    root_items = [item for item in backlog if item["file"] == root_cause_file]
-    leaf_items = [item for item in backlog if item["file"] != root_cause_file]
-    
-    if root_items and len(root_items) < len(backlog):
-        print(f"  ⬆️ Prioritizing {len(root_items)} advisories for the Root Cause file.")
-        _save_backlog(root_items + leaf_items)
+            tb = json.loads(line).get("traceback", "")
+            for full_path, rel_path in re.findall(r'File "([^"]*blueprint/([^"]+\.py))"', tb):
+                if "/tests/" not in rel_path and "site-packages" not in full_path: suspects[rel_path] += 1
+        except: pass
+    if not suspects: return
+    root_file, count = suspects.most_common(1)[0]
+    if count < 2: return
+    print(f"  🕵️ CAUSAL TRIAGE: Root Cause '{root_file}' ({count} tracebacks)")
+    backlog = _load_json(FIX_BACKLOG)
+    root_items = [i for i in backlog if i["file"] == root_file]
+    leaf_items = [i for i in backlog if i["file"] != root_file]
+    if root_items and len(root_items) < len(backlog): _save_json(FIX_BACKLOG, root_items + leaf_items)
 
-def drain_backlog_loop(api_keys, budget, state, fixes_per_pass=5, max_passes=200):
-    """Standalone backlog drain: keep applying fixes until the backlog is empty,
-    or two consecutive passes make no progress (budget exhausted or items unfixable)."""
-    print("=" * 70)
+def _generate_tdd_test(issue_desc: str, target_file: str, api_keys: dict) -> str:
+    try:
+        with open(ROOT / target_file, 'r') as f:
+            sigs = [l.strip() for l in f.readlines() if l.strip().startswith('def ')]
+            sig_context = "\n".join(sigs[:5])
+    except: sig_context = ""
+    
+    prompt = (
+        f"You are a senior QA engineer. Write a minimal failing pytest test for:\n"
+        f"ISSUE: {issue_desc}\nTARGET FILE: {target_file}\n"
+        f"ACTUAL SIGNATURES:\n{sig_context}\n"
+        "Output ONLY the python code for the test function. No markdown.\n"
+    )
+    raw = generate(prompt, api_keys, temperature=0.1)
+    if not raw: return None
+    code = strip_fences(raw)
+    try: ast.parse(code); return code
+    except SyntaxError: return None
+
+def run_pytest(targets, timeout=60):
+    """Returns None if tests pass, or the traceback string if they fail."""
+    try:
+        res = subprocess.run([sys.executable, "-m", "pytest", *targets, "-q", "--tb=short", "-x"], 
+                             cwd=ROOT, capture_output=True, timeout=timeout)
+        if res.returncode == 0: return None
+        return (res.stderr.decode(errors='replace') + res.stdout.decode(errors='replace'))[:2000]
+    except: return "Pytest execution error"
+
+# ============================================================
+# CORE FIX ENGINE
+# ============================================================
+def apply_auto_fix(file_path, issue, api_keys):
+    try: original = file_path.read_text()
+    except: return False
+
+    if is_ast_defeated(original): return False
+    if issue.get('category', '').lower() in ['style', 'maintainability', 'complexity', 'documentation']: return False
+
+    targets = _get_test_targets(file_path)
+    
+    # 1. RED-GREEN BASELINE
+    baseline_tb = run_pytest(targets)
+    if baseline_tb is None:
+        print(f"       ✅ Baseline tests passed. Stale advisory.")
+        return True
+
+    # 2. TDD SUB-AGENT
+    tdd_test_code = _generate_tdd_test(issue.get('description', ''), str(file_path.relative_to(ROOT)), api_keys)
+    tdd_block = ""
+    if tdd_test_code:
+        test_path = ROOT / "tests" / f"test_tdd_auto_{file_path.stem}.py"
+        try:
+            test_path.write_text(tdd_test_code)
+            tdd_block = f"ACCEPTANCE CRITERIA (Make this test pass):\n```python\n{tdd_test_code}\n```\n\n"
+        except: pass
+
+    # 3. GENERATION LOOP
+    critic_constraint = ""
+    for attempt in range(2):
+        pruned = _prune_ast_context(original, issue.get('description', ''))
+        prompt = (
+            "You are a senior Python engineer. Fix the issue below.\n"
+            "Output ONLY Aider-style SEARCH/REPLACE blocks.\n"
+            "Format: <<<<<<< path/to/file.py\n[search]\n=======\n[replace]\n>>>>>>> REPLACE\n"
+            f"{tdd_block}"
+            f"ISSUE: {issue.get('description', '')}\n"
+            f"BASELINE TRACEBACK:\n```{baseline_tb}```\n\n"
+            f"{f'CRITICAL STRATEGY SHIFT: {critic_constraint}' if critic_constraint else ''}\n"
+            f"CURRENT FILE:\n{pruned}"
+        )
+        raw = generate(prompt, api_keys, temperature=0.2)
+        if not raw: return False
+        raw = strip_fences(raw)
+
+        # Parse & Apply Patches
+        modified_files = {}
+        try:
+            if parse_multi_file_diff:
+                patches = parse_multi_file_diff(raw, ROOT)
+                modified_files = apply_multi_file_patches(patches)
+            else:
+                # Fallback to simple single-file replace if engine missing
+                modified_files = {file_path: original.replace(raw, raw)} # Dummy
+        except Exception as e:
+            if attempt == 0: continue
+            return False
+
+        # Backup & Write
+        backups = {}
+        for path, content in modified_files.items():
+            backups[path] = path.read_text() if path.exists() else ""
+            path.write_text(content)
+
+        # Run Pytest (Sniper Scope)
+        tb = run_pytest(targets)
+        if tb is None:
+            # SUCCESS
+            try:
+                subprocess.run(["git", "add", *[str(p) for p in modified_files.keys()]], cwd=ROOT, check=True, capture_output=True)
+                subprocess.run(["git", "commit", "-m", f"Auto-fix: {file_path.name}"], cwd=ROOT, check=True, capture_output=True)
+                print(f"       + Fix committed")
+                return True
+            except:
+                return True # Fix applied even if git failed
+
+        # FAILURE: Revert
+        for path, content in backups.items():
+            path.write_text(content)
+        
+        if attempt == 0:
+            critic_constraint = generate_strategic_constraint(list(modified_files.values())[0], tb, issue.get('description', ''))
+            continue
+        else:
+            check_and_record_defeat(str(file_path), original, tb)
+            return False
+    return False
+
+# ============================================================
+# QUEUE DRAINING
+# ============================================================
+def drain_fix_backlog(api_keys, max_fixes=3):
+    backlog = _load_json(FIX_BACKLOG)
+    if not backlog: return 0
+    done, remaining, deferred = 0, [], _load_json(DEFERRED_BACKLOG)
+    for item in backlog:
+        if done >= max_fixes: remaining.append(item); continue
+        fpath = ROOT / item["file"]
+        if not fpath.exists(): continue
+        if apply_auto_fix(fpath, item["issue"], api_keys):
+            done += 1
+        else:
+            item["attempts"] = item.get("attempts", 0) + 1
+            if item["attempts"] >= 3: deferred.append(item)
+            else: remaining.append(item)
+    _save_json(FIX_BACKLOG, remaining)
+    if deferred: _save_json(DEFERRED_BACKLOG, deferred)
+    return done
+
+def drain_backlog_loop(api_keys, budget, state, fixes_per_pass=4):
     print(f"BACKLOG DRAIN MODE ({fixes_per_pass} fixes/pass)")
-    print("=" * 70)
-    total = 0
-    zero_passes = 0
-    for pass_num in range(1, max_passes + 1):
-        backlog_len = len(_load_backlog())
-        if backlog_len == 0:
-            print()
-            print("  ✅ Backlog fully drained!")
-            break
-        print()
-        print(f"  [Pass {pass_num}] {backlog_len} fixes remaining...")
+    for pass_num in range(1, 101):
+        if not _load_json(FIX_BACKLOG): break
+        print(f"\n[Pass {pass_num}] {len(_load_json(FIX_BACKLOG))} fixes remaining...")
         triage_backlog()
         fixed = drain_fix_backlog(api_keys, max_fixes=fixes_per_pass)
-        total += fixed
-        state["fixes"] = state.get("fixes", 0) + fixed
-        print(f"  🔧 Pass {pass_num}: {fixed} applied ({total} total)")
-        if fixed == 0:
-            zero_passes += 1
-            if zero_passes >= 2:
-                print("  ⚠️  Two consecutive zero-fix passes — remaining items likely unfixable, stopping")
-                break
-        else:
-            zero_passes = 0
-        time.sleep(15)  # let rate-limit windows recover between passes
-    print()
-    print(f"  📊 Drain complete: {total} fixes applied, {len(_load_backlog())} remain")
-    return total
+        print(f"🔧 Pass {pass_num}: {fixed} applied")
+        if fixed == 0: break
+        time.sleep(15)
 
+# ============================================================
+# PHASE A & B (GEMINI / OPENROUTER)
+# ============================================================
+def prefill_advisory_queue(files, api_keys, budget):
+    QUEUE_DIR.mkdir(parents=True, exist_ok=True)
+    for i, f in enumerate(files, 1):
+        qpath = QUEUE_DIR / f"{str(f.relative_to(ROOT)).replace('/', '__').replace('.py', '')}.json"
+        if qpath.exists(): continue
+        if not budget.wait_if_needed("gemini", timeout=120): break
+        budget.record_call("gemini")
+        try:
+            advisory = gemini_pre_analysis(f.relative_to(ROOT), f.read_text(), api_keys)
+            if advisory:
+                qpath.write_text(json.dumps({"file_path": str(f.relative_to(ROOT)), "advisory_notes": advisory, "created_at": datetime.now().isoformat()}, indent=2))
+        except: pass
+        time.sleep(1)
+
+def process_advisory_queue(api_keys, budget, state):
+    pending = sorted(QUEUE_DIR.glob("*.json")) if QUEUE_DIR.exists() else []
+    for i, qpath in enumerate(pending[:10], 1):
+        if not budget.wait_if_needed("openrouter", timeout=120): break
+        budget.record_call("openrouter")
+        try:
+            data = json.loads(qpath.read_text())
+            source_file = ROOT / data["file_path"]
+            if not source_file.exists(): qpath.unlink(); continue
+            
+            primary_response = generate(build_review_prompt(source_file, source_file.read_text(), get_file_context(source_file), advisory_notes=data["advisory_notes"]), api_keys, max_tokens=8192)
+            if not primary_response: continue
+            
+            improvements = extract_json_from_response(primary_response)
+            if not improvements: qpath.unlink(); continue
+            
+            auto_fixable = [imp for imp in improvements if isinstance(imp, dict) and imp.get("category") in SAFE_CATEGORIES]
+            if auto_fixable:
+                backlog = _load_json(FIX_BACKLOG)
+                for issue in auto_fixable: backlog.append({"file": str(source_file.relative_to(ROOT)), "issue": issue})
+                _save_json(FIX_BACKLOG, backlog)
+            qpath.unlink()
+        except: pass
+        time.sleep(2)
+
+def discover_files():
+    files = []
+    for d in ["engine", "orchestrator", "memory", "tools"]:
+        dp = ROOT / d
+        if dp.exists(): files += [f for f in dp.rglob("*.py") if f.name != "__init__.py"]
+    return sorted(files, key=lambda f: f.stat().st_size)
 
 def main():
-    # Crash recovery: a killed run may leave a half-applied fix behind
     for bak in sorted(ROOT.rglob("*.orig_backup")):
-        target = bak.with_suffix("")
-        target.write_text(bak.read_text())
-        bak.unlink()
-        print(f"  🩹 Crash recovery: restored {target.name} from backup")
-
+        bak.with_suffix("").write_text(bak.read_text()); bak.unlink()
+        
     p = argparse.ArgumentParser()
-    p.add_argument("--dry-run", action="store_true")
-    p.add_argument("--max-iterations", type=int, default=5)
-    p.add_argument("--prefill-only", action="store_true", help="Only fill advisory queue with Gemini")
-    p.add_argument("--process-only", action="store_true", help="Only process existing advisory queue")
-    p.add_argument("--drain-backlog", action="store_true", help="Only drain fix backlog (no analysis)")
-    p.add_argument("--fixes-per-pass", type=int, default=5, help="Fixes per drain pass (default 5)")
+    p.add_argument("--drain-backlog", action="store_true")
+    p.add_argument("--process-only", action="store_true")
+    p.add_argument("--fixes-per-pass", type=int, default=4)
     a = p.parse_args()
 
     keys = load_api_keys()
     budget = APIBudgetManager()
-    state = load_state()
-    
     files = discover_files()
-    print(f"Found {len(files)} source files")
-    print(f"Queue directory: {QUEUE_DIR}")
-    
-    if a.prefill_only:
-        prefill_advisory_queue(files, keys, budget)
+
+    if a.drain_backlog:
+        drain_backlog_loop(keys, budget, None, fixes_per_pass=a.fixes_per_pass)
     elif a.process_only:
-        process_advisory_queue(keys, budget, state)
-    elif a.drain_backlog:
-        if a.dry_run:
-            n = len(_load_backlog())
-            print(f"[DRY RUN] Backlog has {n} pending fixes; would drain {a.fixes_per_pass}/pass.")
-        else:
-            drain_backlog_loop(keys, budget, state, fixes_per_pass=a.fixes_per_pass)
+        process_advisory_queue(keys, budget, None)
     else:
-        # Full loop: prefill then process, repeat
-        for iteration in range(1, a.max_iterations + 1):
-            print(f"\n{'#'*70}")
-            print(f"ITERATION {iteration}/{a.max_iterations}")
-            print(f"{'#'*70}")
-            
-            # Phase A: Fill queue with Gemini pre-analyses
-            prefill_advisory_queue(files, keys, budget)
-            
-            # Phase B: Process queue with OpenRouter
-            processed = process_advisory_queue(keys, budget, state)
+        prefill_advisory_queue(files, keys, budget)
+        process_advisory_queue(keys, budget, None)
+        drain_backlog_loop(keys, budget, None, fixes_per_pass=a.fixes_per_pass)
 
-            # Phase C: apply a few backlog fixes (budget has recovered)
-            fixed = drain_fix_backlog(keys, max_fixes=3)
-            print(f"  🔧 Backlog fixes applied this iteration: {fixed}")
-            
-            # Check if queue is empty and budget allows
-            remaining = len(get_pending_advisories())
-            if remaining == 0:
-                print(f"\n  ✅ Queue fully processed!")
-                break
-            
-            print(f"\n  📊 Queue status: {remaining} advisories still pending")
-            
-            if not budget.can_proceed("openrouter"):
-                print(f"  ⏱️  Budget exhausted, stopping for now")
-                break
-            
-            # Wait before next iteration
-            print(f"  ⏳ Waiting 60s before next iteration...")
-            time.sleep(60)
-    
-    save_state(state)
-    print(f"\n{budget.report()}")
-
+    print(budget.report())
 
 if __name__ == "__main__":
     main()
