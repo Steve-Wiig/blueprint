@@ -560,6 +560,28 @@ def _prune_ast_context(source: str, issue_desc: str, max_chars: int = 12000) -> 
         
     return pruned
 
+
+def _generate_tdd_test(issue_desc: str, target_file: str, api_keys: dict) -> str:
+    """Spawns a sub-agent to write a minimal failing pytest test."""
+    prompt = (
+        "You are a senior QA engineer. Write a minimal, failing pytest test case "
+        "that reproduces this specific bug:\n"
+        f"ISSUE: {issue_desc}\n"
+        f"TARGET FILE: {target_file}\n"
+        "RULES:\n"
+        "- Import the necessary modules from the target file.\n"
+        "- The test MUST fail in the current broken state.\n"
+        "- Output ONLY the python code for the test function. No markdown.\n"
+    )
+    raw = generate(prompt, api_keys, temperature=0.1)
+    if not raw: return None
+    code = strip_fences(raw)
+    try:
+        ast.parse(code)
+        return code
+    except SyntaxError:
+        return None
+
 def apply_auto_fix(file_path, issue, api_keys):
     """Generate and apply a fix with surgical-mode attempt + whole-file fallback.
     Every exit path is deliberate; every failure rolls back cleanly."""
@@ -614,7 +636,19 @@ def apply_auto_fix(file_path, issue, api_keys):
         except: pass
         return False
 
-    lessons_block = _lessons_block_for(file_path)
+        lessons_block = _lessons_block_for(file_path)
+
+    # TDD SUB-AGENT PROTOCOL
+    tdd_test_code = _generate_tdd_test(issue.get('description', ''), file_path.name, api_keys)
+    tdd_block = ""
+    if tdd_test_code:
+        print("       🧪 TDD SUB-AGENT: Generated regression test.")
+        test_path = ROOT / "tests" / f"test_tdd_auto_{file_path.stem}.py"
+        try:
+            test_path.write_text(tdd_test_code)
+            tdd_block = f"ACCEPTANCE CRITERIA (You MUST make this test pass):\n```python\n{tdd_test_code}\n```\n\n"
+        except Exception as e:
+            print(f"       ⚠️ TDD write failed: {e}")
     # RED-GREEN BASELINE: Capture exact failure before generating fix
     baseline_tb = ""
     try:
@@ -699,6 +733,7 @@ def apply_auto_fix(file_path, issue, api_keys):
                 "Preserve all unrelated behavior. Keep the module importable without "
                 "side effects. Use datetime.now(timezone.utc), never utcnow().\n"
                 f"{lessons_block}"
+                f"{tdd_block}"
                 f"Issue: {issue.get('description', '')}\n"
                 f"Category: {issue.get('category', '')}\n"
                 f"Suggestion: {issue.get('suggestion', '')}\n\n"
