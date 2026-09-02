@@ -108,6 +108,9 @@ def _generate_tdd_test(issue_desc: str, target_file: str, api_keys: dict) -> str
     prompt = (
         f"You are a senior QA engineer. Write a minimal failing pytest test for:\n"
         f"ISSUE: {issue_desc}\nTARGET FILE: {target_file}\n"
+        f"PROJECT STRUCTURE: Files live in subdirectories (tools/, engine/, memory/).\n"
+        f"IMPORT RULE: To import, you MUST use sys.path manipulation. Example:\n"
+        f"import sys\nsys.path.insert(0, 'tools')  # or 'engine'\nfrom file_name import function_name\n\n"
         f"ACTUAL SIGNATURES:\n{sig_context}\n"
         "Output ONLY the python code for the test function. No markdown.\n"
     )
