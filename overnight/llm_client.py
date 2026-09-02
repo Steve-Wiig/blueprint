@@ -618,6 +618,19 @@ Keep it brief - this is a preliminary pass, not a final review."""
 
 
 def generate(prompt, api_keys, model_type="code", max_tokens=8192, temperature=0.2):
+
+    # DYNAMIC EFFICACY ROUTING
+    try:
+        from pathlib import Path
+        import json
+        _matrix_file = Path(__file__).parent.parent / "engine" / "model_priority.json"
+        if _matrix_file.exists():
+            _priority = json.loads(_matrix_file.read_text()).get("models", [])
+            if isinstance(models, list):
+                models = sorted(models, key=lambda m: _priority.index(m) if m in _priority else 999)
+    except Exception:
+        pass
+
     """Generate content with multi-provider fallback.
     
     Order: OpenRouter → Groq → wait & retry
@@ -644,6 +657,7 @@ The first non-empty line MUST be valid Python code
     result = _call_openrouter(prompt, api_keys.get("openrouter", ""),
                               system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)
     if result:
+        generate.last_model_used = "openrouter"
         return result
 
     # Step 2: OpenRouter saturated → try Groq immediately
@@ -651,6 +665,7 @@ The first non-empty line MUST be valid Python code
     result = _call_groq(prompt, api_keys.get("groq", ""),
                         system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)
     if result:
+        generate.last_model_used = "groq"
         return result
 
     # Step 3: Groq saturated -> try Mistral
@@ -658,6 +673,7 @@ The first non-empty line MUST be valid Python code
     result = _call_mistral(prompt, api_keys.get("mistral", ""),
                            system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)
     if result:
+        generate.last_model_used = "mistral"
         return result
 
     # Step 3: Both busy → brief wait, one final retry
@@ -667,6 +683,7 @@ The first non-empty line MUST be valid Python code
     result = _call_openrouter(prompt, api_keys.get("openrouter", ""),
                               system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)
     if result:
+        generate.last_model_used = "openrouter"
         return result
     
     return _call_groq(prompt, api_keys.get("groq", ""),

@@ -522,8 +522,13 @@ def apply_auto_fix(file_path, issue, api_keys):
             model_name = LAST_MODEL_USED
         except Exception:
             model_name = "unknown"
+        try:
+            from overnight.llm_client import generate
+            model_name = getattr(generate, "last_model_used", "unknown")
+        except Exception:
+            model_name = "unknown"
         base = {
-            "model": model_name, "remediation_id": remediation_id, "target_file": target_file,
+            "model": model_name, "model": model_name, "remediation_id": remediation_id, "target_file": target_file,
             "issue_hash": issue_hash, "category": category, "ts": time.time()
         }
         base.update(kwargs)
