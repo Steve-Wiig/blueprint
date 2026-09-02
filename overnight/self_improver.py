@@ -883,6 +883,55 @@ def discover_files():
     return files
 
 
+
+def triage_backlog():
+    """Analyzes Defeat Ledger tracebacks to find the 'Usual Suspect' root cause file.
+    Bumps advisories for the root cause file to the front of the queue."""
+    import re
+    from collections import Counter
+    
+    ledger_path = ROOT / "overnight" / "defeat_ledger.jsonl"
+    if not ledger_path.exists() or ledger_path.stat().st_size == 0:
+        return
+        
+    suspects = Counter()
+    for line in ledger_path.read_text().splitlines():
+        if not line.strip(): continue
+        try:
+            evt = json.loads(line)
+            tb = evt.get("traceback", "")
+            # Find all local project files mentioned in the traceback
+            files = re.findall(r'File "([^"]*blueprint/([^"]+\.py))"', tb)
+            for full_path, rel_path in files:
+                # Ignore test files and external libraries; we want source code culprits
+                if "/tests/" not in rel_path and "site-packages" not in full_path:
+                    suspects[rel_path] += 1
+        except Exception:
+            pass
+            
+    if not suspects:
+        return
+        
+    root_cause_file, count = suspects.most_common(1)[0]
+    
+    # Only triage if the file actually appears in multiple tracebacks (a real cluster)
+    if count < 2:
+        return
+        
+    print(f"  🕵️ CAUSAL TRIAGE: Identified Root Cause '{root_cause_file}' (appeared in {count} tracebacks)")
+    
+    backlog = _load_backlog()
+    if not backlog:
+        return
+        
+    # Partition backlog: Root cause items first, then leaf nodes
+    root_items = [item for item in backlog if item["file"] == root_cause_file]
+    leaf_items = [item for item in backlog if item["file"] != root_cause_file]
+    
+    if root_items and len(root_items) < len(backlog):
+        print(f"  ⬆️ Prioritizing {len(root_items)} advisories for the Root Cause file.")
+        _save_backlog(root_items + leaf_items)
+
 def drain_backlog_loop(api_keys, budget, state, fixes_per_pass=5, max_passes=200):
     """Standalone backlog drain: keep applying fixes until the backlog is empty,
     or two consecutive passes make no progress (budget exhausted or items unfixable)."""
