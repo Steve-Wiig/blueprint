@@ -948,6 +948,7 @@ def drain_backlog_loop(api_keys, budget, state, fixes_per_pass=5, max_passes=200
             break
         print()
         print(f"  [Pass {pass_num}] {backlog_len} fixes remaining...")
+        triage_backlog()
         fixed = drain_fix_backlog(api_keys, max_fixes=fixes_per_pass)
         total += fixed
         state["fixes"] = state.get("fixes", 0) + fixed
