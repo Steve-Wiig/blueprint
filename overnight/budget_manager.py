@@ -242,7 +242,9 @@ class APIBudgetManager:
         now = datetime.now()
         cutoff = now - timedelta(seconds=window_seconds)
         stamps = [ts for ts in self._usage.get(provider, deque()) if ts > cutoff]
-        if len(stamps) < max_calls:
+        # Apply SAFETY_MARGIN to match can_proceed() threshold logic
+        effective_max = int(max_calls * SAFETY_MARGIN)
+        if len(stamps) < effective_max:
             return 0.0
         oldest = min(stamps)
         return max(0.0, window_seconds - (now - oldest).total_seconds()) + 0.25
