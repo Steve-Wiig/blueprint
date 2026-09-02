@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 TESTS_DIR = ROOT / "tests"
-QUARANTINE_DIR = TESTS_DIR / "quarantine"
+QUARANTINE_DIR = ROOT / ".quarantined_tests"
 
 def main():
     QUARANTINE_DIR.mkdir(exist_ok=True)
