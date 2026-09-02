@@ -597,7 +597,9 @@ def gemini_pre_analysis(file_path, content, api_keys):
     prompt = f"""You are doing a preliminary code review. Read this file and provide
 your initial observations about potential issues, improvements, or concerns.
 
-FILE: {file_path}
+FILE: 
+
+GHOSTBUSTER PROTOCOL: You MUST NOT report stylistic issues, missing docstrings, type hints, naming conventions, or code complexity. ONLY report genuine logic bugs, security vulnerabilities, or broken tests. If the code is logically sound, return an empty list or 'No issues'.{file_path}
 CODE:
 {content[:6000]}
 
