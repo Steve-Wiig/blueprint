@@ -11,36 +11,32 @@ from overnight.llm_client import generate, _call_gemini
 def extract_json(text: str) -> dict:
     if not text: return {"approve": False, "reason": "Empty response"}
     
-    # 1. Strip all markdown code blocks
-    text = text.replace('```json', '').replace('```', '').strip()
-    
-    # 2. Find the first '{' and the last '}'
+    # 1. Hunt specifically for the voting JSON, even if buried in CoT rambling
+    match = re.search(r'\{\s*"approve"\s*:\s*(true|false)[^}]*\}', text, re.IGNORECASE | re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except:
+            pass
+
+    # 2. Fallback: Find any { ... } block
     start = text.find('{')
     end = text.rfind('}')
     if start != -1 and end != -1 and end > start:
-        json_str = text[start:end+1]
-        try:
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            pass
-            
-    # 3. Fallback: Regex extraction for approve/reason if JSON parsing fails
-    approve_match = re.search(r'"approve"\s*:\s*(true|false)', text, re.IGNORECASE)
-    reason_match = re.search(r'"reason"\s*:\s*"([^"]*)"', text)
-    
-    if approve_match:
-        approve = approve_match.group(1).lower() == 'true'
-        reason = reason_match.group(1) if reason_match else "No reason provided"
-        return {"approve": approve, "reason": reason}
-        
-    return {"approve": False, "reason": f"Failed to parse JSON: {text[:50]}..."}
+        try: return json.loads(text[start:end+1])
+        except: pass
+
+    return {"approve": False, "reason": "Failed to parse JSON (Model leaked Chain of Thought)"}
 
 def get_consensus(proposal: str, api_keys: dict) -> tuple:
+    # Gag the models: Forbid Chain of Thought and Markdown
     prompt = (
-        "You are a strict Staff Architect. Review this AI-generated proposal/test.\n"
+        "You are a strict Staff Architect API endpoint. You do not speak. You only output JSON.\n"
         f"PROPOSAL:\n{proposal}\n\n"
-        "Is this safe, logically sound, and beneficial to implement? "
-        "Output ONLY a raw JSON object: {\"approve\": true/false, \"reason\": \"...\"}"
+        "Evaluate if this is safe and beneficial. "
+        "CRITICAL: NO CHAIN OF THOUGHT. NO MARKDOWN. NO PROSE. "
+        "Your very first character must be '{' and your last must be '}'.\n"
+        "Format: {\"approve\": true, \"reason\": \"short explanation\"}"
     )
     
     # JUDGE 1: OpenRouter (Heavy Model)
