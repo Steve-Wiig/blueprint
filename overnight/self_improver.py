@@ -637,10 +637,10 @@ def apply_auto_fix(file_path, issue, api_keys):
         return False
 
         lessons_block = _lessons_block_for(file_path)
-
+    tdd_block = ""
+    
     # TDD SUB-AGENT PROTOCOL
     tdd_test_code = _generate_tdd_test(issue.get('description', ''), file_path.name, api_keys)
-    tdd_block = ""
     if tdd_test_code:
         print("       🧪 TDD SUB-AGENT: Generated regression test.")
         test_path = ROOT / "tests" / f"test_tdd_auto_{file_path.stem}.py"
@@ -649,6 +649,9 @@ def apply_auto_fix(file_path, issue, api_keys):
             tdd_block = f"ACCEPTANCE CRITERIA (You MUST make this test pass):\n```python\n{tdd_test_code}\n```\n\n"
         except Exception as e:
             print(f"       ⚠️ TDD write failed: {e}")
+
+
+
     # RED-GREEN BASELINE: Capture exact failure before generating fix
     baseline_tb = ""
     try:
