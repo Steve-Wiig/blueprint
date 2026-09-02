@@ -19,10 +19,10 @@ except ImportError:
 # ============================================================
 # CONFIGURATION
 # ============================================================
-CRITIC_MODEL = "gemini-3.1-flash-lite-preview"
+CRITIC_MODEL = "gemini-1.5-flash"
 GENERATOR_MODEL = "nvidia/nemotron-3.5-lightning:free"  # Primary (dynamic discovery may switch at runtime)
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent"
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODELS_URL = "https://api.groq.com/openai/v1/models"
 

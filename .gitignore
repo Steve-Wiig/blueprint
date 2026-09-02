@@ -29,3 +29,12 @@ overnight/*.lock
 # Telemetry Buffer (Stage 1)
 overnight/.telemetry_buffer/
 overnight/defeat_ledger.jsonl
+
+# Autonomous Runtime & Queues
+.quarantined_tests/
+data/
+logs/
+overnight/.reasoning_buffer/
+overnight/advisory_queue/
+overnight/oracle_queue/pending/
+overnight/oracle_queue/rejected/
