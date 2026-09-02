@@ -597,6 +597,9 @@ def apply_auto_fix(file_path, issue, api_keys):
             print(f"       SURGICAL generation failed — falling back")
 
     # ---------- WHOLE-FILE PATH (fallback) ----------
+    tests_passed = False
+    timed_out = False
+    
     if surgical_fix is None:
         feedback = ""
         for attempt in range(2):
@@ -623,15 +626,9 @@ def apply_auto_fix(file_path, issue, api_keys):
             )
 
             if attempt == 0:
-                print(
-                    f"       WHOLE-FILE Generating fix (attempt 1/2): "
-                    f"{issue.get('description', '')[:80]}"
-                )
+                print(f"       WHOLE-FILE Generating fix (attempt 1/2): {issue.get('description', '')[:80]}")
             else:
-                print(
-                    "       WHOLE-FILE Retrying with syntax feedback "
-                    "(attempt 2/2)..."
-                )
+                print("       WHOLE-FILE Retrying with syntax/critic feedback (attempt 2/2)...")
 
             fix_code = generate(prompt, api_keys, temperature=0.2)
 
@@ -642,7 +639,7 @@ def apply_auto_fix(file_path, issue, api_keys):
 
             fix_code = strip_fences(fix_code)
 
-# PILLAR 2: Apply the Patch-Diff Contract
+            # PILLAR 2: Apply the Patch-Diff Contract
             try:
                 patch_result = process_llm_patch(original, fix_code)
                 fix_code = patch_result.modified_content
@@ -653,15 +650,8 @@ def apply_auto_fix(file_path, issue, api_keys):
             except (PatchParseError, PatchApplyError, ScopeBudgetExceededError) as e:
                 err_msg = str(e)
                 print(f"       ⚠️ Patch contract failed ({err_msg[:80]}). Retrying as repair loop...")
-                
                 if attempt == 0:
-                    feedback = (
-                        "CRITICAL: Your previous attempt failed the SEARCH/REPLACE contract!\n"
-                        f"Error: {err_msg}\n\n"
-                        "You MUST output ONLY valid <<<<<<< SEARCH / >>>>>>> REPLACE blocks.\n"
-                        "Do NOT output the full file. Do NOT use markdown fences.\n"
-                        f"Original file content for context:\n{original[:12000]}\n\n"
-                    )
+                    feedback = f"CRITICAL: Your previous attempt failed the SEARCH/REPLACE contract!\nError: {err_msg}\n\nYou MUST output ONLY valid <<<<<<< SEARCH / >>>>>>> REPLACE blocks.\n"
                     continue
                 else:
                     print("       [METRIC] WHOLE-FILE rejected after attempt 2 (Patch Contract Fail)")
@@ -669,93 +659,88 @@ def apply_auto_fix(file_path, issue, api_keys):
 
             try:
                 ast.parse(fix_code)
-                if attempt == 0:
-                    print("       [METRIC] WHOLE-FILE attempt 1 success")
-                    _tel(stage="generation", attempt_num=1, syntax_valid=True, attempt_outcome="syntax_success")
-                else:
-                    print("       [METRIC] WHOLE-FILE repaired successfully on attempt 2")
-                    _tel(stage="generation", attempt_num=2, syntax_valid=True, attempt_outcome="repaired")
-                break
             except SyntaxError as e:
                 if attempt == 0:
-                    print(f"       [METRIC] Syntax error type: {type(e).__name__}, msg: {e.msg}, line: {e.lineno}")
-                    _tel(stage="generation", attempt_num=1, syntax_valid=False, syntax_error_type=type(e).__name__, syntax_error_msg=str(e.msg), syntax_error_line=e.lineno, attempt_outcome="syntax_fail")
-                    offending_line = ""
-                    code_lines = fix_code.splitlines()
-
-                    if e.lineno and 0 < e.lineno <= len(code_lines):
-                        offending_line = code_lines[e.lineno - 1]
-
-                    err_msg = (
-                        f"{e.msg} "
-                        f"(line {e.lineno}, offset {e.offset})"
-                    )
-
-                    feedback = (
-                        "CRITICAL: Your previous attempt failed syntax validation!\n"
-                        f"SyntaxError: {err_msg}\n"
-                        f"Offending line: {offending_line}\n\n"
-                        "Here is the broken code you just generated. "
-                        "You MUST repair the syntax error and return the "
-                        "fully corrected file.\n"
-                        f"Broken code:\n{fix_code[:12000]}\n\n"
-                    )
-
-                    print(
-                        f"       ⚠️ Syntax error ({err_msg}). "
-                        "Retrying as repair loop..."
-                    )
+                    err_msg = f"{e.msg} (line {e.lineno}, offset {e.offset})"
+                    offending_line = fix_code.splitlines()[e.lineno - 1] if e.lineno and 0 < e.lineno <= len(fix_code.splitlines()) else ""
+                    feedback = f"CRITICAL: Your previous attempt failed syntax validation!\nSyntaxError: {err_msg}\nOffending line: {offending_line}\n\nYou MUST repair the syntax error.\n"
+                    print(f"       ⚠️ Syntax error ({err_msg}). Retrying as repair loop...")
                     continue
+                else:
+                    print("       [METRIC] WHOLE-FILE rejected after attempt 2 (Syntax Fail)")
+                    return False
 
-                print("       [METRIC] WHOLE-FILE rejected after attempt 2")
-                _tel(stage="generation", attempt_num=2, syntax_valid=False, syntax_error_type=type(e).__name__, syntax_error_msg=str(e.msg), syntax_error_line=e.lineno, attempt_outcome="syntax_fail", issue_final_outcome="rejected")
-                print(
-                    f"       X Fix is not valid Python after repair attempt "
-                    f"({e.msg}, line {e.lineno}) — rejecting"
+            # SYNTAX PASSED. Now run Pytest INSIDE the loop.
+            backup = file_path.with_suffix(file_path.suffix + ".orig_backup")
+            backup.write_text(original)
+            file_path.write_text(fix_code)
+
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-m", "pytest", "tests/", "-q", "--tb=short"],
+                    cwd=ROOT, capture_output=True, timeout=120,
                 )
+                tests_passed = result.returncode == 0
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                tests_passed = False
+
+            if tests_passed:
+                print("       + Tests passed!")
+                break # EXIT THE LOOP, WE WON
+                
+            # PYTEST FAILED
+            print(f"       X Tests {'timed out (120s)' if timed_out else 'failed'} — reverting")
+            file_path.write_text(original)
+            backup.unlink(missing_ok=True)
+            
+            if attempt == 0:
+                print("       🧠 CER PROTOCOL: Interrogating Meta-Critic for strategic constraint...")
+                try:
+                    tb_text = (result.stdout.decode(errors='replace') + result.stderr.decode(errors='replace')) if not timed_out else "Pytest timed out"
+                    cer_constraint = generate_strategic_constraint(fix_code, tb_text, issue_desc)
+                    print(f"       🧠 Meta-Critic Constraint: {cer_constraint[:80]}...")
+                except Exception as e:
+                    cer_constraint = "CRITICAL STRATEGY SHIFT: Adopt a fundamentally different algorithmic strategy."
+                    print(f"       ⚠️ Meta-Critic failed ({e}), using fallback.")
+                    
+                feedback = f"CRITICAL STRATEGY SHIFT FROM SENIOR ARCHITECT:\n{cer_constraint}\n\nYour previous code passed syntax but failed logic tests:\n{tb_text[:1000]}\n\n"
+                continue # RETRY ATTEMPT 2 WITH CONSTRAINT
+            else:
+                # Attempt 2 also failed pytest
+                tb_text = (result.stdout.decode(errors='replace') + result.stderr.decode(errors='replace')) if not timed_out else "Pytest timed out"
+                check_and_record_defeat(str(file_path), fix_code, tb_text)
+                _tel(stage="pytest", pytest_passed=False, pytest_timed_out=timed_out, attempt_outcome="pytest_fail", issue_final_outcome="rejected")
                 return False
+
     else:
         print(f"       + Surgical fix prepared (saved {len(original) - len(surgical_fix)} chars of generation)")
         fix_code = surgical_fix
+        # Run pytest once for surgical
+        backup = file_path.with_suffix(file_path.suffix + ".orig_backup")
+        backup.write_text(original)
+        file_path.write_text(fix_code)
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pytest", "tests/", "-q", "--tb=short"],
+                cwd=ROOT, capture_output=True, timeout=120,
+            )
+            tests_passed = result.returncode == 0
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            
+        if not tests_passed:
+            print(f"       X Tests {'timed out (120s)' if timed_out else 'failed'} — reverting")
+            file_path.write_text(original)
+            backup.unlink(missing_ok=True)
+            tb_text = (result.stdout.decode(errors='replace') + result.stderr.decode(errors='replace')) if not timed_out else "Pytest timed out"
+            check_and_record_defeat(str(file_path), fix_code, tb_text)
+            _tel(stage="pytest", pytest_passed=False, pytest_timed_out=timed_out, attempt_outcome="pytest_fail", issue_final_outcome="rejected")
+            return False
 
-    # ---------- SHARED SAFETY GATES (backup / test / commit / rollback) ----------
+    # If we get here, tests_passed must be True
     backup = file_path.with_suffix(file_path.suffix + ".orig_backup")
-    backup.write_text(original)
-    file_path.write_text(fix_code)
-
-    tests_passed = False
-    timed_out = False
-    try:
-        result = subprocess.run(
-            [sys.executable, "-m", "pytest", "tests/", "-q", "--tb=no"],
-            cwd=ROOT, capture_output=True, timeout=120,
-        )
-        tests_passed = result.returncode == 0
-    except subprocess.TimeoutExpired:
-        timed_out = True
-
-    if not tests_passed:
-        if locals().get("attempt", -1) == 0:
-            print("       🧠 CER PROTOCOL: Interrogating Meta-Critic for strategic constraint...")
-            try:
-                tb_text = ""
-                if 'result' in locals() and hasattr(result, 'stderr'):
-                    tb_text = result.stderr.decode(errors='replace') + result.stdout.decode(errors='replace')
-                cer_constraint = generate_strategic_constraint(fix_code, tb_text, issue_desc)
-                print(f"       🧠 Meta-Critic Constraint: {cer_constraint[:80]}...")
-            except Exception as e:
-                cer_constraint = "CRITICAL STRATEGY SHIFT: Adopt a fundamentally different algorithmic strategy."
-                print(f"       ⚠️ Meta-Critic failed ({e}), using fallback.")
-
-        # PILLAR 1: Record the defeat in the ledger
-        tb_text = (result.stdout.decode(errors='replace') + result.stderr.decode(errors='replace')) if 'result' in locals() else ""
-        check_and_record_defeat(str(file_path), fix_code, tb_text)
-        file_path.write_text(original)
-        backup.unlink(missing_ok=True)
-        print(f"       X Tests {'timed out (120s)' if timed_out else 'failed'} — reverting")
-        _tel(stage="pytest", pytest_passed=False, pytest_timed_out=timed_out, attempt_outcome="pytest_fail", issue_final_outcome="rejected")
-        return False
-
+    backup.unlink(missing_ok=True)
     backup.unlink(missing_ok=True)
     try:
         subprocess.run(["git", "add", str(file_path)], cwd=ROOT, check=True, capture_output=True)
