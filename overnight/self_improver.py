@@ -507,6 +507,59 @@ def _get_test_targets(file_path):
         targets.extend([str(p.relative_to(ROOT)) for p in ROOT.glob(pattern)])
     return targets if targets else ["tests/"]
 
+
+def _prune_ast_context(source: str, issue_desc: str, max_chars: int = 12000) -> str:
+    """Intelligently prunes unrelated AST nodes to maximize relevant context."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return source[:max_chars] # Fallback to blind truncation on syntax error
+
+    text_lower = issue_desc.lower()
+    keep_nodes = []
+
+    # 1. Always keep imports and module-level constants
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            keep_nodes.append(node)
+        elif isinstance(node, ast.Assign) and all(isinstance(t, ast.Name) for t in node.targets):
+            keep_nodes.append(node)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            keep_nodes.append(node)
+
+    # 2. Find the target function/class based on issue description
+    target_node = None
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if node.name.lower() in text_lower:
+                target_node = node
+                break
+            # Check if target is a method inside a class
+            if isinstance(node, ast.ClassDef):
+                for method in ast.iter_child_nodes(node):
+                    if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)) and method.name.lower() in text_lower:
+                        target_node = node # Keep the whole class
+                        break
+                if target_node: break
+
+    if target_node:
+        keep_nodes.append(target_node)
+
+    # 3. Reconstruct source from kept nodes
+    segments = []
+    for node in keep_nodes:
+        seg = ast.get_source_segment(source, node)
+        if seg:
+            segments.append(seg)
+    
+    pruned = "\n\n".join(segments)
+    
+    # If pruning didn't help enough, fallback to blind truncation
+    if len(pruned) > max_chars:
+        return source[:max_chars]
+        
+    return pruned
+
 def apply_auto_fix(file_path, issue, api_keys):
     """Generate and apply a fix with surgical-mode attempt + whole-file fallback.
     Every exit path is deliberate; every failure rolls back cleanly."""
@@ -650,7 +703,7 @@ def apply_auto_fix(file_path, issue, api_keys):
                 f"Category: {issue.get('category', '')}\n"
                 f"Suggestion: {issue.get('suggestion', '')}\n\n"
                 f"{feedback}"
-                f"Current file content:\n{original[:12000]}\n"
+                f"Current file content:\n{_prune_ast_context(original, issue_desc)}\n"
             )
 
             if attempt == 0:
