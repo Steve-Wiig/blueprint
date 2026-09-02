@@ -46,3 +46,53 @@ This document outlines the cognitive architecture, safety gates, and operational
 *   **The Efficacy Matrix:** Use JSONL telemetry to dynamically route tasks to the provider with the highest historical success rate.
 *   **Causal Triage:** Cluster tracebacks to fix root-cause imports instead of attacking 15 leaf-node test files.
 *   **TDD Sub-Agent:** Generate the failing `pytest` test *before* generating the fix.
+
+## 5. Advanced Cognitive Pillars (Post-Final Form)
+
+### Pillar 5: The Fuzzy Multi-File Patcher
+*   **Purpose:** Enables cross-file atomic transactions (e.g., changing a function signature and its imports simultaneously).
+*   **Mechanism:** Parses Aider-style `<<<<<<< path/to/file.py` blocks. If exact string matching fails due to whitespace hallucinations, it uses `difflib.SequenceMatcher` to find the closest 80% matching block and applies the patch surgically.
+
+### Pillar 6: Failure Autopsy & Prompt Evolution
+*   **Purpose:** Prevents the LLM from making the exact same hallucination on Attempt 2.
+*   **Mechanism:** When Attempt 1 fails (patch error or pytest failure), a fast LLM performs a "Failure Autopsy" to generate a 2-sentence cognitive constraint explaining *why* it failed (e.g., "abruptly truncated output").
+*   **Dynamic Tuning:** The system analyzes the autopsy and dynamically adjusts `max_tokens` (if truncated) or `temperature` (if logic was flawed) for Attempt 2.
+*   **Negative Prompting:** The raw, broken code from Attempt 1 is appended to the Attempt 2 prompt under a `<<<<<<< YOUR PREVIOUS FAILED ATTEMPT` block.
+
+### Pillar 7: Test Quarantine Sanitizer (The Bouncer)
+*   **Purpose:** Prevents hallucinated TDD tests from poisoning the Red-Green Baseline.
+*   **Mechanism:** Runs `pytest --collect-only` on auto-generated `test_tdd_auto_*.py` files. If they fail collection (e.g., bad imports), they are instantly moved to `.quarantined_tests/` outside the `tests/` directory, ensuring `pytest` recursively ignores them.
+
+## 6. Observability & Maintenance
+
+### The Black Box Flight Recorder
+*   **Mechanism:** Every prompt and raw response is logged to `reasoning_ledger.jsonl`.
+*   **Guardrail:** Uses `st_dev` checks to write directly to the NAS (`/dev/sdc`) when mounted, falling back to a local buffer when offline.
+
+### The System Doctor
+*   **Mechanism:** A comprehensive read-only diagnostic script (`tools/system_doctor.py`) that prints the entire state of the machine: Git state, queues, defeat ledger, API budgets, NAS health, and recent logs.
+
+## 5. Advanced Cognitive Pillars (Post-Final Form)
+
+### Pillar 5: The Fuzzy Multi-File Patcher
+*   **Purpose:** Enables cross-file atomic transactions (e.g., changing a function signature and its imports simultaneously).
+*   **Mechanism:** Parses Aider-style `<<<<<<< path/to/file.py` blocks. If exact string matching fails due to whitespace hallucinations, it uses `difflib.SequenceMatcher` to find the closest 80% matching block and applies the patch surgically.
+
+### Pillar 6: Failure Autopsy & Prompt Evolution
+*   **Purpose:** Prevents the LLM from making the exact same hallucination on Attempt 2.
+*   **Mechanism:** When Attempt 1 fails (patch error or pytest failure), a fast LLM performs a "Failure Autopsy" to generate a 2-sentence cognitive constraint explaining *why* it failed (e.g., "abruptly truncated output").
+*   **Dynamic Tuning:** The system analyzes the autopsy and dynamically adjusts `max_tokens` (if truncated) or `temperature` (if logic was flawed) for Attempt 2.
+*   **Negative Prompting:** The raw, broken code from Attempt 1 is appended to the Attempt 2 prompt under a `<<<<<<< YOUR PREVIOUS FAILED ATTEMPT` block.
+
+### Pillar 7: Test Quarantine Sanitizer (The Bouncer)
+*   **Purpose:** Prevents hallucinated TDD tests from poisoning the Red-Green Baseline.
+*   **Mechanism:** Runs `pytest --collect-only` on auto-generated `test_tdd_auto_*.py` files. If they fail collection (e.g., bad imports), they are instantly moved to `.quarantined_tests/` outside the `tests/` directory, ensuring `pytest` recursively ignores them.
+
+## 6. Observability & Maintenance
+
+### The Black Box Flight Recorder
+*   **Mechanism:** Every prompt and raw response is logged to `reasoning_ledger.jsonl`.
+*   **Guardrail:** Uses `st_dev` checks to write directly to the NAS (`/dev/sdc`) when mounted, falling back to a local buffer when offline.
+
+### The System Doctor
+*   **Mechanism:** A comprehensive read-only diagnostic script (`tools/system_doctor.py`) that prints the entire state of the machine: Git state, queues, defeat ledger, API budgets, NAS health, and recent logs.
