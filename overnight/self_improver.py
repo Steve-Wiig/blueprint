@@ -214,14 +214,38 @@ def apply_auto_fix(file_path, issue, api_keys):
         # Run Pytest (Sniper Scope)
         tb = run_pytest(targets)
         if tb is None:
-            # SUCCESS
+            # SUCCESS -> SHADOW CANARY
+            import uuid
+            from tools.shadow_canary import run_canary
+            shadow_branch = f"shadow/autofix-{uuid.uuid4().hex[:8]}"
+            modified_paths = [str(p) for p in modified_files.keys()]
+            
             try:
-                subprocess.run(["git", "add", *[str(p) for p in modified_files.keys()]], cwd=ROOT, check=True, capture_output=True)
-                subprocess.run(["git", "commit", "-m", f"Auto-fix: {file_path.name}"], cwd=ROOT, check=True, capture_output=True)
-                print(f"       + Fix committed")
-                return True
-            except:
-                return True # Fix applied even if git failed
+                print(f"       🦜 Routing to Shadow Canary ({shadow_branch})...")
+                subprocess.run(["git", "checkout", "master"], cwd=ROOT, capture_output=True)
+                subprocess.run(["git", "checkout", "-b", shadow_branch], cwd=ROOT, check=True, capture_output=True)
+                subprocess.run(["git", "add", *modified_paths], cwd=ROOT, check=True, capture_output=True)
+                subprocess.run(["git", "commit", "-m", f"shadow: {file_path.name}"], cwd=ROOT, check=True, capture_output=True)
+                
+                if run_canary(modified_paths):
+                    subprocess.run(["git", "checkout", "master"], cwd=ROOT, check=True, capture_output=True)
+                    subprocess.run(["git", "merge", shadow_branch], cwd=ROOT, check=True, capture_output=True)
+                    subprocess.run(["git", "branch", "-d", shadow_branch], cwd=ROOT, check=True, capture_output=True)
+                    print(f"       🟢 CANARY PASSED: Merged to master")
+                    return True
+                else:
+                    for path, content in backups.items(): path.write_text(content)
+                    subprocess.run(["git", "checkout", "master"], cwd=ROOT, capture_output=True)
+                    subprocess.run(["git", "branch", "-D", shadow_branch], cwd=ROOT, capture_output=True)
+                    print(f"       🔴 CANARY FAILED: Reverted disk and shadow branch")
+                    return False
+                    
+            except Exception as e:
+                for path, content in backups.items(): path.write_text(content)
+                subprocess.run(["git", "checkout", "master"], cwd=ROOT, capture_output=True)
+                subprocess.run(["git", "branch", "-D", shadow_branch], cwd=ROOT, capture_output=True)
+                print(f"       ⚠️ Shadow Git Error: {e}")
+                return False
 
         # FAILURE: Revert
         for path, content in backups.items():
