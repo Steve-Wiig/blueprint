@@ -96,3 +96,8 @@ This document outlines the cognitive architecture, safety gates, and operational
 
 ### The System Doctor
 *   **Mechanism:** A comprehensive read-only diagnostic script (`tools/system_doctor.py`) that prints the entire state of the machine: Git state, queues, defeat ledger, API budgets, NAS health, and recent logs.
+
+### Pillar 8: Stale Advisory Auto-Clear (The Ghost Protocol)
+*   **Purpose:** Protects the API budget from untestable or already-fixed advisories.
+*   **Mechanism:** Before invoking the LLM, the engine runs the Red-Green Baseline (`pytest`). If the baseline passes, the engine concludes the advisory is "stale" (the bug doesn't exist, or the test doesn't catch it) and immediately deletes it from the backlog without spending API tokens.
+*   **Observability:** Dropped items print `✅ Baseline tests passed. Stale advisory.` to the matrix rain, providing a paper trail of queue depletion.
