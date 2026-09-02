@@ -158,6 +158,10 @@ def apply_auto_fix(file_path, issue, api_keys):
 
     # 3. GENERATION LOOP
     critic_constraint = ""
+    failed_attempt_1_raw = ""
+    current_temp = 0.2
+    current_max = 4096
+    
     for attempt in range(2):
         pruned = _prune_ast_context(original, issue.get('description', ''))
         prompt = (
@@ -170,7 +174,9 @@ def apply_auto_fix(file_path, issue, api_keys):
             f"{f'CRITICAL STRATEGY SHIFT: {critic_constraint}' if critic_constraint else ''}\n"
             f"CURRENT FILE:\n{pruned}"
         )
-        raw = generate(prompt, api_keys, temperature=0.2)
+        if attempt == 1 and failed_attempt_1_raw:
+            prompt += f"\n\n<<<<<<< YOUR PREVIOUS FAILED ATTEMPT (DO NOT REPEAT THIS)\n{failed_attempt_1_raw[:3000]}\n>>>>>>> END FAILED ATTEMPT\n"
+        raw = generate(prompt, api_keys, temperature=current_temp, max_tokens=current_max)
         if not raw: return False
         raw = strip_fences(raw)
 
@@ -185,9 +191,14 @@ def apply_auto_fix(file_path, issue, api_keys):
                 modified_files = {file_path: original.replace(raw, raw)} # Dummy
         except Exception as e:
             if attempt == 0:
+                failed_attempt_1_raw = raw
                 print(f"       🩸 AUTOPSY: Analyzing patch failure...")
                 critic_constraint = perform_autopsy(raw, str(e), api_keys)
                 print(f"       🧠 Constraint: {critic_constraint[:80]}...")
+                # DYNAMIC TUNING
+                if "truncat" in critic_constraint.lower(): current_max = 8192; current_temp = 0.1
+                elif "algorithm" in critic_constraint.lower() or "logic" in critic_constraint.lower(): current_temp = 0.6
+                else: current_temp = 0.1
                 continue
             return False
 
@@ -214,9 +225,14 @@ def apply_auto_fix(file_path, issue, api_keys):
             path.write_text(content)
         
         if attempt == 0:
+            failed_attempt_1_raw = raw
             print(f"       🩸 AUTOPSY: Analyzing test failure...")
             critic_constraint = perform_autopsy(list(modified_files.values())[0], tb, api_keys)
             print(f"       🧠 Constraint: {critic_constraint[:80]}...")
+            # DYNAMIC TUNING
+            if "truncat" in critic_constraint.lower(): current_max = 8192; current_temp = 0.1
+            elif "algorithm" in critic_constraint.lower() or "logic" in critic_constraint.lower(): current_temp = 0.6
+            else: current_temp = 0.1
             continue
         else:
             check_and_record_defeat(str(file_path), original, tb)
