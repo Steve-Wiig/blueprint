@@ -498,6 +498,15 @@ def _apply_surgical_splice(original_source, target_name, new_func_source):
 
 
 
+
+def _get_test_targets(file_path):
+    """Maps a source file to its specific test files to avoid running the full suite."""
+    stem = file_path.stem
+    targets = []
+    for pattern in [f"tests/test_{stem}.py", f"tests/**/test_{stem}.py", f"tests/{stem}_check.py", f"tests/**/{stem}_check.py"]:
+        targets.extend([str(p.relative_to(ROOT)) for p in ROOT.glob(pattern)])
+    return targets if targets else ["tests/"]
+
 def apply_auto_fix(file_path, issue, api_keys):
     """Generate and apply a fix with surgical-mode attempt + whole-file fallback.
     Every exit path is deliberate; every failure rolls back cleanly."""
@@ -551,7 +560,7 @@ def apply_auto_fix(file_path, issue, api_keys):
     # RED-GREEN BASELINE: Capture exact failure before generating fix
     baseline_tb = ""
     try:
-        br = subprocess.run([sys.executable, "-m", "pytest", "tests/", "-q", "--tb=short", "-x"], cwd=ROOT, capture_output=True, timeout=60)
+        br = subprocess.run([sys.executable, "-m", "pytest", *_get_test_targets(file_path), "-q", "--tb=short", "-x"], cwd=ROOT, capture_output=True, timeout=60)
         if br.returncode == 0:
             print("       ✅ Baseline tests passed. Advisory is stale/false positive. Removing from backlog.")
             _tel(stage="baseline", attempt_outcome="false_positive", issue_final_outcome="skipped")
@@ -691,7 +700,7 @@ def apply_auto_fix(file_path, issue, api_keys):
 
             try:
                 result = subprocess.run(
-                    [sys.executable, "-m", "pytest", "tests/", "-q", "--tb=short"],
+                    [sys.executable, "-m", "pytest", *_get_test_targets(file_path), "-q", "--tb=short"],
                     cwd=ROOT, capture_output=True, timeout=120,
                 )
                 tests_passed = result.returncode == 0
