@@ -10,21 +10,37 @@ from overnight.llm_client import generate, _call_gemini
 
 def extract_json(text: str) -> dict:
     if not text: return {"approve": False, "reason": "Empty response"}
-    # Strip markdown fences just in case
-    text = re.sub(r'^```json\s*', '', text.strip(), flags=re.MULTILINE)
-    text = re.sub(r'\s*```$', '', text.strip(), flags=re.MULTILINE)
-    match = re.search(r'\{.*\}', text, re.DOTALL)
-    if match:
-        try: return json.loads(match.group(0))
-        except: pass
-    return {"approve": False, "reason": "Failed to parse JSON"}
+    
+    # 1. Strip all markdown code blocks
+    text = text.replace('```json', '').replace('```', '').strip()
+    
+    # 2. Find the first '{' and the last '}'
+    start = text.find('{')
+    end = text.rfind('}')
+    if start != -1 and end != -1 and end > start:
+        json_str = text[start:end+1]
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            pass
+            
+    # 3. Fallback: Regex extraction for approve/reason if JSON parsing fails
+    approve_match = re.search(r'"approve"\s*:\s*(true|false)', text, re.IGNORECASE)
+    reason_match = re.search(r'"reason"\s*:\s*"([^"]*)"', text)
+    
+    if approve_match:
+        approve = approve_match.group(1).lower() == 'true'
+        reason = reason_match.group(1) if reason_match else "No reason provided"
+        return {"approve": approve, "reason": reason}
+        
+    return {"approve": False, "reason": f"Failed to parse JSON: {text[:50]}..."}
 
 def get_consensus(proposal: str, api_keys: dict) -> tuple:
     prompt = (
         "You are a strict Staff Architect. Review this AI-generated proposal/test.\n"
         f"PROPOSAL:\n{proposal}\n\n"
         "Is this safe, logically sound, and beneficial to implement? "
-        "Output ONLY a JSON object: {\"approve\": true/false, \"reason\": \"...\"}"
+        "Output ONLY a raw JSON object: {\"approve\": true/false, \"reason\": \"...\"}"
     )
     
     # JUDGE 1: OpenRouter (Heavy Model)
@@ -41,6 +57,5 @@ def get_consensus(proposal: str, api_keys: dict) -> tuple:
     except Exception as e:
         vote2 = {"approve": False, "reason": f"Judge 2 Error: {e}"}
         
-    # UNANIMOUS CONSENT REQUIRED
     approved = vote1.get("approve") is True and vote2.get("approve") is True
     return approved, vote1, vote2
