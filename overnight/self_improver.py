@@ -35,6 +35,9 @@ except ImportError: record_interaction = lambda *a, **k: None
 try: from engine.cer_critic import generate_strategic_constraint
 except ImportError: generate_strategic_constraint = lambda *a, **k: "Adopt a different algorithmic strategy."
 
+try: from engine.failure_autopsy import perform_autopsy
+except ImportError: perform_autopsy = lambda *a, **k: ""
+
 # ============================================================
 # QUEUE & STATE MANAGEMENT
 # ============================================================
@@ -181,7 +184,11 @@ def apply_auto_fix(file_path, issue, api_keys):
                 # Fallback to simple single-file replace if engine missing
                 modified_files = {file_path: original.replace(raw, raw)} # Dummy
         except Exception as e:
-            if attempt == 0: continue
+            if attempt == 0:
+                print(f"       🩸 AUTOPSY: Analyzing patch failure...")
+                critic_constraint = perform_autopsy(raw, str(e), api_keys)
+                print(f"       🧠 Constraint: {critic_constraint[:80]}...")
+                continue
             return False
 
         # Backup & Write
@@ -207,7 +214,9 @@ def apply_auto_fix(file_path, issue, api_keys):
             path.write_text(content)
         
         if attempt == 0:
-            critic_constraint = generate_strategic_constraint(list(modified_files.values())[0], tb, issue.get('description', ''))
+            print(f"       🩸 AUTOPSY: Analyzing test failure...")
+            critic_constraint = perform_autopsy(list(modified_files.values())[0], tb, api_keys)
+            print(f"       🧠 Constraint: {critic_constraint[:80]}...")
             continue
         else:
             check_and_record_defeat(str(file_path), original, tb)
