@@ -583,6 +583,10 @@ def _generate_tdd_test(issue_desc: str, target_file: str, api_keys: dict) -> str
         return None
 
 def apply_auto_fix(file_path, issue, api_keys):
+    # FORCE SCOPE INIT: Prevent UnboundLocalError
+    lessons_block = ""
+    tdd_block = ""
+
     """Generate and apply a fix with surgical-mode attempt + whole-file fallback.
     Every exit path is deliberate; every failure rolls back cleanly."""
     remediation_id = str(uuid.uuid4())
