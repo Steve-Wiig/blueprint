@@ -137,7 +137,7 @@ def apply_auto_fix(file_path, issue, api_keys):
     except: return False
 
     if is_ast_defeated(original): return False
-    if issue.get('category', '').lower() in ['style', 'maintainability', 'complexity', 'documentation']: return False
+    if issue.get('category', '').lower() in ['style', 'documentation']: return False
 
     targets = _get_test_targets(file_path)
     
