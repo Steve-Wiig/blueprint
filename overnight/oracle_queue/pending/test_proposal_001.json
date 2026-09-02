@@ -1,0 +1,4 @@
+{
+  "target_file": "tools/system_doctor.py",
+  "proposal": "We should add a feature to system_doctor.py that automatically checks if the .reasoning_buffer folder is taking up too much space on the root disk and warns the user."
+}
