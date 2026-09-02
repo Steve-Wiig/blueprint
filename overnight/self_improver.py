@@ -548,6 +548,19 @@ def apply_auto_fix(file_path, issue, api_keys):
         return False
 
     lessons_block = _lessons_block_for(file_path)
+    # RED-GREEN BASELINE: Capture exact failure before generating fix
+    baseline_tb = ""
+    try:
+        br = subprocess.run([sys.executable, "-m", "pytest", "tests/", "-q", "--tb=short", "-x"], cwd=ROOT, capture_output=True, timeout=60)
+        if br.returncode == 0:
+            print("       ✅ Baseline tests passed. Advisory is stale/false positive. Removing from backlog.")
+            _tel(stage="baseline", attempt_outcome="false_positive", issue_final_outcome="skipped")
+            return True
+        baseline_tb = (br.stderr.decode(errors='replace') + br.stdout.decode(errors='replace'))[:2000]
+        print(f"       🔴 Baseline failure captured ({len(baseline_tb)} chars).")
+    except Exception as e:
+        print(f"       ⚠️ Baseline test error: {e}")
+
 
     # ---------- SURGICAL PATH (primary) ----------
     focus_text, targets = _extract_focus(file_path, issue)
@@ -569,7 +582,8 @@ def apply_auto_fix(file_path, issue, api_keys):
             "- Do NOT output the full file. Do NOT use markdown fences.\n"
             "- No explanations, no prose. ONLY the blocks.\n"
             f"{lessons_block}"
-            f"Issue: {issue.get('description', '')}\n"
+            f"EXACT PYTEST FAILURE TRACEBACK:\n```{baseline_tb}```\n\n" + 
+                f"Issue: {issue.get('description', '')}\n"
             f"Category: {issue.get('category', '')}\n"
             f"Suggestion: {issue.get('suggestion', '')}\n\n"
             f"Context (imports + constants + target):\n{focus_text}\n"
