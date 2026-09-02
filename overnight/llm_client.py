@@ -658,6 +658,13 @@ The first non-empty line MUST be valid Python code
                               system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)
     if result:
         generate.last_model_used = "openrouter"
+        # REASONING LEDGER: Record the black box interaction
+        try:
+            from engine.reasoning_ledger import record_interaction
+            model_used = getattr(generate, "last_model_used", "unknown")
+            record_interaction("heavy_generation", prompt, result, model_used)
+        except Exception:
+            pass
         return result
 
     # Step 2: OpenRouter saturated → try Groq immediately
