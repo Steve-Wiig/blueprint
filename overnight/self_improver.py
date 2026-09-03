@@ -101,7 +101,7 @@ def _record_ledger(file_path, issue, status, reason=""):
     ledger_path = ROOT / "overnight" / "improvement_ledger.jsonl"
     entry = {
         "timestamp": datetime.now().isoformat(),
-        "file": str(file_path.relative_to(ROOT)) if hasattr(file_path, 'relative_to') else str(file_path),
+        "file": _safe_relative_path(file_path),
         "category": issue.get("category", "unknown"),
         "status": status,
         "reason": reason
@@ -279,6 +279,94 @@ def _forensic_analysis(issue, source_code, baseline_tb, api_keys):
 
 
 # ============================================================
+# PROVEN FIX MEMORY (Improvement #6)
+# Stores successful fixes. Retrieves similar patterns for future fixes.
+# This is how the system learns from itself.
+# ============================================================
+PROVEN_FIXES_PATH = ROOT / "overnight" / "proven_fixes.jsonl"
+
+def _safe_relative_path(file_path):
+    """Get relative path if possible, otherwise absolute path string."""
+    try:
+        return str(file_path.relative_to(ROOT))
+    except (ValueError, TypeError):
+        return str(file_path)
+
+def _store_proven_fix(file_path, issue, diff_text, forensic_context):
+    """Store a successfully applied fix as a proven pattern."""
+    try:
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "category": issue.get("category", "unknown"),
+            "file": _safe_relative_path(file_path),
+            "advisory": issue.get("description", "")[:200],
+            "fix_diff": diff_text[:2000],
+            "forensic_summary": forensic_context[:300] if forensic_context else ""
+        }
+        with open(PROVEN_FIXES_PATH, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass  # Non-blocking
+
+def _retrieve_similar_fixes(issue, max_examples=2):
+    """Retrieve proven fixes similar to the current advisory.
+    
+    Matching: exact category + keyword overlap in description.
+    Returns formatted string for prompt injection, or empty string.
+    """
+    try:
+        if not PROVEN_FIXES_PATH.exists():
+            return ""
+        
+        entries = []
+        for line in PROVEN_FIXES_PATH.read_text().strip().split("\n"):
+            if line.strip():
+                try:
+                    entries.append(json.loads(line))
+                except:
+                    pass
+        
+        if not entries:
+            return ""
+        
+        # Score by category match + keyword overlap
+        target_category = issue.get("category", "").lower()
+        target_words = set(issue.get("description", "").lower().split())
+        
+        scored = []
+        for entry in entries:
+            score = 0
+            if entry.get("category", "").lower() == target_category:
+                score += 10
+            entry_words = set(entry.get("advisory", "").lower().split())
+            overlap = len(target_words & entry_words)
+            score += min(overlap, 5)
+            if score > 0:
+                scored.append((score, entry))
+        
+        scored.sort(key=lambda x: x[0], reverse=True)
+        top_matches = [e for _, e in scored[:max_examples]]
+        
+        if not top_matches:
+            return ""
+        
+        # Format as few-shot examples
+        parts = ["PROVEN FIX EXAMPLES (from past successful fixes in this codebase):"]
+        for i, match in enumerate(top_matches, 1):
+            parts.append(f"\nExample {i} ({match.get('category')}, {match.get('file')}):")
+            parts.append(f"Advisory: {match.get('advisory', '')[:100]}")
+            if match.get("forensic_summary"):
+                parts.append(f"Analysis: {match['forensic_summary'][:150]}")
+            parts.append(f"Fix applied:\n{match.get('fix_diff', '')[:800]}")
+        
+        parts.append("\nApply a similar pattern to the current advisory.\n\n")
+        return "\n".join(parts)
+        
+    except Exception:
+        return ""  # Non-blocking
+
+
+# ============================================================
 # CORE FIX ENGINE
 # ============================================================
 def apply_auto_fix(file_path, issue, api_keys):
@@ -336,6 +424,12 @@ def apply_auto_fix(file_path, issue, api_keys):
     # FORENSIC ANALYSIS PHASE (Improvement #5)
     print(f"       🔬 Running forensic analysis...")
     forensic_context = _forensic_analysis(issue, original, baseline_tb, api_keys)
+    
+    # PROVEN FIX RETRIEVAL (Improvement #6)
+    proven_examples = _retrieve_similar_fixes(issue)
+    if proven_examples:
+        forensic_context += proven_examples
+        print(f"       📚 Retrieved {proven_examples.count('Example')} proven fix example(s)")
     if forensic_context:
         print(f"       🔬 Forensic context: {forensic_context.split(chr(10))[1][:60]}...")
     else:
@@ -409,6 +503,8 @@ def apply_auto_fix(file_path, issue, api_keys):
                     subprocess.run(["git", "merge", shadow_branch], cwd=ROOT, check=True, capture_output=True)
                     subprocess.run(["git", "branch", "-d", shadow_branch], cwd=ROOT, check=True, capture_output=True)
                     print(f"       🟢 CANARY PASSED: Merged to master")
+                    # STORE PROVEN FIX (Improvement #6)
+                    _store_proven_fix(file_path, issue, raw, forensic_context)
                     _record_ledger(file_path, issue, "APPLIED", "Canary passed")
                     return True
                 else:
@@ -444,6 +540,109 @@ def apply_auto_fix(file_path, issue, api_keys):
             check_and_record_defeat(str(file_path), original, tb)
             return False
     return False
+
+# ============================================================
+# SELF-IMPROVEMENT SCORECARD (Improvement #7)
+# Analyzes the improvement ledger to measure whether the system
+# is actually getting better over time.
+# ============================================================
+def compute_scorecard():
+    """Compute self-improvement metrics from the improvement ledger.
+    
+    Returns a dict with:
+    - total_decisions, applied, stale, escalated, rejected
+    - success_rate (applied / non-stale decisions)
+    - category_breakdown: {category: {applied, rejected, escalated}}
+    - proven_fix_count: number of stored proven patterns
+    - trend: "improving" | "stable" | "degrading" | "insufficient_data"
+    """
+    ledger_path = ROOT / "overnight" / "improvement_ledger.jsonl"
+    proven_path = ROOT / "overnight" / "proven_fixes.jsonl"
+    
+    scorecard = {
+        "total_decisions": 0,
+        "applied": 0,
+        "stale": 0,
+        "escalated": 0,
+        "rejected": 0,
+        "success_rate": 0.0,
+        "category_breakdown": {},
+        "proven_fix_count": 0,
+        "trend": "insufficient_data"
+    }
+    
+    # Count proven fixes
+    try:
+        if proven_path.exists():
+            scorecard["proven_fix_count"] = len([
+                l for l in proven_path.read_text().strip().split("\n") if l.strip()
+            ])
+    except:
+        pass
+    
+    # Parse ledger
+    entries = []
+    try:
+        if ledger_path.exists():
+            for line in ledger_path.read_text().strip().split("\n"):
+                if line.strip():
+                    try:
+                        entries.append(json.loads(line))
+                    except:
+                        pass
+    except:
+        return scorecard
+    
+    if not entries:
+        return scorecard
+    
+    scorecard["total_decisions"] = len(entries)
+    
+    # Count statuses and build category breakdown
+    for entry in entries:
+        status = entry.get("status", "UNKNOWN")
+        category = entry.get("category", "unknown")
+        
+        if status == "APPLIED":
+            scorecard["applied"] += 1
+        elif status == "STALE":
+            scorecard["stale"] += 1
+        elif status == "ESCALATED":
+            scorecard["escalated"] += 1
+        elif status == "REJECTED":
+            scorecard["rejected"] += 1
+        
+        if category not in scorecard["category_breakdown"]:
+            scorecard["category_breakdown"][category] = {"applied": 0, "rejected": 0, "escalated": 0}
+        if status in ("APPLIED", "REJECTED", "ESCALATED"):
+            key = status.lower()
+            if key in scorecard["category_breakdown"][category]:
+                scorecard["category_breakdown"][category][key] += 1
+    
+    # Success rate: applied / (applied + rejected + escalated)
+    actionable = scorecard["applied"] + scorecard["rejected"] + scorecard["escalated"]
+    if actionable > 0:
+        scorecard["success_rate"] = round(scorecard["applied"] / actionable * 100, 1)
+    
+    # Trend: compare first half vs second half success rates
+    actionable_entries = [e for e in entries if e.get("status") in ("APPLIED", "REJECTED", "ESCALATED")]
+    if len(actionable_entries) >= 6:
+        mid = len(actionable_entries) // 2
+        first_half = actionable_entries[:mid]
+        second_half = actionable_entries[mid:]
+        
+        first_success = sum(1 for e in first_half if e["status"] == "APPLIED") / len(first_half)
+        second_success = sum(1 for e in second_half if e["status"] == "APPLIED") / len(second_half)
+        
+        if second_success > first_success + 0.1:
+            scorecard["trend"] = "improving"
+        elif second_success < first_success - 0.1:
+            scorecard["trend"] = "degrading"
+        else:
+            scorecard["trend"] = "stable"
+    
+    return scorecard
+
 
 # ============================================================
 # QUEUE DRAINING
