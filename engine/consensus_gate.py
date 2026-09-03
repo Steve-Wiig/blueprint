@@ -3,7 +3,8 @@ engine/consensus_gate.py
 ------------------------
 Requires unanimous approval from two distinct heavy LLMs to promote an idea.
 """
-import json, re
+import json
+import re
 from overnight.llm_client import generate, _call_gemini
 
 def extract_json(text: str) -> dict:
