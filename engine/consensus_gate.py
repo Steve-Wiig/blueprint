@@ -7,6 +7,12 @@ import json, re
 from overnight.llm_client import generate, _call_gemini
 
 def extract_json(text: str) -> dict:
+    """Extract a JSON object from the given text.
+
+    The function searches for a JSON object containing an "approve" key
+    and returns it as a Python dictionary. If no valid JSON is found,
+    a default dictionary indicating failure is returned.
+    """
     if not text: return {"approve": False, "reason": "Empty response"}
     
     # 1. Hunt specifically for the voting JSON, even if buried in CoT rambling
