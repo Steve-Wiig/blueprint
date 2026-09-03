@@ -176,6 +176,40 @@ def _choose_context(original, issue_desc, raw_cap=24000):
     return _prune_ast_context(original, issue_desc)
 
 
+import builtins as _builtins
+_BUILTINS = set(dir(_builtins)) | {'__name__', '__file__', '__doc__', 'self', 'cls', 'None', 'True', 'False'}
+
+def _check_for_ghost_names(source_code: str):
+    """AST check: ensure no new undefined names were introduced."""
+    try:
+        tree = ast.parse(source_code)
+    except SyntaxError:
+        return None  # Let pytest catch syntax errors
+
+    defined = set(_BUILTINS)
+    used = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            defined.add(node.name)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                defined.add(alias.asname or alias.name.split('.')[0])
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                defined.add(alias.asname or alias.name)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name): defined.add(target.id)
+        elif isinstance(node, ast.arg):
+            defined.add(node.arg)
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            used.add(node.id)
+
+    undefined = used - defined
+    return undefined if undefined else None
+
+
 def _get_imported_signatures(file_path, max_sigs=8):
     """IMPROVEMENT #16: extract REAL signatures of imported symbols so the
     model calls them correctly instead of hallucinating signatures."""
@@ -624,6 +658,23 @@ def apply_auto_fix(file_path, issue, api_keys):
             print(f"       ⚠️ 0 SEARCH/REPLACE blocks parsed (format issue). Raw dumped to overnight/last_failed_raw.txt")
             if attempt == 0:
                 failed_attempt_1_raw = raw
+                continue
+            return False
+
+        # 👻 GHOST NAME GATE: Reject patches that use undefined names (saves Pytest runs)
+        ghost_violations = {}
+        for path, new_content in modified_files.items():
+            ghosts = _check_for_ghost_names(new_content)
+            if ghosts:
+                ghost_violations[path.name] = ghosts
+
+        if ghost_violations:
+            ghosts_str = ", ".join([f"{k}({', '.join(v)})" for k,v in ghost_violations.items()])
+            print(f"       👻 GHOST NAMES DETECTED: {ghosts_str}")
+            if attempt == 0:
+                failed_attempt_1_raw = raw
+                critic_constraint = f"Generated code uses undefined names ({ghosts_str}). Add the missing imports or use existing ones."
+                current_temp = 0.1
                 continue
             return False
 
