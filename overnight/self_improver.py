@@ -745,22 +745,49 @@ def main():
     p.add_argument("--drain-backlog", action="store_true")
     p.add_argument("--process-only", action="store_true")
     p.add_argument("--fixes-per-pass", type=int, default=4)
+    p.add_argument("--continuous", action="store_true", help="Run in continuous loop mode")
+    p.add_argument("--loop-interval", type=int, default=60, help="Seconds to sleep between cycles (default: 60)")
     a = p.parse_args()
 
     keys = load_api_keys()
     budget = APIBudgetManager()
     files = discover_files()
 
-    if a.drain_backlog:
-        drain_backlog_loop(keys, budget, None, fixes_per_pass=a.fixes_per_pass)
-    elif a.process_only:
-        process_advisory_queue(keys, budget, None)
+    if a.continuous:
+        cycle = 1
+        while True:
+            print(f"\n{'='*60}")
+            print(f"🔄 CONTINUOUS MODE - Cycle {cycle} - {datetime.now().isoformat()}")
+            print(f"{'='*60}\n")
+            
+            try:
+                if a.drain_backlog:
+                    drain_backlog_loop(keys, budget, None, fixes_per_pass=a.fixes_per_pass)
+                elif a.process_only:
+                    process_advisory_queue(keys, budget, None)
+                else:
+                    prefill_advisory_queue(files, keys, budget)
+                    process_advisory_queue(keys, budget, None)
+                    drain_backlog_loop(keys, budget, None, fixes_per_pass=a.fixes_per_pass)
+            except Exception as e:
+                print(f"⚠️ Cycle {cycle} error: {e}")
+            
+            print(budget.report())
+            
+            print(f"\n💤 Sleeping {a.loop_interval}s before next cycle...")
+            time.sleep(a.loop_interval)
+            cycle += 1
     else:
-        prefill_advisory_queue(files, keys, budget)
-        process_advisory_queue(keys, budget, None)
-        drain_backlog_loop(keys, budget, None, fixes_per_pass=a.fixes_per_pass)
+        if a.drain_backlog:
+            drain_backlog_loop(keys, budget, None, fixes_per_pass=a.fixes_per_pass)
+        elif a.process_only:
+            process_advisory_queue(keys, budget, None)
+        else:
+            prefill_advisory_queue(files, keys, budget)
+            process_advisory_queue(keys, budget, None)
+            drain_backlog_loop(keys, budget, None, fixes_per_pass=a.fixes_per_pass)
 
-    print(budget.report())
+        print(budget.report())
 
 if __name__ == "__main__":
     main()
