@@ -476,6 +476,14 @@ def apply_auto_fix(file_path, issue, api_keys):
                 continue
             return False
 
+        # GUARD: If patch produced no changes, skip pytest and retry
+        if not modified_files:
+            print(f"       ⚠️ Patch produced no file changes. Skipping pytest.")
+            if attempt == 0:
+                failed_attempt_1_raw = raw
+                continue
+            return False
+
         # Backup & Write
         backups = {}
         for path, content in modified_files.items():
@@ -528,7 +536,7 @@ def apply_auto_fix(file_path, issue, api_keys):
         if attempt == 0:
             failed_attempt_1_raw = raw
             print(f"       🩸 AUTOPSY: Analyzing test failure...")
-            critic_constraint = perform_autopsy(list(modified_files.values())[0], tb, api_keys)
+            critic_constraint = perform_autopsy(list(modified_files.values())[0] if modified_files else original, tb, api_keys)
             print(f"       🧠 Constraint: {critic_constraint[:80]}...")
             # DYNAMIC TUNING
             if "truncat" in critic_constraint.lower(): current_max = 8192; current_temp = 0.1
