@@ -1,3 +1,31 @@
+
+SOURCE: LOCAL_SOC_SLM_Blueprint_v11.11
+BLOCK: CHANGELOG
+SHA256: ab8067b
+────────────────────────────────────────────────────────────────────────
+
+v11.11:
+- Updated blueprint to current operational baseline (Sept 3, 2026)
+- Removed superseded master files (v11.6.0-v11.9.0)
+- Declared split files (sections/, amendments/, appendices/) as canonical
+- Updated all version references from v11.6.0 to v11.11
+- Cleaned up .gitignore duplicates
+- Removed committed runtime artifacts and old scripts
+
+v11.10:
+- Introduced hardened overnight operating model
+- Added synchronous advisory/fix processing
+- Added persistent advisory and fix queues
+- Implemented OpenRouter/Groq/Gemini provider architecture
+- Added AST validation, CoT detection, truncation protection
+- Added pytest gating, backup/rollback behavior
+- Added quota-aware execution
+- Added operational dashboard/reporting
+- Documented queue/configuration failure modes
+
+v11.9:
+- Historical baseline (superseded by v11.10/v11.11)
+
 SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
 BLOCK:  CHANGELOG
 SHA256: 515ec36919ce5b83

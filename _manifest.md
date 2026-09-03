@@ -1,20 +1,22 @@
-        # Blueprint Split Manifest
-        GENERATED FROM: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
-        MASTER SHA256:  eb93908b32d2b89c
-        FILES WRITTEN:  25
-        TOTAL LINES:    4327
+# Blueprint Split Manifest
+GENERATED FROM: LOCAL_SOC_SLM_Blueprint_v11.11
+MASTER SHA256: (current HEAD: ab8067b)
+FILES WRITTEN: 25+
+TOTAL LINES: 4327+
 
-        ## Reassembly Rule
-        The canonical source of truth remains the single master file.
-        These split files are read-only projections for LLM ingestion.
-        Any amendment, correction, or expansion must be applied to the
-        master first, then re-projected into the affected split files.
+## Reassembly Rule
+The canonical source of truth is now the split file structure.
+The master files (LOCAL_SOC_SLM_Blueprint_v11.6.0 through v11.9.0_master.txt)
+have been superseded by v11.11 and are deprecated.
 
-        ## File Map
-        - _frontmatter.md
-- amendments/amend_v11.3_001-013.md
-- amendments/amend_v11.4_014-026.md
-- amendments/amend_v11.5_027-036.md
+THE SPLIT FILES ARE NOW CANONICAL:
+- sections/ (s30-s38)
+- amendments/ (AMEND-1 through AMEND-52+)
+- appendices/ (M-Q)
+- checklists/
+- _frontmatter.md
+- _changelog.md
+
 - amendments/amend_v11.5.1_037-041.md
 - amendments/amend_v11.5.2_042-046.md
 - amendments/amend_v11.6.0_047-052.md

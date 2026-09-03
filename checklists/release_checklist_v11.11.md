@@ -1,9 +1,9 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
-BLOCK:  FULL v11.6.0 RELEASE CHECKLIST
+SOURCE: LOCAL_SOC_SLM_Blueprint_v11.11_master.txt
+BLOCK:  FULL v11.11 RELEASE CHECKLIST
 SHA256: d46a2cbb2ee98f78
 ────────────────────────────────────────────────────────────────────────
 
-v11.6.0 baseline checklist:
+v11.11 baseline checklist:
 - AMEND-1 through AMEND-52 are applied.
 - Executive Summary, How to Read This Document, Glossary, and Blueprint Layers
   are present.

@@ -1,17 +1,17 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
+SOURCE: LOCAL_SOC_SLM_Blueprint_v11.11_master.txt
 BLOCK:  Header → Blueprint Layers, CONTENTS, CORE BLUEPRINT RETENTION, AMENDMENT NUMBERING POLICY
 SHA256: 7f1f12bdab630ff5
 ────────────────────────────────────────────────────────────────────────
 
-LOCAL-SOC-SLM v11.6.0 — Master Architecture, Development Blueprint & Scripts
+LOCAL-SOC-SLM v11.11 — Master Architecture, Development Blueprint & Scripts
 Operational Readability, Knowledge Wiki, Runbook, and Hardening Edition
 ================================================================================
-VERSION: v11.6.0-master
+VERSION: v11.11-master
 STATUS: Living document; changelog maintained at end of file
 BASELINE:
 Consolidates v11.3, v11.3-updated, v11.4-complete, v11.5, v11.5-master,
 v11.5.1 edge-case hardening, the v11.5.2 completeness-restoration
-corrections, and the v11.6.0 operational readability, knowledge-wiki,
+corrections, and the v11.11 operational readability, knowledge-wiki,
 runbook, and failure-mode layer into one master document.
 VERIFICATION POSTURE:
 [VERIFIED-INTERNAL]
@@ -38,7 +38,7 @@ edge-case hardening layer covering stale queue recovery, field-aware entropy
 sanitization, hash-chain concurrency control, idempotent embedding prefixes,
 and changelog completeness; the v11.5.2 completeness-restoration layer
 recovering full Appendix M, full amendment text, Appendix O implementation
-skeletons, CI examples, and strengthened completeness checks; and the v11.6.0
+skeletons, CI examples, and strengthened completeness checks; and the v11.11
 operational readability, externalized knowledge-wiki, runbook, and failure-mode
 layer.
 PRIMARY HARDWARE BASELINE: [VERIFIED-INTERNAL]
@@ -235,7 +235,7 @@ Production-Hardening SQL, Python, and CI Templates
 [v11.5, amended by v11.5.1/v11.5.2/v11.6]
 Appendix Q
 Runbooks & Failure Mode Analysis [v11.6]
-Full v11.6.0 Release Checklist
+Full v11.11 Release Checklist
 Completeness Manifest
 Changelog
 
@@ -257,7 +257,7 @@ Where external software behavior is version-dependent, this blueprint does not
 assert external facts unless they are directly present in the supplied lineage
 or proven in the lab. External integration behavior is LAB-VERIFY and recorded
 in Appendix N.
-The v11.6.0 safety contract remains unchanged and is extended by the Wiki
+The v11.11 safety contract remains unchanged and is extended by the Wiki
 governance rules in Section 38:
 - Read broadly, draft carefully, mutate only with approval.
 - pfSense mutations remain approval-gated.
@@ -285,7 +285,7 @@ AMEND-14  through AMEND-26   = v11.4 amendments
 AMEND-27  through AMEND-36   = v11.5 amendments
 AMEND-37  through AMEND-41   = v11.5.1 amendments
 AMEND-42  through AMEND-46   = v11.5.2 amendments
-AMEND-47  through AMEND-52   = v11.6.0 amendments
+AMEND-47  through AMEND-52   = v11.11 amendments
 This sequence supersedes earlier draft numbering that collided between v11.4,
 v11.5, and v11.5 update documents.
 

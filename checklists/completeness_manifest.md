@@ -1,16 +1,16 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
+SOURCE: LOCAL_SOC_SLM_Blueprint_v11.11_master.txt
 BLOCK:  COMPLETENESS MANIFEST
 SHA256: a340c0aa0cd43c99
 ────────────────────────────────────────────────────────────────────────
 
-The following items must be present in the final v11.6.0 master document.
+The following items must be present in the final v11.11 master document.
 Amendments:
 AMEND-1 through AMEND-52
 Full amendment text:
 AMEND-1 through AMEND-41 must be present as full amendment text.
 AMEND-42 through AMEND-46 must be present as v11.5.2 restoration and
 completeness amendments.
-AMEND-47 through AMEND-52 must be present as v11.6.0 readability, Wiki,
+AMEND-47 through AMEND-52 must be present as v11.11 readability, Wiki,
 runbook, and CI updates.
 Sections:
 Section 30
@@ -90,10 +90,10 @@ Q.3 Queue backlog emergency runbook
 Q.4 Wiki sanitization failure runbook
 Q.5 Failure Mode and Effects Analysis summary
 Release checklist:
-Full v11.6.0 release checklist
+Full v11.11 release checklist
 Document termination marker:
 END OF DOCUMENT
 Known restored correction:
 The v11.5-master typo in Section 28 Contents, "664 start", is corrected to
-"64GB start" in this v11.6.0 master document.
+"64GB start" in this v11.11 master document.
 
