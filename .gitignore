@@ -6,30 +6,21 @@ overnight/morning_report.md
 overnight/audits/
 overnight/spike_plans/
 overnight/tasks.json
-
 # Python cache
 __pycache__/
 *.pyc
-
 # Temp files
 *.tmp
 .DS_Store
 .venv/
 .env
-.env
-.env
-*.bak
 *.bak
 handoff_log.txt
 overnight/*.json
 overnight/*.lock
-overnight/*.json
-overnight/*.lock
-
 # Telemetry Buffer (Stage 1)
 overnight/.telemetry_buffer/
 overnight/defeat_ledger.jsonl
-
 # Autonomous Runtime & Queues
 .quarantined_tests/
 data/
@@ -38,3 +29,12 @@ overnight/.reasoning_buffer/
 overnight/advisory_queue/
 overnight/oracle_queue/pending/
 overnight/oracle_queue/rejected/
+*.orig_backup
+*.db
+*.patch
+*_audit.log
+integration_*
+*.log
+overnight/*.txt
+overnight/*.jsonl
+tests/test_tdd_auto_*.py
