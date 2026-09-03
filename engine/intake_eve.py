@@ -52,6 +52,8 @@ def transaction(conn: sqlite3.Connection) -> Generator[sqlite3.Cursor, None, Non
 
 def get_connection() -> Generator[sqlite3.Connection, None, None]:
     """Context manager for database connections with automatic cleanup."""
+    if not logger.handlers:
+        raise RuntimeError("Logging not configured. Call configure_logging() before using database.")
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
