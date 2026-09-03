@@ -33,6 +33,23 @@ def extract_json(text: str) -> dict:
     return {"approve": False, "reason": "Failed to parse JSON (Model leaked Chain of Thought)"}
 
 def get_consensus(proposal: str, api_keys: dict) -> tuple:
+    """Return consensus approval status and votes from two LLM judges.
+
+    Parameters
+    ----------
+    proposal : str
+        The proposal text to evaluate.
+    api_keys : dict
+        Mapping of model names to API keys.
+
+    Returns
+    -------
+    tuple
+        A tuple containing:
+        - bool: overall approval status
+        - dict: vote from judge 1
+        - dict: vote from judge 2
+    """
     # Import inside function to avoid import‑time side effects
     from overnight.llm_client import generate, _call_gemini
 
