@@ -47,6 +47,55 @@ def _load_json(path):
 
 def _save_json(path, data): path.write_text(json.dumps(data, indent=2))
 
+# ============================================================
+# PYTEST CACHING (Improvement #4)
+# Memoizes pytest results by (repo_fingerprint, targets).
+# Invalidates when a fix is committed via Shadow Canary.
+# ============================================================
+_baseline_cache = {"fingerprint": None, "result": None, "targets": None}
+
+def _get_repo_fingerprint():
+    """Hash committed files (git ls-tree HEAD) to detect repo state changes."""
+    try:
+        result = subprocess.run(
+            ["git", "ls-tree", "-r", "HEAD", "--name-only"],
+            capture_output=True, text=True, cwd=ROOT, timeout=10
+        )
+        if result.returncode != 0:
+            return None
+        files = result.stdout.strip().split("\n")
+        h = hashlib.sha256()
+        for f in sorted(files):
+            if not f: continue
+            p_file = ROOT / f
+            if p_file.exists():
+                h.update(f.encode())
+                with open(p_file, "rb") as fp:
+                    h.update(fp.read(4096))  # First 4KB per file
+        return h.hexdigest()
+    except Exception:
+        return None
+
+def run_pytest_cached(targets, timeout=60):
+    """Cached pytest for baseline checks. Sniper Scope must use uncached run_pytest."""
+    fp = _get_repo_fingerprint()
+    targets_key = tuple(sorted(targets))
+    
+    if (fp is not None and
+        _baseline_cache["fingerprint"] == fp and 
+        _baseline_cache["targets"] == targets_key):
+        print(f"       ♻️  pytest cache hit (fingerprint: {fp[:8] if fp else 'none'}...)")
+        return _baseline_cache["result"]
+    
+    result = run_pytest(targets, timeout=timeout)
+    _baseline_cache.update({
+        "fingerprint": fp, 
+        "result": result, 
+        "targets": targets_key
+    })
+    return result
+
+
 def _record_ledger(file_path, issue, status, reason=""):
     """Append-only provenance ledger for autonomous decisions (Handoff Sec 10)."""
     ledger_path = ROOT / "overnight" / "improvement_ledger.jsonl"
@@ -170,7 +219,7 @@ def apply_auto_fix(file_path, issue, api_keys):
     targets = _get_test_targets(file_path)
     
     # 1. RED-GREEN BASELINE
-    baseline_tb = run_pytest(targets)
+    baseline_tb = run_pytest_cached(targets)
     if baseline_tb is None:
         category = issue.get('category', '').lower()
         # Functional bugs with passing tests are truly stale (already fixed)
