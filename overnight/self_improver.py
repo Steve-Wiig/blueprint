@@ -47,6 +47,21 @@ def _load_json(path):
 
 def _save_json(path, data): path.write_text(json.dumps(data, indent=2))
 
+def _escalate_to_manual(file_path, issue, reason):
+    """Safely moves an advisory to the manual review queue."""
+    manual_path = ROOT / "overnight" / "needs_manual_review.json"
+    manual_queue = _load_json(manual_path)
+    item = {
+        "file": str(file_path.relative_to(ROOT)),
+        "issue": issue,
+        "deferred_reason": reason,
+        "escalated_at": datetime.now().isoformat()
+    }
+    # Prevent duplicate escalations
+    if not any(m.get("file") == item["file"] and m.get("issue", {}).get("description") == issue.get("description") for m in manual_queue):
+        manual_queue.append(item)
+        _save_json(manual_path, manual_queue)
+
 # ============================================================
 # HELPER ENGINES (Sniper, Pruner, Triage, TDD)
 # ============================================================
@@ -144,8 +159,17 @@ def apply_auto_fix(file_path, issue, api_keys):
     # 1. RED-GREEN BASELINE
     baseline_tb = run_pytest(targets)
     if baseline_tb is None:
-        print(f"       ✅ Baseline tests passed. Stale advisory.")
-        return True
+        category = issue.get('category', '').lower()
+        # Functional bugs with passing tests are truly stale (already fixed)
+        if category in ['bug', 'correctness', 'style', 'documentation', '']:
+            print(f"       ✅ Baseline tests passed. Stale advisory.")
+            return True
+        else:
+            # Security/Performance/Reliability flaws don't always have failing tests.
+            # Do not drop them. Escalate to manual review.
+            print(f"       ⚠️ Baseline passed, but category is '{category}'. Escalating (lacks regression test).")
+            _escalate_to_manual(file_path, issue, f"Passed baseline but lacks regression test for {category} defect.")
+            return True
     print(f"       🔴 Baseline failure captured ({len(baseline_tb)} chars)")
 
     # 2. TDD SUB-AGENT
