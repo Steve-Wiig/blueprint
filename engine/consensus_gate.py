@@ -3,9 +3,7 @@ engine/consensus_gate.py
 ------------------------
 Requires unanimous approval from two distinct heavy LLMs to promote an idea.
 """
-import json, re, sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+import json, re
 from overnight.llm_client import generate, _call_gemini
 
 def extract_json(text: str) -> dict:
@@ -29,7 +27,14 @@ def extract_json(text: str) -> dict:
     return {"approve": False, "reason": "Failed to parse JSON (Model leaked Chain of Thought)"}
 
 def get_consensus(proposal: str, api_keys: dict) -> tuple:
-    # Gag the models: Forbid Chain of Thought and Markdown
+    # Import inside function to avoid import‑time side effects
+    from overnight.llm_client import generate, _call_gemini
+
+    # Input sanitization: reject proposals containing potentially dangerous characters
+    if any(bad in proposal for bad in (';', '--')):
+        raise ValueError("Proposal contains prohibited characters")
+
+    # GAG the models: Forbid Chain of Thought and Markdown
     prompt = (
         "You are a strict Staff Architect API endpoint. You do not speak. You only output JSON.\n"
         f"PROPOSAL:\n{proposal}\n\n"
