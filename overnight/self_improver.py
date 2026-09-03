@@ -47,6 +47,19 @@ def _load_json(path):
 
 def _save_json(path, data): path.write_text(json.dumps(data, indent=2))
 
+def _record_ledger(file_path, issue, status, reason=""):
+    """Append-only provenance ledger for autonomous decisions (Handoff Sec 10)."""
+    ledger_path = ROOT / "overnight" / "improvement_ledger.jsonl"
+    entry = {
+        "timestamp": datetime.now().isoformat(),
+        "file": str(file_path.relative_to(ROOT)) if hasattr(file_path, 'relative_to') else str(file_path),
+        "category": issue.get("category", "unknown"),
+        "status": status,
+        "reason": reason
+    }
+    with open(ledger_path, "a") as f:
+        f.write(json.dumps(entry) + "\n")
+
 def _escalate_to_manual(file_path, issue, reason):
     """Safely moves an advisory to the manual review queue."""
     manual_path = ROOT / "overnight" / "needs_manual_review.json"
@@ -163,12 +176,14 @@ def apply_auto_fix(file_path, issue, api_keys):
         # Functional bugs with passing tests are truly stale (already fixed)
         if category in ['bug', 'correctness', 'style', 'documentation', '']:
             print(f"       ✅ Baseline tests passed. Stale advisory.")
+            _record_ledger(file_path, issue, "STALE", "Baseline passed")
             return True
         else:
             # Security/Performance/Reliability flaws don't always have failing tests.
             # Do not drop them. Escalate to manual review.
             print(f"       ⚠️ Baseline passed, but category is '{category}'. Escalating (lacks regression test).")
             _escalate_to_manual(file_path, issue, f"Passed baseline but lacks regression test for {category} defect.")
+            _record_ledger(file_path, issue, "ESCALATED", "Lacks regression test")
             return True
     print(f"       🔴 Baseline failure captured ({len(baseline_tb)} chars)")
 
@@ -264,6 +279,7 @@ def apply_auto_fix(file_path, issue, api_keys):
                     subprocess.run(["git", "merge", shadow_branch], cwd=ROOT, check=True, capture_output=True)
                     subprocess.run(["git", "branch", "-d", shadow_branch], cwd=ROOT, check=True, capture_output=True)
                     print(f"       🟢 CANARY PASSED: Merged to master")
+                    _record_ledger(file_path, issue, "APPLIED", "Canary passed")
                     return True
                 else:
                     for path, content in backups.items(): path.write_text(content)
@@ -294,6 +310,7 @@ def apply_auto_fix(file_path, issue, api_keys):
             else: current_temp = 0.1
             continue
         else:
+            _record_ledger(file_path, issue, "REJECTED", "Failed generation/tests")
             check_and_record_defeat(str(file_path), original, tb)
             return False
     return False
