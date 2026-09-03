@@ -1,23 +1,8 @@
 === ADVISORY ===
-with_db decorator is defined but never used in the codebase. execute_in_transaction and execute_with_connection are used instead. Dead code increases maintenance burden.
+Module-level side effect: sys.path.insert() modifies global state at import time, violating 'No module-level side effects' rule
 
 === RAW MODEL OUTPUT (0 SEARCH/REPLACE blocks parsed) ===
-<<<<<<< engine/intake_eve.py
-def with_db(transaction: bool = False) -> Callable[[Callable[..., T]], Callable[..., T]]:
-    """Parameterized decorator for database operations with optional transaction handling."""
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
-        def wrapper(*args: Any, **kwargs: Any) -> T:
-            try:
-                with get_connection() as conn:
-                    if transaction:
-                        with transaction(conn) as cursor:
-                            return func(cursor, *args, **kwargs)
-                    else:
-                        return func(conn, *args, **kwargs)
-            except Exception as e:
-                logger.error(f"{func.__name__} error: {e}")
-                raise RuntimeError(f"Database operation {func.__name__} failed: {e}") from e
-        return wrapper
-    return decorator
+<<<<<<< engine/consensus_gate.py
+from overnight.llm_client import generate, _call_gemini
 =======
 >>>>>>> REPLACE
