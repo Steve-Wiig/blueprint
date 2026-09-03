@@ -207,6 +207,78 @@ def run_pytest(targets, timeout=60):
     except: return "Pytest execution error"
 
 # ============================================================
+# FORENSIC ANALYSIS (Improvement #5)
+# Two-phase: understand the defect BEFORE generating the fix.
+# ============================================================
+def _forensic_analysis(issue, source_code, baseline_tb, api_keys):
+    """Phase 1: Structured root cause extraction before fix generation.
+    
+    Returns a formatted context string to inject into the fix prompt.
+    Falls back to empty string on any failure (non-blocking).
+    """
+    issue_desc = issue.get("description", "Unknown issue")
+    category = issue.get("category", "unknown")
+    
+    prompt = (
+        "You are a senior code forensic analyst. Analyze this defect.\n"
+        "Do NOT propose a fix. Only identify the root cause.\n\n"
+        f"ISSUE ({category}): {issue_desc}\n\n"
+        f"BASELINE TRACEBACK:\n{str(baseline_tb)[:1500]}\n\n"
+        f"SOURCE CODE (relevant section):\n{source_code[:6000]}\n\n"
+        "Output ONLY a JSON object with these exact keys:\n"
+        '{\n'
+        '  "root_cause": "one sentence describing WHY the bug exists",\n'
+        '  "affected_function": "name of the function/method that needs changing",\n'
+        '  "fix_strategy": "one sentence describing WHAT to change (not how)",\n'
+        '  "constraints": ["list of things the fix must NOT do"],\n'
+        '  "risk": "one sentence describing what could break"\n'
+        '}\n'
+    )
+    
+    try:
+        raw = generate(prompt, api_keys, temperature=0.1, max_tokens=1024)
+        if not raw:
+            return ""
+        
+        raw = raw.strip()
+        # Strip markdown fences if present
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0]
+        
+        # Try to parse as JSON
+        import json as _json
+        try:
+            analysis = _json.loads(raw)
+        except:
+            # Try to extract JSON from surrounding text
+            start = raw.find("{")
+            end = raw.rfind("}") + 1
+            if start >= 0 and end > start:
+                analysis = _json.loads(raw[start:end])
+            else:
+                return ""
+        
+        # Build structured context string
+        context_parts = [
+            "FORENSIC ANALYSIS (generated before fix):",
+            f"  Root Cause: {analysis.get('root_cause', 'Unknown')}",
+            f"  Affected Function: {analysis.get('affected_function', 'Unknown')}",
+            f"  Fix Strategy: {analysis.get('fix_strategy', 'Unknown')}",
+        ]
+        constraints = analysis.get("constraints", [])
+        if constraints:
+            context_parts.append(f"  Constraints: {'; '.join(constraints[:3])}")
+        risk = analysis.get("risk", "")
+        if risk:
+            context_parts.append(f"  Risk: {risk}")
+        
+        return "\n".join(context_parts) + "\n\n"
+        
+    except Exception:
+        return ""  # Non-blocking: fall back to direct generation
+
+
+# ============================================================
 # CORE FIX ENGINE
 # ============================================================
 def apply_auto_fix(file_path, issue, api_keys):
@@ -261,6 +333,14 @@ def apply_auto_fix(file_path, issue, api_keys):
     current_temp = 0.2
     current_max = 4096
     
+    # FORENSIC ANALYSIS PHASE (Improvement #5)
+    print(f"       🔬 Running forensic analysis...")
+    forensic_context = _forensic_analysis(issue, original, baseline_tb, api_keys)
+    if forensic_context:
+        print(f"       🔬 Forensic context: {forensic_context.split(chr(10))[1][:60]}...")
+    else:
+        print(f"       🔬 Forensic analysis unavailable (falling back to direct generation)")
+
     for attempt in range(2):
         pruned = _prune_ast_context(original, issue.get('description', ''))
         prompt = (
@@ -269,6 +349,7 @@ def apply_auto_fix(file_path, issue, api_keys):
             "Format: <<<<<<< path/to/file.py\n[search]\n=======\n[replace]\n>>>>>>> REPLACE\n"
             f"{tdd_block}"
             f"ISSUE: {issue.get('description', '')}\n"
+            f"{forensic_context}"
             f"BASELINE TRACEBACK:\n```{baseline_tb}```\n\n"
             f"{f'CRITICAL STRATEGY SHIFT: {critic_constraint}' if critic_constraint else ''}\n"
             f"CURRENT FILE:\n{pruned}"
