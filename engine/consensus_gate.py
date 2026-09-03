@@ -83,4 +83,11 @@ def get_consensus(proposal: str, api_keys: dict) -> tuple:
         vote2 = {"approve": False, "reason": f"Judge 2 Error: {e}"}
         
     approved = vote1.get("approve") is True and vote2.get("approve") is True
-    return approved, vote1, vote2
+    # Append‑only audit logging: capture proposal, votes, and decision outcome
+    audit_log = (
+        f"PROPOSAL: {proposal}\n"
+        f"VOTE1: {json.dumps(vote1, ensure_ascii=False)}\n"
+        f"VOTE2: {json.dumps(vote2, ensure_ascii=False)}\n"
+        f"DECISION: {'APPROVED' if approved else 'REJECTED'}\n"
+    )
+    return approved, audit_log
