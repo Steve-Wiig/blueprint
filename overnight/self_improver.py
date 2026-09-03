@@ -180,7 +180,15 @@ def apply_auto_fix(file_path, issue, api_keys):
         test_path = ROOT / "tests" / f"test_tdd_auto_{file_path.stem}.py"
         try:
             test_path.write_text(tdd_test_code)
-            tdd_block = f"ACCEPTANCE CRITERIA (Make this test pass):\n```python\n{tdd_test_code}\n```\n\n"
+            # RED PHASE VERIFICATION: The test MUST fail before we apply the fix.
+            # If it passes immediately, the test is vacuous and cannot validate the fix.
+            red_check = run_pytest([str(test_path.relative_to(ROOT))])
+            if red_check is None:
+                print(f"       ⚠️ TDD Red Phase FAILED: Test passes immediately. Rejecting vacuous test.")
+                test_path.unlink()
+            else:
+                print(f"       🔴 TDD Red Phase CONFIRMED: Test fails as expected.")
+                tdd_block = f"ACCEPTANCE CRITERIA (Make this test pass):\n```python\n{tdd_test_code}\n```\n\n"
         except: pass
 
     # 3. GENERATION LOOP
