@@ -1,8 +1,0 @@
-=== ADVISORY ===
-Module-level side effect: sys.path.insert() modifies global state at import time, violating 'No module-level side effects' rule
-
-=== RAW MODEL OUTPUT (0 SEARCH/REPLACE blocks parsed) ===
-<<<<<<< engine/consensus_gate.py
-from overnight.llm_client import generate, _call_gemini
-=======
->>>>>>> REPLACE
