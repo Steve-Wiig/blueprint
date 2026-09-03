@@ -30,6 +30,29 @@ def main():
         print("\n⚖️  Running Consensus Gate...")
         subprocess.run([sys.executable, str(ROOT / "tools/process_oracle.py")])
 
+    # 1b. IMPROVEMENT LEDGER (Decision Provenance)
+    h1("📊 IMPROVEMENT LEDGER")
+    ledger_path = ROOT / "overnight" / "improvement_ledger.jsonl"
+    if ledger_path.exists():
+        import json
+        from collections import Counter
+        statuses = Counter()
+        for line in ledger_path.read_text().strip().split("\n"):
+            if line.strip():
+                try:
+                    entry = json.loads(line)
+                    statuses[entry.get("status", "UNKNOWN")] += 1
+                except:
+                    pass
+        total = sum(statuses.values())
+        print(f"   Total decisions: {total}")
+        for status in ["APPLIED", "STALE", "ESCALATED", "REJECTED"]:
+            count = statuses.get(status, 0)
+            icon = {"APPLIED": "🟢", "STALE": "⚪", "ESCALATED": "🟡", "REJECTED": "🔴"}.get(status, "❓")
+            print(f"   {icon} {status:10s}: {count}")
+    else:
+        print("   No ledger entries yet.")
+
     # 2. DRAIN PROCESS
     h1("🔄 DRAIN PROCESS")
     pids = run("pgrep -f 'self_improver.py'").split('\n')

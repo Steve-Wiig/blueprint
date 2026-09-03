@@ -174,7 +174,7 @@ def get_fallback_list(api_key):
 # ============================================================
 # OPENROUTER WITH DYNAMIC FALLBACK
 # ============================================================
-def _call_openrouter(prompt, api_key, model=None, system_prompt=None, max_tokens=8192, temperature=0.2):
+def _call_openrouter(prompt, api_key, model=None, system_prompt=None, max_tokens=8192, temperature=0.2, allow_fallback=True):
     """Call OpenRouter with dynamic model fallback on rate limits."""
     global _current_model, _calls_since_primary_check
 
@@ -191,7 +191,11 @@ def _call_openrouter(prompt, api_key, model=None, system_prompt=None, max_tokens
         model = _current_model or (fallback_list[0] if fallback_list else DEFAULT_FALLBACK[0])
 
     # Build ordered list: preferred model first, then fallbacks
-    models_to_try = [model] + [m for m in fallback_list if m != model]
+    if allow_fallback:
+        models_to_try = [model] + [m for m in fallback_list if m != model]
+    else:
+        # STRICT MODE: only try the preferred model, no fallbacks
+        models_to_try = [model]
 
     # Every N calls, try primary first to check if it recovered
     _calls_since_primary_check += 1
@@ -617,7 +621,7 @@ Keep it brief - this is a preliminary pass, not a final review."""
     return ""
 
 
-def generate(prompt, api_keys, model_type="code", max_tokens=8192, temperature=0.2):
+def generate(prompt, api_keys, model_type="code", max_tokens=8192, temperature=0.2, allow_fallback=True):
 
     # DYNAMIC EFFICACY ROUTING
     try:
@@ -655,7 +659,8 @@ The first non-empty line MUST be valid Python code
 
     # Step 1: Try OpenRouter (Nemotron + dynamic fallbacks)
     result = _call_openrouter(prompt, api_keys.get("openrouter", ""),
-                              system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)
+                              system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature,
+                              allow_fallback=allow_fallback)
     if result:
         generate.last_model_used = "openrouter"
         # REASONING LEDGER: Record the black box interaction
@@ -667,7 +672,10 @@ The first non-empty line MUST be valid Python code
             pass
         return result
 
-    # Step 2: OpenRouter saturated → try Groq immediately
+    # Step 2: OpenRouter saturated → try Groq immediately (only if fallback allowed)
+    if not allow_fallback:
+        print(f"    ⏳ Primary model unavailable, fallback disabled. Deferring to next cycle.")
+        return ""
     print(f"    🔄 OpenRouter busy → trying Groq")
     result = _call_groq(prompt, api_keys.get("groq", ""),
                         system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)

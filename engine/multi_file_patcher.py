@@ -1,7 +1,9 @@
 """
 engine/multi_file_patcher.py
 ----------------------------
-Applies atomic multi-file SEARCH/REPLACE blocks with FUZZY MATCHING.
+Applies atomic multi-file SEARCH/REPLACE blocks with LENIENT FUZZY MATCHING.
+IMPROVEMENT #13: normalize indentation + variable window so slightly-off
+SEARCH blocks still locate their target region.
 """
 import re
 import difflib
@@ -16,7 +18,6 @@ class FilePatch:
 
 def parse_multi_file_diff(raw_diff: str, root_dir: Path) -> list[FilePatch]:
     patches = []
-    # Regex to find blocks
     pattern = re.compile(
         r'<<<<<<<\s+(.*?)\s*\n(.*?)\n=======\n(.*?)\n>>>>>>> REPLACE',
         re.DOTALL
@@ -28,47 +29,56 @@ def parse_multi_file_diff(raw_diff: str, root_dir: Path) -> list[FilePatch]:
         patches.append(FilePatch(root_dir / rel_path, search, replace))
     return patches
 
+def _locate_region(original: str, search: str):
+    """Return (start_line, window_size) or (-1, 0)."""
+    orig_lines = original.splitlines(keepends=True)
+    orig_stripped = [l.strip() for l in orig_lines]
+    search_stripped = [l.strip() for l in search.splitlines()]
+    n = len(search_stripped)
+    if n == 0 or all(not s for s in search_stripped):
+        return -1, 0
+
+    # 1. Normalized exact match (same line count, ignore indent/trailing ws)
+    for i in range(len(orig_stripped) - n + 1):
+        if orig_stripped[i:i+n] == search_stripped:
+            return i, n
+
+    # 2. Fuzzy difflib over stripped lines, variable window (tolerates +/-1 line)
+    target = "\n".join(search_stripped)
+    best_score, best_start, best_size = 0.0, -1, n
+    for size in (n-1, n, n+1):
+        if size <= 0:
+            continue
+        for i in range(len(orig_stripped) - size + 1):
+            chunk = "\n".join(orig_stripped[i:i+size])
+            score = difflib.SequenceMatcher(None, chunk, target).ratio()
+            if score > best_score:
+                best_score, best_start, best_size = score, i, size
+    if best_score > 0.80:
+        return best_start, best_size
+    return -1, 0
+
 def apply_multi_file_patches(patches: list[FilePatch]) -> dict[Path, str]:
     modified_files = {}
-    
     for patch in patches:
         if not patch.file_path.exists():
             raise ValueError(f"File not found: {patch.file_path}")
-            
         original = patch.file_path.read_text()
         new_content = original
-        
-        # 1. Try Exact Match first
+
         if patch.search in original:
             new_content = original.replace(patch.search, patch.replace, 1)
         else:
-            # 2. FUZZY MATCH FALLBACK (Line-based sliding window)
             orig_lines = original.splitlines(keepends=True)
-            search_lines = patch.search.splitlines(keepends=True)
-            
-            if not search_lines: 
-                raise ValueError(f"Empty search block for {patch.file_path}")
-                
-            best_score = 0.0
-            best_start = -1
-            window_size = len(search_lines)
-            
-            for i in range(len(orig_lines) - window_size + 1):
-                chunk = "".join(orig_lines[i:i+window_size])
-                score = difflib.SequenceMatcher(None, chunk, patch.search).ratio()
-                if score > best_score:
-                    best_score = score
-                    best_start = i
-                    
-            if best_score > 0.80: # 80% similarity threshold
-                # Apply fuzzy replace
+            start, size = _locate_region(original, patch.search)
+            if start >= 0:
                 replace_text = patch.replace
-                if not replace_text.endswith("\n"): replace_text += "\n"
-                new_lines = orig_lines[:best_start] + [replace_text] + orig_lines[best_start+window_size:]
+                if not replace_text.endswith("\n"):
+                    replace_text += "\n"
+                new_lines = orig_lines[:start] + [replace_text] + orig_lines[start+size:]
                 new_content = "".join(new_lines)
             else:
-                raise ValueError(f"Search block not found (Exact & Fuzzy < 0.80) in {patch.file_path}")
-                
+                raise ValueError(f"Search block not found (exact & fuzzy) in {patch.file_path}")
+
         modified_files[patch.file_path] = new_content
-        
     return modified_files

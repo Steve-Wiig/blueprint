@@ -1,0 +1,60 @@
+{"timestamp": "2026-09-03T04:00:29.219495", "file": "engine/cer_critic.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T04:00:29.250586", "file": "engine/cer_critic.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T04:00:29.289497", "file": "engine/cer_critic.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T04:00:29.327904", "file": "engine/cer_critic.py", "category": "blueprint_compliance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T04:00:44.378080", "file": "engine/cer_critic.py", "category": "blueprint_compliance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T04:00:44.418762", "file": "engine/cer_critic.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T11:38:00.804251", "file": "engine/cer_critic.py", "category": "blueprint_compliance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T11:38:00.850768", "file": "engine/cer_critic.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T11:47:57.862736", "file": "engine/cer_critic.py", "category": "blueprint_compliance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T12:22:32.785044", "file": "engine/cer_critic.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T13:55:38.840857", "file": "engine/cer_critic.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T14:19:35.026776", "file": "engine/cer_critic.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T14:34:09.816190", "file": "engine/cer_critic.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T14:35:59.855007", "file": "engine/cer_critic.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T14:48:55.907012", "file": "engine/cer_critic.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T14:53:39.800124", "file": "engine/cer_critic.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T15:01:34.545414", "file": "engine/consensus_gate.py", "category": "performance", "status": "REJECTED", "reason": "Failed generation/tests"}
+{"timestamp": "2026-09-03T15:07:21.364375", "file": "engine/cer_critic.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T15:30:47.343048", "file": "engine/cer_critic.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T15:35:45.785271", "file": "engine/consensus_gate.py", "category": "performance", "status": "REJECTED", "reason": "Failed generation/tests"}
+{"timestamp": "2026-09-03T15:40:03.270875", "file": "engine/cer_critic.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T15:56:23.708991", "file": "engine/consensus_gate.py", "category": "maintainability", "status": "REJECTED", "reason": "Failed generation/tests"}
+{"timestamp": "2026-09-03T16:04:50.787627", "file": "engine/consensus_gate.py", "category": "maintainability", "status": "REJECTED", "reason": "Failed generation/tests"}
+{"timestamp": "2026-09-03T16:30:34.270500", "file": "engine/cer_critic.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T16:38:41.309773", "file": "engine/consensus_gate.py", "category": "maintainability", "status": "REJECTED", "reason": "Failed generation/tests"}
+{"timestamp": "2026-09-03T16:38:42.245221", "file": "engine/defeat_ledger.py", "category": "blueprint_compliance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T16:43:17.854021", "file": "engine/consensus_gate.py", "category": "performance", "status": "REJECTED", "reason": "Failed generation/tests"}
+{"timestamp": "2026-09-03T16:49:28.781100", "file": "engine/consensus_gate.py", "category": "performance", "status": "REJECTED", "reason": "Failed generation/tests"}
+{"timestamp": "2026-09-03T16:50:03.119323", "file": "engine/consensus_gate.py", "category": "maintainability", "status": "REJECTED", "reason": "Failed generation/tests"}
+{"timestamp": "2026-09-03T16:52:59.586235", "file": "engine/consensus_gate.py", "category": "maintainability", "status": "REJECTED", "reason": "Failed generation/tests"}
+{"timestamp": "2026-09-03T16:55:16.065155", "file": "engine/consensus_gate.py", "category": "blueprint_compliance", "status": "APPLIED", "reason": "Canary passed"}
+{"timestamp": "2026-09-03T17:01:08.293146", "file": "engine/consensus_gate.py", "category": "blueprint_compliance", "status": "REJECTED", "reason": "Failed generation/tests"}
+{"timestamp": "2026-09-03T17:01:09.208870", "file": "engine/defeat_ledger.py", "category": "blueprint_compliance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:06:30.927448", "file": "engine/consensus_gate.py", "category": "performance", "status": "REJECTED", "reason": "Failed generation/tests"}
+{"timestamp": "2026-09-03T17:07:46.622001", "file": "engine/consensus_gate.py", "category": "maintainability", "status": "REJECTED", "reason": "Failed generation/tests"}
+{"timestamp": "2026-09-03T17:10:05.891811", "file": "engine/consensus_gate.py", "category": "maintainability", "status": "REJECTED", "reason": "Failed generation/tests"}
+{"timestamp": "2026-09-03T17:10:06.685294", "file": "engine/defeat_ledger.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:10:06.723475", "file": "engine/defeat_ledger.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:10:21.780645", "file": "engine/defeat_ledger.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:10:21.823423", "file": "engine/defeat_ledger.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:10:36.879449", "file": "engine/defeat_ledger.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:10:36.920420", "file": "engine/defeat_ledger.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:10:52.578754", "file": "engine/enrichment_scheduler.py", "category": "blueprint_compliance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:10:52.631319", "file": "engine/enrichment_scheduler.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:11:07.687514", "file": "engine/enrichment_scheduler.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:11:07.742550", "file": "engine/enrichment_scheduler.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:11:22.802869", "file": "engine/enrichment_scheduler.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:11:22.847399", "file": "engine/enrichment_scheduler.py", "category": "blueprint_compliance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:11:38.529445", "file": "engine/hash_chain_sealer.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:11:38.578081", "file": "engine/hash_chain_sealer.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:11:53.635961", "file": "engine/hash_chain_sealer.py", "category": "blueprint_compliance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:11:53.679064", "file": "engine/hash_chain_sealer.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:12:08.729898", "file": "engine/hash_chain_sealer.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:12:08.770563", "file": "engine/hash_chain_sealer.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:12:23.826692", "file": "engine/hash_chain_sealer.py", "category": "blueprint_compliance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:18:39.810802", "file": "engine/intake_eve.py", "category": "blueprint_compliance", "status": "APPLIED", "reason": "Canary passed"}
+{"timestamp": "2026-09-03T17:25:03.728631", "file": "engine/intake_eve.py", "category": "maintainability", "status": "REJECTED", "reason": "Failed generation/tests"}
+{"timestamp": "2026-09-03T17:27:22.470970", "file": "engine/cer_critic.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:27:22.581720", "file": "engine/cer_critic.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-03T17:31:48.143070", "file": "engine/intake_eve.py", "category": "performance", "status": "REJECTED", "reason": "Failed generation/tests"}

@@ -134,24 +134,77 @@ def _get_test_targets(file_path):
         targets.extend([str(p.relative_to(ROOT)) for p in ROOT.glob(pattern)])
     return targets if targets else ["tests/"]
 
-def _prune_ast_context(source: str, issue_desc: str, max_chars: int = 12000) -> str:
+def _prune_ast_context(source: str, issue_desc: str, max_chars: int = 20000) -> str:
     try: tree = ast.parse(source)
     except SyntaxError: return source[:max_chars]
-    
+
     text_lower = issue_desc.lower()
-    keep_nodes = []
+    imports_globals = []
+    definitions = []
     for node in ast.iter_child_nodes(tree):
-        if isinstance(node, (ast.Import, ast.ImportFrom)): keep_nodes.append(node)
-        elif isinstance(node, ast.Assign) and all(isinstance(t, ast.Name) for t in node.targets): keep_nodes.append(node)
-    
+        if isinstance(node, (ast.Import, ast.ImportFrom)): imports_globals.append(node)
+        elif isinstance(node, ast.Assign) and all(isinstance(t, ast.Name) for t in node.targets): imports_globals.append(node)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)): definitions.append(node)
+
     target_node = None
-    for node in ast.iter_child_nodes(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            if node.name.lower() in text_lower: target_node = node; break
-    
-    if target_node: keep_nodes.append(target_node)
-    pruned = "\n\n".join([ast.get_source_segment(source, n) for n in keep_nodes if ast.get_source_segment(source, n)])
-    return pruned if len(pruned) <= max_chars else source[:max_chars]
+    for node in definitions:
+        if node.name.lower() in text_lower: target_node = node; break
+
+    def render(nodes):
+        return "\n\n".join([ast.get_source_segment(source, n) for n in nodes if ast.get_source_segment(source, n)])
+
+    # Focused context when the target is identified and fits.
+    if target_node:
+        pruned = render(imports_globals + [target_node])
+        if pruned and len(pruned) <= max_chars:
+            return pruned
+
+    # IMPROVEMENT #10: no target match (or too big) -> show ALL real definitions
+    # so the LLM never has to hallucinate the file structure.
+    full = render(imports_globals + definitions)
+    if full and len(full) <= max_chars:
+        return full
+
+    return source[:max_chars]
+
+
+def _choose_context(original, issue_desc, raw_cap=24000):
+    """IMPROVEMENT #11: send the raw file verbatim when it's small enough.
+    Pruning drops comments/blank lines and breaks verbatim SEARCH matching."""
+    if len(original) <= raw_cap:
+        return original
+    return _prune_ast_context(original, issue_desc)
+
+
+def _get_imported_signatures(file_path, max_sigs=8):
+    """IMPROVEMENT #16: extract REAL signatures of imported symbols so the
+    model calls them correctly instead of hallucinating signatures."""
+    try:
+        tree = ast.parse(file_path.read_text())
+    except Exception:
+        return ""
+    sigs = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            mod_file = ROOT / Path(node.module.replace('.', '/') + '.py')
+            if not mod_file.exists():
+                continue
+            try:
+                mod_src = mod_file.read_text()
+            except Exception:
+                continue
+            for alias in node.names:
+                m = re.search(r'(def\s+' + re.escape(alias.name) + r'\s*\([^)]*\)[^:]*:)', mod_src)
+                if m:
+                    sigs.append(m.group(1).replace('\n', ' '))
+                if len(sigs) >= max_sigs:
+                    break
+        if len(sigs) >= max_sigs:
+            break
+    if not sigs:
+        return ""
+    return "AVAILABLE IMPORTED API (call EXACTLY as shown, do not invent signatures):\n" + "\n".join(sigs) + "\n\n"
+
 
 def triage_backlog():
     ledger_path = ROOT / "overnight" / "defeat_ledger.jsonl"
@@ -196,6 +249,13 @@ def _generate_tdd_test(issue_desc: str, target_file: str, api_keys: dict) -> str
     code = strip_fences(raw)
     try: ast.parse(code); return code
     except SyntaxError: return None
+
+def _failed_test_ids(tb):
+    """Extract the set of failing test IDs from a pytest traceback string."""
+    if not tb:
+        return set()
+    return set(re.findall(r'FAILED\s+([^\s]+)', tb))
+
 
 def run_pytest(targets, timeout=60):
     """Returns None if tests pass, or the traceback string if they fail."""
@@ -367,6 +427,68 @@ def _retrieve_similar_fixes(issue, max_examples=2):
 
 
 # ============================================================
+# NEGATIVE MEMORY (Improvement #14)
+# Stores FAILED fixes so the system avoids repeating the same mistakes.
+# Symmetric counterpart to proven_fix memory (positive learning).
+# ============================================================
+FAILED_FIXES_PATH = ROOT / "overnight" / "failed_fixes.jsonl"
+
+def _store_failed_fix(file_path, issue, diff_text, constraint):
+    """Store a failed fix attempt as a negative pattern to avoid."""
+    try:
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "category": issue.get("category", "unknown"),
+            "file": _safe_relative_path(file_path),
+            "advisory": issue.get("description", "")[:200],
+            "failed_diff": diff_text[:1500],
+            "constraint": constraint[:300] if constraint else ""
+        }
+        with open(FAILED_FIXES_PATH, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass  # Non-blocking
+
+def _retrieve_failed_patterns(issue, max_examples=2):
+    """Retrieve similar past failures to inject as AVOID warnings."""
+    try:
+        if not FAILED_FIXES_PATH.exists():
+            return ""
+        entries = []
+        for line in FAILED_FIXES_PATH.read_text().strip().split("\n"):
+            if line.strip():
+                try: entries.append(json.loads(line))
+                except: pass
+        if not entries:
+            return ""
+        target_category = issue.get("category", "").lower()
+        target_words = set(issue.get("description", "").lower().split())
+        scored = []
+        for entry in entries:
+            score = 0
+            if entry.get("category", "").lower() == target_category:
+                score += 10
+            overlap = len(target_words & set(entry.get("advisory", "").lower().split()))
+            score += min(overlap, 5)
+            if score > 0:
+                scored.append((score, entry))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        top = [e for _, e in scored[:max_examples]]
+        if not top:
+            return ""
+        parts = ["PAST FAILED APPROACHES (do NOT repeat these mistakes):"]
+        for i, m in enumerate(top, 1):
+            parts.append(f"\nFailed attempt {i} ({m.get('category')}, {m.get('file')}):")
+            if m.get("constraint"):
+                parts.append(f"Why it failed: {m['constraint'][:200]}")
+            parts.append(f"Bad patch (AVOID this pattern):\n{m.get('failed_diff', '')[:500]}")
+        parts.append("\nLearn from these failures. Do NOT repeat the same mistakes.\n\n")
+        return "\n".join(parts)
+    except Exception:
+        return ""  # Non-blocking
+
+
+# ============================================================
 # CORE FIX ENGINE
 # ============================================================
 def apply_auto_fix(file_path, issue, api_keys):
@@ -399,6 +521,7 @@ def apply_auto_fix(file_path, issue, api_keys):
     # 2. TDD SUB-AGENT
     print(f"       🧪 Spawning TDD Sub-Agent...")
     tdd_test_code = _generate_tdd_test(issue.get('description', ''), str(file_path.relative_to(ROOT)), api_keys)
+    tdd_kept_path = None
     tdd_block = ""
     if tdd_test_code:
         test_path = ROOT / "tests" / f"test_tdd_auto_{file_path.stem}.py"
@@ -413,6 +536,7 @@ def apply_auto_fix(file_path, issue, api_keys):
             else:
                 print(f"       🔴 TDD Red Phase CONFIRMED: Test fails as expected.")
                 tdd_block = f"ACCEPTANCE CRITERIA (Make this test pass):\n```python\n{tdd_test_code}\n```\n\n"
+                tdd_kept_path = test_path
         except: pass
 
     # 3. GENERATION LOOP
@@ -424,29 +548,43 @@ def apply_auto_fix(file_path, issue, api_keys):
     # FORENSIC ANALYSIS PHASE (Improvement #5)
     print(f"       🔬 Running forensic analysis...")
     forensic_context = _forensic_analysis(issue, original, baseline_tb, api_keys)
+    api_sigs = _get_imported_signatures(file_path)
     
     # PROVEN FIX RETRIEVAL (Improvement #6)
     proven_examples = _retrieve_similar_fixes(issue)
     if proven_examples:
         forensic_context += proven_examples
         print(f"       📚 Retrieved {proven_examples.count('Example')} proven fix example(s)")
+
+    # NEGATIVE MEMORY RETRIEVAL (Improvement #14)
+    failed_patterns = _retrieve_failed_patterns(issue)
+    if failed_patterns:
+        forensic_context += failed_patterns
+        print(f"       🚫 Retrieved {failed_patterns.count('Failed attempt')} failed pattern(s) to avoid")
     if forensic_context:
         print(f"       🔬 Forensic context: {forensic_context.split(chr(10))[1][:60]}...")
     else:
         print(f"       🔬 Forensic analysis unavailable (falling back to direct generation)")
 
     for attempt in range(2):
-        pruned = _prune_ast_context(original, issue.get('description', ''))
+        pruned = _choose_context(original, issue.get('description', ''))
+        
         prompt = (
             "You are a senior Python engineer. Fix the issue below.\n"
             "Output ONLY Aider-style SEARCH/REPLACE blocks.\n"
-            "Format: <<<<<<< path/to/file.py\n[search]\n=======\n[replace]\n>>>>>>> REPLACE\n"
+            "Format: <<<<<<< path/to/file.py\n[exact search text]\n=======\n[replace]\n>>>>>>> REPLACE\n\n"
+            "CRITICAL RULES FOR THE SEARCH BLOCK:\n"
+            "1. Copy lines EXACTLY as they appear between the ``` markers in CURRENT FILE.\n"
+            "2. Do NOT add line numbers. Do NOT re-indent. Do NOT reformat.\n"
+            "3. Preserve every space and newline exactly.\n\n"
             f"{tdd_block}"
-            f"ISSUE: {issue.get('description', '')}\n"
+            f"ISSUE: {issue.get('description', '')}\n\n"
             f"{forensic_context}"
+            f"{api_sigs}"
             f"BASELINE TRACEBACK:\n```{baseline_tb}```\n\n"
             f"{f'CRITICAL STRATEGY SHIFT: {critic_constraint}' if critic_constraint else ''}\n"
-            f"CURRENT FILE:\n{pruned}"
+            f"CURRENT FILE:\n```\n{pruned}\n```\n\n"
+            f"FILE PATH: {file_path.relative_to(ROOT)}"
         )
         if attempt == 1 and failed_attempt_1_raw:
             prompt += f"\n\n<<<<<<< YOUR PREVIOUS FAILED ATTEMPT (DO NOT REPEAT THIS)\n{failed_attempt_1_raw[:3000]}\n>>>>>>> END FAILED ATTEMPT\n"
@@ -478,7 +616,12 @@ def apply_auto_fix(file_path, issue, api_keys):
 
         # GUARD: If patch produced no changes, skip pytest and retry
         if not modified_files:
-            print(f"       ⚠️ Patch produced no file changes. Skipping pytest.")
+            try:
+                (ROOT / "overnight" / "last_failed_raw.txt").write_text(
+                    f"=== ADVISORY ===\n{issue.get('description','')}\n\n"
+                    f"=== RAW MODEL OUTPUT (0 SEARCH/REPLACE blocks parsed) ===\n{raw[:6000]}\n")
+            except Exception: pass
+            print(f"       ⚠️ 0 SEARCH/REPLACE blocks parsed (format issue). Raw dumped to overnight/last_failed_raw.txt")
             if attempt == 0:
                 failed_attempt_1_raw = raw
                 continue
@@ -492,7 +635,16 @@ def apply_auto_fix(file_path, issue, api_keys):
 
         # Run Pytest (Sniper Scope)
         tb = run_pytest(targets)
-        if tb is None:
+        before_ids = _failed_test_ids(baseline_tb)
+        after_ids = _failed_test_ids(tb)
+        new_failures = after_ids - before_ids
+        if tdd_kept_path is not None:
+            tdd_passes = run_pytest([str(tdd_kept_path.relative_to(ROOT))]) is None
+            success = (len(new_failures) == 0) and tdd_passes
+        else:
+            success = (tb is None) or (after_ids < before_ids)
+        print(f"       📉 Delta: before={len(before_ids)} after={len(after_ids)} new_failures={len(new_failures)}")
+        if success:
             # SUCCESS -> SHADOW CANARY
             import uuid
             from tools.shadow_canary import run_canary
@@ -545,6 +697,7 @@ def apply_auto_fix(file_path, issue, api_keys):
             continue
         else:
             _record_ledger(file_path, issue, "REJECTED", "Failed generation/tests")
+            _store_failed_fix(file_path, issue, raw, critic_constraint)
             check_and_record_defeat(str(file_path), original, tb)
             return False
     return False
@@ -566,6 +719,7 @@ def compute_scorecard():
     """
     ledger_path = ROOT / "overnight" / "improvement_ledger.jsonl"
     proven_path = ROOT / "overnight" / "proven_fixes.jsonl"
+    failed_path = ROOT / "overnight" / "failed_fixes.jsonl"
     
     scorecard = {
         "total_decisions": 0,
@@ -576,6 +730,7 @@ def compute_scorecard():
         "success_rate": 0.0,
         "category_breakdown": {},
         "proven_fix_count": 0,
+        "failed_pattern_count": 0,
         "trend": "insufficient_data"
     }
     
@@ -584,6 +739,15 @@ def compute_scorecard():
         if proven_path.exists():
             scorecard["proven_fix_count"] = len([
                 l for l in proven_path.read_text().strip().split("\n") if l.strip()
+            ])
+    except:
+        pass
+
+    # Count failed patterns (negative memory)
+    try:
+        if failed_path.exists():
+            scorecard["failed_pattern_count"] = len([
+                l for l in failed_path.read_text().strip().split("\n") if l.strip()
             ])
     except:
         pass
