@@ -201,12 +201,16 @@ def redact_value(value: Any) -> Any:
 
 
 def sanitize_recursive(obj: Any) -> Any:
-    """Recursively sanitize a data structure."""
     if isinstance(obj, dict):
-        return {k: sanitize_recursive(v) for k, v in obj.items()}
+        for k, v in obj.items():
+            obj[k] = sanitize_recursive(v)
+        return obj
     elif isinstance(obj, list):
-        return [sanitize_recursive(item) for item in obj]
+        for i, v in enumerate(obj):
+            obj[i] = sanitize_recursive(v)
+        return obj
     else:
+        return obj
         return redact_value(obj)
 
 
