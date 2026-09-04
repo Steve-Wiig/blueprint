@@ -1,7 +1,7 @@
 # soc-autopilot
 
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-274%20Passed-green.svg)](https://github.com/Steve-Wiig/soc-autopilot)
+[![Tests](https://img.shields.io/badge/Tests-274%20Passed%20(2%20transient%20failures)-orange.svg)](https://github.com/Steve-Wiig/soc-autopilot)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Architecture](https://img.shields.io/badge/Architecture-Hybrid%20Cloud%2BEdge-orange.svg)](docs/ARCHITECTURE.md)
 
@@ -31,7 +31,7 @@ graph TD
 
 **Problem:** Enterprise SOAR/XDR tools are expensive, cloud-bound, and often lack transparent, auditable automation. LLMs, when wired directly to systems, are untrusted and prone to hallucination.
 
-**Solution:** `soc-autopilot` is a local-first, self-hosted platform that uses Small Language Models (SLMs) for Tier 1 triage and enrichment, governed by a strict, test-gated autonomous engineering pipeline.
+**Solution:** `soc-autopilot` is a local-first, self-hosted platform (with cloud-assisted generation) that uses Small Language Models (SLMs) for Tier 1 triage and enrichment, governed by a strict, test-gated autonomous engineering pipeline.
 
 **Core Philosophy:** *LLMs propose → safety gates validate → tests verify → Git records → humans decide.*
 
@@ -43,7 +43,7 @@ This is not an "autonomous AI" that acts without oversight. It is a **bounded de
 
 * **Zero Trust for LLM Output:** All generated code must pass AST validation, ghost-name checks, and a 274+ test pytest suite before being considered.
 * **Negative Memory:** The system actively learns from failed patches and stores them as "AVOID" constraints for future attempts.
-* **Tamper-Evident Auditing:** All state changes and pipeline decisions are recorded in an append-only, hash-chained ledger.
+* **Tamper-Evident Auditing:** Pipeline decisions are tracked in structured JSONL ledgers. A tamper-evident hash-chain audit ledger is prototyped but not yet in production use.
 * **Hybrid Verification Plane:** A decoupled Raspberry Pi edge worker acts as an independent, heterogeneous code-review node, ensuring failure isolation and quota-free fallback.
 
 ---
@@ -55,9 +55,9 @@ This is not an "autonomous AI" that acts without oversight. It is a **bounded de
 | Telemetry Sanitization & Queue Governance  | ✅ Implemented   | Two-pass regex + entropy sanitization; backpressure handling. |
 | Hash-Chain Audit Ledger | △ Prototype | Concurrency tool exists; production ledger planned. |
 | Self-Improvement Pipeline (8 Safety Gates) | ✅ Implemented   | TDD Red Phase, Delta Acceptance, Shadow Canary, etc.          |
-| Negative/Proven Memory Stores              | ✅ Implemented   | System learns from past failures and successes.               |
+| Negative/Proven Memory Stores              | ✅ Implemented   | System stores proven and failed fix patterns to inform future generation.               |
 | Hybrid Edge/Cloud Compute                  | ✅ Implemented   | Async Pi worker (Qwen 3B) decoupled via Redis.                |
-| Live Wazuh/Suricata Integration            | △ Lab-Validated | Tested in local Dockerized lab environment.                   |
+| Live Wazuh Integration              | △ Lab-Validated | Tested in local Dockerized lab environment.                   |
 | Longitudinal Learning Metrics              | △ Prototype     | Tracking fix acceptance rates; immutable eval corpus planned. |
 
 ---
@@ -86,7 +86,7 @@ cp .env.example .env
 ```bash
 # Run the regression suite
 python3 -m pytest tests/ -q
-# Expected: 274 passed, 1 skipped
+# Expected: 274 passed (2 transient test_tdd_auto_* failures are harmless)
 ```
 
 #### Operator CLI
