@@ -1,200 +1,124 @@
 # soc-autopilot
 
-**A local Security Operations Center with LLM-assisted triage and a self-improving codebase.**
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
+[![Tests](https://img.shields.io/badge/Tests-274%20Passed-green.svg)](https://github.com/Steve-Wiig/soc-autopilot)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Architecture](https://img.shields.io/badge/Architecture-Hybrid%20Cloud%2BEdge-orange.svg)](docs/ARCHITECTURE.md)
+
+**A locally operated Security Operations Center with LLM-assisted triage and a governed, self-improving codebase.**
 
 ---
 
-## What It Is
+### 🏗️ High-Level Architecture
 
-soc-autopilot is a **locally operated** security platform that:
-- Ingests and sanitizes security telemetry (Wazuh, Security Onion, Suricata)
-- Uses Small Language Models (SLMs) for triage, enrichment, and institutional knowledge
-- Maintains an **append-only audit ledger** for all actions
-- Includes a **constrained self-improvement pipeline** that proposes and tests its own fixes
-
-**Core principle:** *LLMs propose, safety gates validate, tests verify, Git records, humans decide.*
-
----
-
-## Why It Exists
-
-Enterprise SOAR/XDR tools are expensive and often cloud-only. soc-autopilot provides:
-- **Tier 1 triage support** for defenders without enterprise budgets
-- **Local control** over data, models, and operations
-- **Continuous improvement** via a safe, gated self-improvement loop
-- **Open-source integration** with existing security tools (Wazuh, TheHive, pfSense)
+```mermaid
+graph TD
+    A[Wazuh / Suricata / pfSense] -->|Telemetry| B(Engine: Ingestion & Sanitization)
+    B --> C{Orchestrator & Queue}
+    C -->|Tier 1 Triage| D[Cloud LLMs: OpenRouter/Groq/Mistral]
+    C -->|Async Patch Gen/Review| E[Edge: Raspberry Pi + Qwen 3B]
+    C -->|State & Memory| F[(PostgreSQL + pgvector + SQLite)]
+    C -->|Audit Ledger| G[Hash-Chain Append-Only Log]
+    E -.->|Fallback / Quota-Free| C
+    C -->|Safety Gates| H[Pytest 274+ Suite]
+    H -->|Pass| I[Shadow Branch Commit]
+    I -->|Human Approval| J[Master Merge]
+```
 
 ---
 
-## Key Components
+### 🎯 Problem & Solution
 
-| Component | Purpose |
-|-----------|---------|
-| **Engine** | Ingestion, sanitization, queue management, SLM triage |
-| **Memory** | Orchestration memory (PostgreSQL + pgvector + SQLite) |
-| **Orchestrator** | Context stitching, model routing, action governance |
-| **Tools** | CI gates, audit checks, dashboard, and verification |
-| **Overnight Pipeline** | Self-improvement loop (advisory → fix → test → commit) |
+**Problem:** Enterprise SOAR/XDR tools are expensive, cloud-bound, and often lack transparent, auditable automation. LLMs, when wired directly to systems, are untrusted and prone to hallucination.
+
+**Solution:** `soc-autopilot` is a local-first, self-hosted platform that uses Small Language Models (SLMs) for Tier 1 triage and enrichment, governed by a strict, test-gated autonomous engineering pipeline.
+
+**Core Philosophy:** *LLMs propose → safety gates validate → tests verify → Git records → humans decide.*
 
 ---
 
-## Self-Improvement Pipeline
+### 🛡️ Security & Governance Model
 
-The overnight pipeline is the project's defining feature. It closes the loop on autonomous engineering:
+This is not an "autonomous AI" that acts without oversight. It is a **bounded decision-support system** built on security engineering principles:
 
-1. **Analyze** the codebase for genuine logic bugs and improvements.
-2. **Validate** findings via cross-model critique (Gemini, Groq, OpenRouter).
-3. **Propose** surgical fixes using proven patterns and avoiding known failures.
-4. **Test** all changes via a rigorous pytest suite.
-5. **Commit** to a shadow branch, then merge if safe.
-
-### Safety Gates
-
-Every proposed change must pass through this gauntlet:
-
-- ✅ **TDD Red Phase:** Rejects vacuous tests that pass without a fix.
-- ✅ **Ghost Name Gate:** AST validation catches hallucinated imports instantly.
-- ✅ **Lenient Fuzzy Matcher:** Tolerates indent/whitespace drift in SEARCH blocks.
-- ✅ **Delta Acceptance:** Rejects fixes that break previously-passing tests.
-- ✅ **Pi Critic:** Asynchronous edge-model review via Redis (quota-free).
-- ✅ **Shadow Canary:** Cyclomatic complexity + runtime safety checks.
-- ✅ **Memory Stores:** Retrieves proven fixes (few-shot) and failed patterns (AVOID).
-- ✅ **Git Boundary:** Commits locally, never auto-pushes to remote.
+* **Zero Trust for LLM Output:** All generated code must pass AST validation, ghost-name checks, and a 274+ test pytest suite before being considered.
+* **Negative Memory:** The system actively learns from failed patches and stores them as "AVOID" constraints for future attempts.
+* **Tamper-Evident Auditing:** All state changes and pipeline decisions are recorded in an append-only, hash-chained ledger.
+* **Hybrid Verification Plane:** A decoupled Raspberry Pi edge worker acts as an independent, heterogeneous code-review node, ensuring failure isolation and quota-free fallback.
 
 ---
 
-## Hybrid Compute Architecture
+### 📊 Current Status & Evidence
 
-soc-autopilot uses a decoupled **cloud + edge** architecture for resilience and cost control:
-
-- **Cloud:** OpenRouter (primary), Groq, and Mistral with dynamic fallback and rate-limit pacing.
-- **Edge:** A Raspberry Pi 4B running Qwen2.5-Coder-3B as an asynchronous critic.
-- **Queue:** Redis job queue for decoupled, fault-tolerant reviews.
-- **Principle:** The edge worker can crash, lag, or reboot without ever blocking the main pipeline.
-
----
-
-## Quick Start# soc-autopilot
-
-**A locally operated Security Operations Center with LLM-assisted triage and a self-improving codebase.**
+| Component                                  | Status          | Notes                                                         |
+| ------------------------------------------ | --------------- | ------------------------------------------------------------- |
+| Telemetry Sanitization & Queue Governance  | ✅ Implemented   | Two-pass regex + entropy sanitization; backpressure handling. |
+| Hash-Chain Audit Ledger                    | ✅ Implemented   | Append-only, tamper-evident logging.                          |
+| Self-Improvement Pipeline (8 Safety Gates) | ✅ Implemented   | TDD Red Phase, Delta Acceptance, Shadow Canary, etc.          |
+| Negative/Proven Memory Stores              | ✅ Implemented   | System learns from past failures and successes.               |
+| Hybrid Edge/Cloud Compute                  | ✅ Implemented   | Async Pi worker (Qwen 3B) decoupled via Redis.                |
+| Live Wazuh/Suricata Integration            | △ Lab-Validated | Tested in local Dockerized lab environment.                   |
+| Longitudinal Learning Metrics              | △ Prototype     | Tracking fix acceptance rates; immutable eval corpus planned. |
 
 ---
 
-## What It Is
+### 🚀 Quick Start
 
-soc-autopilot is a **self-hosted** security platform that:
-- Ingests and sanitizes telemetry from **Wazuh, Security Onion, and Suricata**
-- Uses **Small Language Models (SLMs)** for triage, enrichment, and institutional knowledge
-- Maintains an **append-only audit ledger** for all actions and state changes
-- Features a **constrained self-improvement pipeline** that autonomously proposes, tests, and commits fixes
+#### Prerequisites
 
-**Core principle:** *LLMs propose, safety gates validate, tests verify, Git records, humans decide.*
+* Python 3.10+
+* API keys for LLM providers (OpenRouter, Groq, Mistral)
+* Optional: Raspberry Pi 4B+ (8GB) for edge critique worker
 
----
-
-## Why It Exists
-
-Enterprise SOAR/XDR tools are expensive and often cloud-only. soc-autopilot provides:
-- **Tier 1 triage support** for defenders without enterprise budgets
-- **Local control** over data, models, and operations (no vendor lock-in)
-- **Continuous improvement** via a safe, gated self-improvement loop
-- **Open-source integration** with existing security tools (Wazuh, TheHive, pfSense, OpenSearch)
-
----
-
-## Key Components
-
-| Component          | Purpose                                                                 |
-|--------------------|-------------------------------------------------------------------------|
-| **`engine/`**      | Telemetry ingestion, sanitization, queue management, SLM triage workers |
-| **`memory/`**      | Orchestration memory (PostgreSQL + pgvector + SQLite)                   |
-| **`orchestrator/`**| Context stitching, model routing, action governance                     |
-| **`tools/`**       | CI gates, audit checks, dashboard, and verification tools               |
-| **`overnight/`**   | Self-improvement pipeline (advisory → fix → test → commit)              |
-| **`lab/`**         | Dockerized test environments for Wazuh, PostgreSQL, etc.                |
-
----
-
-## Self-Improvement Pipeline
-
-The overnight pipeline is soc-autopilot's **defining feature**. It closes the loop on autonomous engineering:
-
-1. **Analyze** the codebase for genuine logic bugs and architectural improvements.
-2. **Validate** findings via cross-model critique (Gemini, Groq, OpenRouter).
-3. **Propose** surgical fixes using proven patterns and avoiding known failure modes.
-4. **Test** all changes via a **268-test pytest suite** (must pass before commit).
-5. **Commit** to a **shadow branch**, then merge to `master` only if safe.
-
-### Safety Gates
-
-Every proposed change must pass this gauntlet:
-
-| Gate                     | Purpose                                                                 |
-|--------------------------|-------------------------------------------------------------------------|
-| **TDD Red Phase**        | Rejects vacuous tests that pass without a real fix                      |
-| **Ghost Name Gate**      | AST validation catches hallucinated imports instantly                   |
-| **Lenient Fuzzy Matcher**| Tolerates indent/whitespace drift in SEARCH/REPLACE blocks              |
-| **Delta Acceptance**     | Rejects fixes that break previously passing tests                       |
-| **Pi Critic**            | Async edge-model review via Redis (quota-free fallback)                 |
-| **Shadow Canary**        | Cyclomatic complexity + runtime safety checks                           |
-| **Memory Stores**        | Retrieves proven fixes (few-shot) and failed patterns (AVOID list)      |
-| **Git Boundary**         | Commits locally to `autofix-*` branches; **never auto-pushes to remote**|
-
----
-
-## Hybrid Compute Architecture
-
-soc-autopilot uses a **decoupled cloud + edge architecture** for resilience and cost control:
-
-- **Cloud Models:**
-  OpenRouter (primary), Groq, Mistral.
-  *Dynamic fallback with rate-limit pacing and 24h lockout on exhaustion.*
-
-- **Edge Critic (Optional):**
-  Raspberry Pi 4B+ (8GB) running **Qwen2.5-Coder-3B** as an async reviewer.
-  *Uses a Redis job queue; edge can crash/lag without blocking the main pipeline.*
-
-- **Local Inference (Production):**
-  NVIDIA GPU with **16GB+ VRAM** for high-volume telemetry processing.
-
-**Principle:** The edge worker can **crash, lag, or reboot** without ever blocking the main pipeline.
-
----
-
-## Quick Start
-
-### Prerequisites
-
-#### 🧪 Development / Evaluation *(No GPU Required)*
-- Python 3.10+
-- API keys for LLM providers (Gemini, Groq, OpenRouter)
-- Optional: Raspberry Pi 4B+ (8GB) for edge critique worker
-
-#### 🏭 Production *(Full Telemetry Ingestion)*
-- Python 3.10+
-- **PostgreSQL + pgvector**
-- **NVIDIA GPU with 16GB+ VRAM** *(for local SLM inference)*
-- Wazuh / Security Onion / pfSense integration
-- API keys for LLM providers *(fallback and consensus voting)*
-
-### Installation & Testing
+#### Installation
 
 ```bash
-# Clone the repo
 git clone https://github.com/Steve-Wiig/soc-autopilot.git
 cd soc-autopilot
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Configure environment
 cp .env.example .env
-# Edit .env with your API keys:
-# GEMINI_API_KEY=your_key_here
-# LAB_URL=https://127.0.0.1
-# WAZUH_USER=readonly_user
-# WAZUH_TOKEN=your_token
+# Edit .env with your API keys
+```
 
-# Verify the test suite
+#### Verification
+
+```bash
+# Run the regression suite
 python3 -m pytest tests/ -q
-# ✅ Expected: 268 passed, 1 skipped
+# Expected: 274 passed, 1 skipped
+```
+
+#### Operator CLI
+
+```bash
+dashboard          # Live status, scorecard, disk health, and edge worker status
+start_autonomous   # Launch the continuous self-improvement loop
+submit_fix <file> "<desc>" [--mode auto|manual|advisory]
+```
+
+---
+
+### 📚 Documentation
+
+For deep dives into the architecture, operations, and self-improvement mechanics:
+
+| Resource                                                   | Purpose                                              |
+| ---------------------------------------------------------- | ---------------------------------------------------- |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)             | System architecture, data flow, and design decisions |
+| [`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md) | Operational workflows, troubleshooting, and runbooks |
+| [`docs/OVERNIGHT_PIPELINE.md`](docs/OVERNIGHT_PIPELINE.md) | Self-improvement pipeline internals and safety gates |
+| [`docs/WINTER_ROADMAP.md`](docs/WINTER_ROADMAP.md)         | Future development, including immutable eval corpus  |
+
+---
+
+### ⚠️ Limitations
+
+* **Not a replacement for human analysts:** The system is designed to augment Tier 1 triage and propose *candidate* fixes. Human approval is mandatory for all merges.
+* **Hardware constraints:** While the edge worker is resilient, high-volume local inference requires an NVIDIA GPU (16GB+ VRAM). The current default relies on free-tier cloud APIs + a Raspberry Pi for async review.
+
+---
+
+## License
+
+**MIT License**
+Copyright (c) 2026 Steve Wiig
