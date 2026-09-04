@@ -5,6 +5,17 @@ Analyzes a failed LLM output to generate a 2-sentence constraint for Attempt 2.
 """
 import overnight.llm_client
 
+AUTOPSY_PROMPT_TEMPLATE = (
+    "You are a senior software architect performing a failure autopsy.\n"
+    "An AI was asked to write a patch, but it produced invalid code.\n"
+    "THE ERROR IT CAUSED:\n{error_message}\n\n"
+    "THE BAD CODE IT WROTE:\n{bad_code}\n\n"
+    "In exactly 2 sentences, explain the cognitive mistake the AI made.\n"
+    "Focus on: Did it hallucinate API signatures? Did it ignore formatting rules? Did it break indentation?\n"
+    "Output ONLY the 2 sentences. No markdown, no preamble."
+)
+
+
 def perform_autopsy(bad_code: str, error_message: str, api_keys: dict) -> str:
     """Analyze a failed LLM output to generate a 2-sentence constraint for retry.
 
@@ -27,14 +38,9 @@ def perform_autopsy(bad_code: str, error_message: str, api_keys: dict) -> str:
     RuntimeError
         If the LLM client call fails.
     """
-    prompt = (
-        "You are a senior software architect performing a failure autopsy.\n"
-        "An AI was asked to write a patch, but it produced invalid code.\n"
-        f"THE ERROR IT CAUSED:\n{error_message[:1500]}\n\n"
-        f"THE BAD CODE IT WROTE:\n{bad_code[:2000]}\n\n"
-        "In exactly 2 sentences, explain the cognitive mistake the AI made.\n"
-        "Focus on: Did it hallucinate API signatures? Did it ignore formatting rules? Did it break indentation?\n"
-        "Output ONLY the 2 sentences. No markdown, no preamble."
+    prompt = AUTOPSY_PROMPT_TEMPLATE.format(
+        error_message=error_message[:1500],
+        bad_code=bad_code[:2000]
     )
     
     raw = overnight.llm_client._call_gemini(prompt, api_keys.get("gemini"), max_tokens=200, temperature=0.1)
