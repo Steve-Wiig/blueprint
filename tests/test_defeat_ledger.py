@@ -33,7 +33,7 @@ def test_ast_hash_catches_logic_changes():
 
 def test_traceback_normalization():
     """Line numbers and absolute paths must be stripped."""
-    tb = "File '/home/swiig/Documents/blueprint/engine/foo.py', line 42, in test_bar\n  AssertionError"
+    tb = "File '/home/swiig/Documents/soc-autopilot/engine/foo.py', line 42, in test_bar\n  AssertionError"
     norm = normalize_traceback(tb)
     assert "42" not in norm
     assert "/home/swiig" not in norm

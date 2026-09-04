@@ -1,6 +1,6 @@
 #!/bin/bash
 # Sequential phase execution with logging
-cd /home/swiig/Documents/blueprint
+cd /home/swiig/Documents/soc-autopilot
 source .venv/bin/activate
 
 echo "=== Starting Multi-Phase Generation at $(date) ==="

@@ -30,14 +30,14 @@ tail -f overnight/large_model_drain.log
 ## 🔄 DRAIN LOOP CONTROL
 **Start (Standard):**
 ```bash
-cd /home/swiig/Documents/blueprint
+cd /home/swiig/Documents/soc-autopilot
 PYTHONUNBUFFERED=1 nohup python3 overnight/self_improver.py --drain-backlog --fixes-per-pass 4 > overnight/drun_latest.log 2>&1 &
 echo "Loop started with PID: $!"
 ```
 
 **Start (Large Models Only — Nemotron 340B, Qwen 32B/72B):**
 ```bash
-cd /home/swiig/Documents/blueprint
+cd /home/swiig/Documents/soc-autopilot
 PYTHONUNBUFFERED=1 nohup ~/bin/drain_large_models > overnight/large_model_drain.log 2>&1 &
 echo "Large model drain started with PID: $!"
 ```

@@ -2,7 +2,7 @@
 import os, sys, fcntl, subprocess
 from pathlib import Path
 
-PROJECT_ROOT = Path("/home/swiig/Documents/blueprint")
+PROJECT_ROOT = Path("/home/swiig/Documents/soc-autopilot")
 LOCAL_OUTBOX = PROJECT_ROOT / "overnight" / ".telemetry_buffer" / "outbox"
 NAS_DEST = Path("/mnt/backup-nas/soc-slm-telemetry")
 LOCK_FILE = Path("/tmp/soc-slm-telemetry-sync.lock")

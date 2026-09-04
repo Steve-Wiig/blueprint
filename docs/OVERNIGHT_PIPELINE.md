@@ -499,7 +499,7 @@ Used by: `openrouter_quota.py`, `llm_client.py` (cooldown), `fix_backlog.json` m
 
 Use the wrapper script for a budget-gated, self-reporting run:
 
-    cd /home/swiig/Documents/blueprint
+    cd /home/swiig/Documents/soc-autopilot
     nohup bash overnight/overnight_run.sh > overnight/overnight_console.log 2>&1 &
     echo "Launched PID $!"
 

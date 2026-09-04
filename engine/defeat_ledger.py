@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
-LEDGER_PATH = Path("/home/swiig/Documents/blueprint/overnight/defeat_ledger.jsonl")
+LEDGER_PATH = Path("/home/swiig/Documents/soc-autopilot/overnight/defeat_ledger.jsonl")
 DEFEAT_THRESHOLD = 3  # 3 strikes and you're out
 
 def _strip_docstrings_and_comments(node: ast.AST):

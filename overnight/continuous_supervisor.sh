@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -u
 
-cd /home/swiig/Documents/blueprint
+cd /home/swiig/Documents/soc-autopilot
 
 set -a
 source .env

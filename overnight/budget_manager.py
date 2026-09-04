@@ -29,7 +29,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Optional
 
-ROOT = Path("/home/swiig/Documents/blueprint")
+ROOT = Path("/home/swiig/Documents/soc-autopilot")
 USAGE_FILE = ROOT / "overnight" / "api_usage.json"
 
 # ============================================================

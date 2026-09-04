@@ -34,8 +34,8 @@ _fallback_list = None
 _current_model = None
 _calls_since_primary_check = 0
 PRIMARY_RETRY_INTERVAL = 3
-CACHE_FILE = Path("/home/swiig/Documents/blueprint/overnight/model_fallback_cache.json")
-GROQ_CACHE_FILE = Path("/home/swiig/Documents/blueprint/overnight/groq_model_cache.json")
+CACHE_FILE = Path("/home/swiig/Documents/soc-autopilot/overnight/model_fallback_cache.json")
+GROQ_CACHE_FILE = Path("/home/swiig/Documents/soc-autopilot/overnight/groq_model_cache.json")
 CACHE_TTL = 3600  # Refresh model list every hour
 
 # Ultimate fallback if discovery fails entirely
@@ -574,7 +574,7 @@ def load_api_keys():
     """Load API keys from .env file."""
     env_path = Path(__file__).parent.parent / ".env"
     if not env_path.exists():
-        env_path = Path("/home/swiig/Documents/blueprint/.env")
+        env_path = Path("/home/swiig/Documents/soc-autopilot/.env")
 
     if env_path.exists():
         for line in env_path.read_text().splitlines():

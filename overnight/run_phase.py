@@ -7,7 +7,7 @@ import shutil
 import sys
 from pathlib import Path
 
-ROOT = Path("/home/swiig/Documents/blueprint")
+ROOT = Path("/home/swiig/Documents/soc-autopilot")
 TASKS_BACKUP = ROOT / "overnight" / "tasks_phase6.json.backup"
 
 def run_phase(phase_file):
