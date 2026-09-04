@@ -1,4 +1,4 @@
-# LOCAL-SOC-SLM Lab Setup Guide v11.9
+# soc-autopilot Lab Setup Guide v11.9
 
 ## 1. Hardware Requirements
 
@@ -223,12 +223,12 @@ services:
     networks:
       - soc_internal
 
-  # --- LOCAL-SOC-SLM Engine ---
+  # --- soc-autopilot Engine ---
   slm-engine:
     build:
       context: ..
       dockerfile: docker/engine.Dockerfile
-    container_name: local-soc-slm-engine
+    container_name: soc-autopilot-engine
     user: "1000:1000"
     environment:
       - POSTGRES_DSN=postgresql://soc_user:${POSTGRES_PASSWORD}@postgres:5432/soc_memory
@@ -285,7 +285,7 @@ services:
     build:
       context: ..
       dockerfile: docker/overnight.Dockerfile
-    container_name: local-soc-slm-overnight
+    container_name: soc-autopilot-overnight
     user: "1000:1000"
     environment:
       - POSTGRES_DSN=postgresql://soc_user:${POSTGRES_PASSWORD}@postgres:5432/soc_memory
@@ -602,8 +602,8 @@ sudo chown -R 1000:1000 ./data
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/LOCAL-SOC-SLM.git
-cd LOCAL-SOC-SLM
+git clone https://github.com/your-org/soc-autopilot.git
+cd soc-autopilot
 
 # Create .env file from template
 cp .env.example .env

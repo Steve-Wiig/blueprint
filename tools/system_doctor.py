@@ -2,7 +2,7 @@
 """
 tools/system_doctor.py
 ----------------------
-Comprehensive read-only diagnostic dashboard for LOCAL-SOC-SLM.
+Comprehensive read-only diagnostic dashboard for soc-autopilot.
 """
 import sys, json, os, subprocess, time
 from pathlib import Path
@@ -14,7 +14,7 @@ ROOT = Path(__file__).parent.parent
 def h1(text): print(f"\n{'='*60}\n🔍 {text}\n{'='*60}")
 
 def main():
-    print("🏥 LOCAL-SOC-SLM: SYSTEM DIAGNOSTIC REPORT")
+    print("🏥 soc-autopilot: SYSTEM DIAGNOSTIC REPORT")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     # 1. Process State

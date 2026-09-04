@@ -1,4 +1,4 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
+SOURCE: soc-autopilot (historical)
 BLOCK:  v11.5 AMENDMENTS TO v11.4 TEXT
 SHA256: 93540526be7fd11f
 ────────────────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # CI Gate: Queue Backpressure Check
 # Verifies that the message broker/queue system respects flow control limits
-# defined in the LOCAL-SOC-SLM Blueprint v11.6.0.
+# defined in the soc-autopilot.
 
 import os
 import sys
@@ -12,7 +12,7 @@ import json
 from enum import Enum
 from datetime import datetime, timezone
 
-# Blueprint v11.6.0 Constants (configurable via environment variables)
+# soc-autopilot Constants (configurable via environment variables)
 MAX_QUEUE_DEPTH = int(os.getenv('MAX_QUEUE_DEPTH', '1000'))
 BACKPRESSURE_THRESHOLD = float(os.getenv('BACKPRESSURE_THRESHOLD', '0.85'))
 QUEUE_API_ENDPOINT = os.getenv('QUEUE_API_ENDPOINT', '/api/v1/queue/status')

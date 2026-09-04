@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Pattern
 from datetime import datetime, timezone
 
-# LOCAL-SOC-SLM Blueprint v11.6.0 - Credential Sanitization Tool
+# soc-autopilot - Credential Sanitization Tool
 # Appendix O.16 & Section 34.1 Compliance
 
 ALLOWLIST_SHA256: set[str] = {
@@ -82,7 +82,7 @@ def _load_config() -> Path:
 
 def _configure_logging(log_file: Path) -> logging.Logger:
     """
-    Configure structured logging for audit trails per Blueprint v11.8.
+    Configure structured logging for audit trails per soc-autopilot.
 
     Args:
         log_file: Path to the log file.

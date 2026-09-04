@@ -1,4 +1,4 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
+SOURCE: soc-autopilot (historical)
 BLOCK:  APPENDIX M — OPEN SOURCE SECURITY SOFTWARE
 SHA256: 4b53ed94b3caef3f
 ────────────────────────────────────────────────────────────────────────
@@ -7,7 +7,7 @@ VERSION: v11.3 / v11.4-amended / v11.5.2-restored / v11.6-amended
 STATUS: Human-readable reference appendix
 PURPOSE:
 Provide maintainers, analysts, and developers with a readable index of the
-open-source security platforms integrated by the Local SOC SLM Blueprint,
+open-source security platforms integrated by the soc-autopilot project,
 including primary documentation, API references, integration boundaries,
 credential guidance, and safety constraints.
 This appendix does not replace the technical contracts in Sections 20, 24, 26,
@@ -24,7 +24,7 @@ This appendix is organized around the following questions:
 5. What does the Local SOC SLM Enrichment Engine write or propose?
 6. What actions require human approval?
 7. What credentials and access levels should be used?
-The blueprint follows a strict safety model:
+The project follows a strict safety model:
 Read broadly, draft carefully, mutate only with approval.
 All state-changing operations remain approval-gated per Section 24.
 Examples of approval-gated operations:

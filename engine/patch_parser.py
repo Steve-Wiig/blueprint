@@ -1,7 +1,7 @@
 """
 engine/patch_parser.py
 ----------------------
-Production-grade Search/Replace patch parser for LOCAL-SOC-SLM.
+Production-grade Search/Replace patch parser for soc-autopilot.
 Enforces Aider-style contract: <<<<<<< SEARCH ... ======= ... >>>>>>> REPLACE
 """
 
@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-logger = logging.getLogger("local_soc_slm.patch_parser")
+logger = logging.getLogger("soc_autopilot.patch_parser")
 logger.setLevel(logging.INFO)
 
 MAX_LINES_CHANGED_PER_PATCH_SET = 500

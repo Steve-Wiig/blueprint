@@ -1,4 +1,4 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
+SOURCE: soc-autopilot (historical)
 BLOCK:  APPENDIX O — CI VERIFICATION TOOL CONTRACTS
 SHA256: f1cdd9e1d7422524
 ────────────────────────────────────────────────────────────────────────

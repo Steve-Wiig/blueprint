@@ -1,4 +1,4 @@
-# LOCAL-SOC-SLM Operations Runbook
+# soc-autopilot Operations Runbook
 
 ## Version: 11.9
 ## Last Updated: 2025-01-15
@@ -11,10 +11,10 @@
 
 ```bash
 # Activate virtual environment first
-source /opt/local-soc-slm/venv/bin/activate
+source /opt/soc-autopilot/venv/bin/activate
 
 # Start the intake layer (Wazuh + Eve)
-cd /opt/local-soc-slm
+cd /opt/soc-autopilot
 python -m engine.intake_wazuh --config config/intake_wazuh.yaml --daemon
 python -m engine.intake_eve --config config/intake_eve.yaml --daemon
 
@@ -70,7 +70,7 @@ pkill -f "python -m engine.quota_ledger"
 sleep 30
 
 # Force kill if needed (target only our venv python processes)
-pkill -9 -f "/opt/local-soc-slm/venv/bin/python"
+pkill -9 -f "/opt/soc-autopilot/venv/bin/python"
 ```
 
 ### 1.3 Restart Individual Service
@@ -89,16 +89,16 @@ python -m engine.queue_manager --status
 
 ```bash
 # Schedule via cron (runs 02:00 daily)
-# Ensure soc-user has write access to /var/log/local-soc-slm/ and read access to /opt/local-soc-slm/venv/
-# Add to /etc/cron.d/local-soc-slm:
-# 0 2 * * * soc-user /opt/local-soc-slm/venv/bin/python -m overnight.self_improver --config config/self_improver.yaml >> /var/log/local-soc-slm/self_improver.log 2>&1
+# Ensure soc-user has write access to /var/log/soc-autopilot/ and read access to /opt/soc-autopilot/venv/
+# Add to /etc/cron.d/soc-autopilot:
+# 0 2 * * * soc-user /opt/soc-autopilot/venv/bin/python -m overnight.self_improver --config config/self_improver.yaml >> /var/log/soc-autopilot/self_improver.log 2>&1
 
 # Manual execution for testing (use absolute venv python path)
-cd /opt/local-soc-slm
-/opt/local-soc-slm/venv/bin/python -m overnight.self_improver --config config/self_improver.yaml --dry-run
+cd /opt/soc-autopilot
+/opt/soc-autopilot/venv/bin/python -m overnight.self_improver --config config/self_improver.yaml --dry-run
 
 # Full run with backlog processing (backlog stored in /data/ for consistency with state files)
-/opt/local-soc-slm/venv/bin/python -m overnight.self_improver --config config/self_improver.yaml --process-backlog /data/self_improver/fix_backlog.json
+/opt/soc-autopilot/venv/bin/python -m overnight.self_improver --config config/self_improver.yaml --process-backlog /data/self_improver/fix_backlog.json
 ```
 
 ---
@@ -203,7 +203,7 @@ python -m engine.hash_chain_sealer --verify --from-block 1040000 --to-block 1042
 ps aux | grep "python -m engine.hash_chain_sealer"
 
 # Check sealer logs for errors
-tail -100 /var/log/local-soc-slm/hash_chain_sealer.log | grep -i error
+tail -100 /var/log/soc-autopilot/hash_chain_sealer.log | grep -i error
 
 # Verify sealing interval compliance
 python -m engine.hash_chain_sealer --stats --last-hour
@@ -308,7 +308,7 @@ python -m engine.intake_wazuh --validate-sample /tmp/quarantine_sample.json
 
 ```bash
 # Check enrichment scheduler errors
-grep -i "enrichment failed" /var/log/local-soc-slm/enrichment_scheduler.log | tail -20
+grep -i "enrichment failed" /var/log/soc-autopilot/enrichment_scheduler.log | tail -20
 
 # Re-run enrichment for quarantined messages
 python -m engine.enrichment_scheduler --reprocess-quarantine --batch-size 100
@@ -345,7 +345,7 @@ python -m engine.intake_eve --resume
 python -m engine.slm_triage_worker --list-workers | grep -E "(STALLED|DEAD|MISSING)"
 
 # Check systemd/journald for OOM kills
-journalctl -u local-soc-slm --since "1 hour ago" | grep -i "oom\|killed\|segfault"
+journalctl -u soc-autopilot --since "1 hour ago" | grep -i "oom\|killed\|segfault"
 
 # Check GPU memory errors
 nvidia-smi -q -d PIDS | grep -A5 "Process ID"
@@ -556,23 +556,23 @@ The overnight pipeline (`overnight/self_improver.py`) performs:
 
 ```bash
 # Dry run (no changes applied)
-/opt/local-soc-slm/venv/bin/python -m overnight.self_improver --config config/self_improver.yaml --dry-run --verbose
+/opt/soc-autopilot/venv/bin/python -m overnight.self_improver --config config/self_improver.yaml --dry-run --verbose
 
 # Full run with specific date
-/opt/local-soc-slm/venv/bin/python -m overnight.self_improver --config config/self_improver.yaml --date 2025-01-14
+/opt/soc-autopilot/venv/bin/python -m overnight.self_improver --config config/self_improver.yaml --date 2025-01-14
 
 # Process accumulated backlog (stored in /data/ for consistency)
-/opt/local-soc-slm/venv/bin/python -m overnight.self_improver --config config/self_improver.yaml --process-backlog /data/self_improver/fix_backlog.json --max-items 500
+/opt/soc-autopilot/venv/bin/python -m overnight.self_improver --config config/self_improver.yaml --process-backlog /data/self_improver/fix_backlog.json --max-items 500
 
 # Force re-evaluation of specific model
-/opt/local-soc-slm/venv/bin/python -m overnight.self_improver --config config/self_improver.yaml --reevaluate-model llama-3.1-8b
+/opt/soc-autopilot/venv/bin/python -m overnight.self_improver --config config/self_improver.yaml --reevaluate-model llama-3.1-8b
 ```
 
 ### 7.3 Monitor Pipeline Execution
 
 ```bash
 # Check last run status
-cat /var/log/local-soc-slm/self_improver/latest_run.json | jq .
+cat /var/log/soc-autopilot/self_improver/latest_run.json | jq .
 
 # Key metrics:
 # - "status": "completed" | "partial" | "failed"
@@ -588,7 +588,7 @@ cat /var/log/local-soc-slm/self_improver/latest_run.json | jq .
 
 ```bash
 # Check failure reason
-cat /var/log/local-soc-slm/self_improver/latest_run.json | jq '.error'
+cat /var/log/soc-autopilot/self_improver/latest_run.json | jq '.error'
 
 # Common failures and fixes:
 
@@ -597,7 +597,7 @@ cat /var/log/local-soc-slm/self_improver/latest_run.json | jq '.error'
 # Fix: Wait for reset or rotate key (Section 6.1)
 
 # 2. All LLM providers failed
-# Check: grep "fallback exhausted" /var/log/local-soc-slm/self_improver.log
+# Check: grep "fallback exhausted" /var/log/soc-autopilot/self_improver.log
 # Fix: Verify llm_providers.yaml, check network connectivity
 
 # 3. Backlog corruption
@@ -605,7 +605,7 @@ cat /var/log/local-soc-slm/self_improver/latest_run.json | jq '.error'
 # Fix: python -m overnight.self_improver --repair-backlog /data/self_improver/fix_backlog.json
 
 # 4. Prompt optimization failed validation
-# Check: grep "validation failed" /var/log/local-soc-slm/self_improver.log
+# Check: grep "validation failed" /var/log/soc-autopilot/self_improver.log
 # Fix: Review proposed prompts in /tmp/self_improver_proposals/
 ```
 
@@ -667,20 +667,20 @@ python -m engine.queue_manager --queue dead_letter --purge --confirm
 
 | Component | Config Path | Log Path | Data Path |
 |-----------|-------------|----------|-----------|
-| Intake Wazuh | `config/intake_wazuh.yaml` | `/var/log/local-soc-slm/intake_wazuh.log` | `/data/queue/intake_raw` |
-| Intake Eve | `config/intake_eve.yaml` | `/var/log/local-soc-slm/intake_eve.log` | `/data/queue/intake_raw` |
-| Sanitization | `config/sanitization.yaml` | `/var/log/local-soc-slm/sanitization.log` | `/data/queue/sanitization` |
-| Queue Manager | `config/queue.yaml` | `/var/log/local-soc-slm/queue_manager.log` | `/data/queue/*` |
-| SLM Triage | `config/slm_triage_worker.yaml` | `/var/log/local-soc-slm/slm_triage.log` | `/data/queue/triage_pending` |
-| Enrichment | `config/enrichment.yaml` | `/var/log/local-soc-slm/enrichment.log` | `/data/queue/enrichment_pending` |
-| Hash Chain | `config/hash_chain.yaml` | `/var/log/local-soc-slm/hash_chain_sealer.log` | `/data/hash_chain/` |
-| Model Registry | `config/model_registry.yaml` | `/var/log/local-soc-slm/model_registry.log` | `/data/models/` |
-| LLM Providers | `config/llm_providers.yaml` | `/var/log/local-soc-slm/llm_client.log` | - |
-| Self Improver | `config/self_improver.yaml` | `/var/log/local-soc-slm/self_improver.log` | `/data/self_improver/` |
-| OpenRouter Quota | `config/openrouter_quota.yaml` | `/var/log/local-soc-slm/openrouter_quota.log` | `/data/quota/openrouter.json` |
+| Intake Wazuh | `config/intake_wazuh.yaml` | `/var/log/soc-autopilot/intake_wazuh.log` | `/data/queue/intake_raw` |
+| Intake Eve | `config/intake_eve.yaml` | `/var/log/soc-autopilot/intake_eve.log` | `/data/queue/intake_raw` |
+| Sanitization | `config/sanitization.yaml` | `/var/log/soc-autopilot/sanitization.log` | `/data/queue/sanitization` |
+| Queue Manager | `config/queue.yaml` | `/var/log/soc-autopilot/queue_manager.log` | `/data/queue/*` |
+| SLM Triage | `config/slm_triage_worker.yaml` | `/var/log/soc-autopilot/slm_triage.log` | `/data/queue/triage_pending` |
+| Enrichment | `config/enrichment.yaml` | `/var/log/soc-autopilot/enrichment.log` | `/data/queue/enrichment_pending` |
+| Hash Chain | `config/hash_chain.yaml` | `/var/log/soc-autopilot/hash_chain_sealer.log` | `/data/hash_chain/` |
+| Model Registry | `config/model_registry.yaml` | `/var/log/soc-autopilot/model_registry.log` | `/data/models/` |
+| LLM Providers | `config/llm_providers.yaml` | `/var/log/soc-autopilot/llm_client.log` | - |
+| Self Improver | `config/self_improver.yaml` | `/var/log/soc-autopilot/self_improver.log` | `/data/self_improver/` |
+| OpenRouter Quota | `config/openrouter_quota.yaml` | `/var/log/soc-autopilot/openrouter_quota.log` | `/data/quota/openrouter.json` |
 | Fix Backlog | - | - | `/data/self_improver/fix_backlog.json` |
-| Retention | `config/retention.yaml` | `/var/log/local-soc-slm/retention.log` | `/data/memory/` |
-| Embeddings | `config/embeddings.yaml` | `/var/log/local-soc-slm/embeddings.log` | `/data/embeddings/` |
+| Retention | `config/retention.yaml` | `/var/log/soc-autopilot/retention.log` | `/data/memory/` |
+| Embeddings | `config/embeddings.yaml` | `/var/log/soc-autopilot/embeddings.log` | `/data/embeddings/` |
 
 ---
 
@@ -691,10 +691,10 @@ python -m engine.queue_manager --queue dead_letter --purge --confirm
 python -m engine.queue_manager --status --json | jq -r '.overall_health'
 
 # Tail all logs
-tail -f /var/log/local-soc-slm/*.log
+tail -f /var/log/soc-autopilot/*.log
 
 # Count messages processed last hour
-grep "processed" /var/log/local-soc-slm/slm_triage.log | grep "$(date -d '1 hour ago' '+%H:')" | wc -l
+grep "processed" /var/log/soc-autopilot/slm_triage.log | grep "$(date -d '1 hour ago' '+%H:')" | wc -l
 
 # Check GPU utilization
 watch -n 5 nvidia-smi
@@ -828,7 +828,7 @@ The code the AI writes is the output. The architecture and safety discipline are
 5. Triage new deferred items per Section 2
 
 ---
-v1.0 — LOCAL-SOC-SLM overnight pipeline operator lessons
+v1.0 — soc-autopilot overnight pipeline operator lessons
 
 ---
 
@@ -951,7 +951,7 @@ These are non-negotiable rules discovered during actual autonomous operation. Ig
 ### 7. Reuse Proven Entry Points
 **Symptom:** Writing custom wrapper scripts that reproduce initialization logic often misses edge cases handled by the main CLI.
 **Resolution:** Prefer the tested `--drain-backlog` CLI entry point over custom ad-hoc wrappers.
-# LOCAL-SOC-SLM Operator Manual v11.9
+# soc-autopilot Operator Manual v11.9
 
 ## ⚠️ Breaking Changes (v11.9)
 
@@ -964,7 +964,7 @@ These are non-negotiable rules discovered during actual autonomous operation. Ig
 
 ## 1. System Overview
 
-LOCAL-SOC-SLM is a local Security Operations Center automation platform designed for air-gapped and hybrid environments. The platform processes security events through a multi-layered pipeline:
+soc-autopilot is a local Security Operations Center automation platform designed for air-gapped and hybrid environments. The platform processes security events through a multi-layered pipeline:
 
 **Engine Layer** (`engine/`):
 - `intake_wazuh.py` — Wazuh agent log ingestion via JSON socket
@@ -1539,7 +1539,7 @@ python -m engine.hash_chain_sealer verify --full
 **Document Version**: 11.9.0  
 **Last Updated**: 2025-01-15  
 **Maintainer**: SOC Engineering Team  
-**Classification**: INTERNAL - OPERATIONAL# LOCAL-SOC-SLM Deployment Runbook v11.9
+**Classification**: INTERNAL - OPERATIONAL# soc-autopilot Deployment Runbook v11.9
 
 ## 1. Prerequisites
 

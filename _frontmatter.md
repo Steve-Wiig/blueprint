@@ -1,9 +1,9 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.11_master.txt
-BLOCK:  Header → Blueprint Layers, CONTENTS, CORE BLUEPRINT RETENTION, AMENDMENT NUMBERING POLICY
+SOURCE: soc-autopilot
+BLOCK:  Header → Documentation Layers, CONTENTS, CORE DOCUMENTATION RETENTION, AMENDMENT NUMBERING POLICY
 SHA256: 7f1f12bdab630ff5
 ────────────────────────────────────────────────────────────────────────
 
-LOCAL-SOC-SLM v11.11 — Master Architecture, Development Blueprint & Scripts
+soc-autopilot — Master Architecture, Development Blueprint & Scripts
 Operational Readability, Knowledge Wiki, Runbook, and Hardening Edition
 ================================================================================
 VERSION: v11.11-master
@@ -15,7 +15,7 @@ corrections, and the v11.11 operational readability, knowledge-wiki,
 runbook, and failure-mode layer into one master document.
 VERIFICATION POSTURE:
 [VERIFIED-INTERNAL]
-Directly supported by the v11.3/v11.4/v11.5/v11.6 blueprint lineage supplied
+Directly supported by the previous blueprint lineage supplied
 by the user.
 [LAB-VERIFY]
 Must be proven against the actual local lab versions, packages, APIs,
@@ -164,7 +164,7 @@ Layer 7: Operations
 CONTENTS
 ================================================================================
 1–19
-Preserved from master blueprint lineage.
+Preserved from master documentation lineage.
 20
 Open-Source Fine-Tuning, Dataset Curation & Hugging Face Publishing Pipeline
 21
@@ -240,9 +240,9 @@ Completeness Manifest
 Changelog
 
 ================================================================================
-CORE BLUEPRINT RETENTION
+CORE DOCUMENTATION RETENTION
 ================================================================================
-Sections 1–19 remain preserved from the master blueprint lineage.
+Sections 1–19 remain preserved from the master documentation lineage.
 Sections 20–29 and Appendices A–J remain preserved from v11.2 and v11.3,
 applying the mechanical amendments listed in this document.
 Appendix K and Appendix L remain the v11.3 operational memory and adapter

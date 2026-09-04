@@ -160,7 +160,7 @@ def extract_iocs(sanitized_alert_json: Dict[str, Any]) -> int:
     """
     Extracts IOCs from sanitized alert payloads and persists to PostgreSQL.
 
-    Compliant with LOCAL-SOC-SLM Blueprint v11.6.0 Section 30.
+    Compliant with soc-autopilot Section 30.
 
     Args:
         sanitized_alert_json: A dictionary containing the alert data to be parsed.

@@ -1,10 +1,10 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
+SOURCE: soc-autopilot (historical)
 BLOCK:  v11.6.0 AMENDMENTS TO v11.5.2 TEXT
 SHA256: c1e9a02ac5b33da3
 ────────────────────────────────────────────────────────────────────────
 
 AMEND-47 — Add readability layers
-ADD Executive Summary, How to Read This Document, Glossary, and Blueprint
+ADD Executive Summary, How to Read This Document, Glossary, and Documentation
 Layers to the top of the master document to reduce cognitive load and provide
 role-based navigation paths.
 

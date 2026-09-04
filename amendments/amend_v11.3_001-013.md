@@ -1,4 +1,4 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
+SOURCE: soc-autopilot (historical)
 BLOCK:  v11.3 AMENDMENTS TO PRESERVED TEXT
 SHA256: 4d6ce1090af836ca
 ────────────────────────────────────────────────────────────────────────
@@ -176,5 +176,5 @@ ADD:
 Appendix M — Documentation for open source security software and API
 documentation. This appendix provides a human-readable documentation index for
 the open-source security platforms integrated by the Enrichment Engine and the
-associated API surfaces used by the Local SOC SLM Blueprint.
+associated API surfaces used by the soc-autopilot project.
 

@@ -1,4 +1,4 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
+SOURCE: soc-autopilot (historical)
 BLOCK:  APPENDIX Q — RUNBOOKS & FAILURE MODE
 SHA256: d9f0ca8161873641
 ────────────────────────────────────────────────────────────────────────

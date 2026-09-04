@@ -1,4 +1,4 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
+SOURCE: soc-autopilot (historical)
 BLOCK:  SECTION 31: CONTINUAL LEARNING
 SHA256: 04caa6cda7fdd85f
 ────────────────────────────────────────────────────────────────────────

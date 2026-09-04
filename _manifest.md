@@ -1,12 +1,12 @@
 # Blueprint Split Manifest
-GENERATED FROM: LOCAL_SOC_SLM_Blueprint_v11.11
+GENERATED FROM: soc-autopilot
 MASTER SHA256: (current HEAD: ab8067b)
 FILES WRITTEN: 25+
 TOTAL LINES: 4327+
 
 ## Reassembly Rule
 The canonical source of truth is now the split file structure.
-The master files (LOCAL_SOC_SLM_Blueprint_v11.6.0 through v11.9.0_master.txt)
+The master files (historical master files)
 have been superseded by v11.11 and are deprecated.
 
 THE SPLIT FILES ARE NOW CANONICAL:

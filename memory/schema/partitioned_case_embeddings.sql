@@ -1,4 +1,4 @@
--- LOCAL-SOC-SLM Blueprint v11.6.0: Partitioned Vector Memory DDL
+-- soc-autopilot: Partitioned Vector Memory DDL
 
 -- 1. Base Table Definition
 CREATE TABLE case_embeddings (

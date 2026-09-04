@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # CI Gate: Queue Stale Recovery Check
 # Verifies that the message queue handler implements recovery logic for stale messages
-# exceeding the TTL threshold defined in LOCAL-SOC-SLM Blueprint v11.6.0.
+# exceeding the TTL threshold defined in soc-autopilot.
 
 import os
 import sys

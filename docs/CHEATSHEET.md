@@ -1,5 +1,5 @@
 # 🏛️ The Architect's Command Console
-*The definitive guide to operating the LOCAL-SOC-SLM Autonomous Engineering System.*
+*The definitive guide to operating the soc-autopilot Autonomous Engineering System.*
 *Remember: API calls are a finite daily pool, not a recurring bill. The system is designed to protect this pool.*
 
 ---
@@ -8,7 +8,7 @@
 **The Unified Dashboard** (Oracle Swarm, Drain Loop, Pytest, Disk):
 ```bash
 dashboard  # Alias for: python3 tools/dashboard.py
-# 🛠️ Blueprint Drain Cheat Sheet
+# 🛠️ Autonomous Drain Cheat Sheet
 
 ## 📊 MONITORING
 **Quick Dashboard:** 
@@ -84,7 +84,7 @@ git diff
 ## 💾 BACKUP & INFRASTRUCTURE
 **Manual backup:** 
 ```bash
-~/bin/backup_blueprint.sh
+~/bin/backup_soc_autopilot.sh
 ```
 
 **Check disk health:** 
@@ -103,7 +103,7 @@ git update-ref HEAD <last_good_commit>
 ```bash
 mount | grep -E "docker-data|backup-nas"
 ```
-# 🛠️ LOCAL-SOC-SLM Operator Cheatsheet
+# 🛠️ soc-autopilot Operator Cheatsheet
 
 Quick reference for daily operations, safe manual interventions, and session management.
 
@@ -159,7 +159,7 @@ When you are running low on tokens, need to switch models, or just want to pause
 
 | Command | Purpose |
 | :--- | :--- |
-| `~/bin/backup_blueprint.sh` | Manually trigger the automated backup script. (Also runs automatically daily at 2:00 AM via cron). |
+| `~/bin/backup_soc_autopilot.sh` | Manually trigger the automated backup script. (Also runs automatically daily at 2:00 AM via cron). |
 | `crontab -l` | Verify that the daily backup cron job is still scheduled. |
 | `df -h` | Quick check of local and NAS disk space usage. |
 | `pgrep -af "self_improver.py"` | Verify the drain process is actually running and see its exact launch arguments. |

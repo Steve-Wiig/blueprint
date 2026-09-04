@@ -1,4 +1,4 @@
-# LOCAL-SOC-SLM: Winter Engineering Roadmap
+# soc-autopilot: Winter Engineering Roadmap
 
 **Phase:** Winter Development (Pre-Hardware / Pre-Live-Traffic)
 **Objective:** Evolve the bounded self-healing pipeline into a measurable, deterministic autonomous engineering system before Spring hardware and live SOC traffic arrive.

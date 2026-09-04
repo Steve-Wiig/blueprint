@@ -1,4 +1,4 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
+SOURCE: soc-autopilot (historical)
 BLOCK:  SECTION 38: OPERATIONAL KNOWLEDGE GENERATION
 SHA256: fea9f8d266311dff
 ────────────────────────────────────────────────────────────────────────

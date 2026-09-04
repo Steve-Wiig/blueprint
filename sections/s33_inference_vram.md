@@ -1,4 +1,4 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
+SOURCE: soc-autopilot (historical)
 BLOCK:  SECTION 33: INFERENCE, EMBEDDING, AND VRAM
 SHA256: a80b1a8447a6dec9
 ────────────────────────────────────────────────────────────────────────
@@ -7,7 +7,7 @@ SHA256: a80b1a8447a6dec9
 Section 33 governs how local SLM inference, embedding generation, adapter
 serving, and VRAM limits are managed on consumer hardware.
 This section does not mandate a specific serving backend. It mandates that the
-chosen backend be proven against the blueprint's safety, memory, and rollback
+chosen backend be proven against the project's safety, memory, and rollback
 requirements.
 33.1 Hardware contexts
 Single-GPU baseline:

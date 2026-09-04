@@ -34,7 +34,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 
-# Blueprint v11.6.0: Hash Chain Integrity Constraints
+# soc-autopilot: Hash Chain Integrity Constraints
 # MAX_CONCURRENT_THREADS increased default to 100, configurable via --threads
 # DEFAULT_MAX_CONCURRENT_THREADS: Maximum number of concurrent threads for stress testing.
 #   Expected range: 1-1000. Higher values increase contention exposure but consume more resources.

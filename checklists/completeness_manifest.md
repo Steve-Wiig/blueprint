@@ -1,4 +1,4 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.11_master.txt
+SOURCE: soc-autopilot
 BLOCK:  COMPLETENESS MANIFEST
 SHA256: a340c0aa0cd43c99
 ────────────────────────────────────────────────────────────────────────

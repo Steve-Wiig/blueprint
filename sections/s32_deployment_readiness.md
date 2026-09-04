@@ -1,4 +1,4 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
+SOURCE: soc-autopilot (historical)
 BLOCK:  SECTION 32: DEPLOYMENT READINESS
 SHA256: 96c41a1cb3e91a06
 ────────────────────────────────────────────────────────────────────────

@@ -27,7 +27,7 @@ Environment Variables:
     PGPASSWORD: PostgreSQL password (alternative to password in connection string)
     RETENTION_DAYS: Retention period in days (default: 90)
 """
-# Module-level defaults (no I/O at import time, per blueprint v11.7).
+# Module-level defaults (no I/O at import time, per project documentation).
 # Production use: call _load_config() from main() to read env vars.
 # Test use: monkeypatch ARCHIVE_BASE/CMR_MOUNT/ZSTD_COMMAND on the module.
 ARCHIVE_BASE = '/archive/iocs'

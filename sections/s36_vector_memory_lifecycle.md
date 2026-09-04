@@ -1,4 +1,4 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
+SOURCE: soc-autopilot (historical)
 BLOCK:  SECTION 36: TIME-PARTITIONED VECTOR MEMORY
 SHA256: 28448ce20cadd3df
 ────────────────────────────────────────────────────────────────────────

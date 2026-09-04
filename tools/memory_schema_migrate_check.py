@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # CI Gate: Memory Schema Migration Integrity Check
-# Ensures local state schemas align with blueprint v11.6.0 requirements.
+# Ensures local state schemas align with soc-autopilot requirements.
 
 import os
 import sys
@@ -53,7 +53,7 @@ def _load_config():
     return Config(project_root=project_root, schema_path=schema_path, ledger_path=ledger_path)
 
 def validate_schema(schema_data: dict) -> tuple[bool, str]:
-    """Validates schema structure against blueprint v11.6.0 requirements.
+    """Validates schema structure against soc-autopilot requirements.
 
     Expected keys in schema_data:
         - version (str): Must match SCHEMA_VERSION_REQUIRED ("11.6.0")
@@ -80,7 +80,7 @@ def validate_schema(schema_data: dict) -> tuple[bool, str]:
 def main() -> int:
     """Run memory schema migration integrity check.
     
-    Validates the local memory schema against blueprint v11.6.0 requirements
+    Validates the local memory schema against soc-autopilot requirements
     and verifies migration ledger existence unless --dry-run is specified.
     
     Returns:

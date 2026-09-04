@@ -349,7 +349,7 @@ Critique prompt explicitly asks:
 
 ```bash
 # Manual run (foreground, verbose)
-cd /opt/local-soc-slm
+cd /opt/soc-autopilot
 python -m overnight.self_improver --verbose --dry-run
 
 # Production run (via systemd timer)
@@ -404,7 +404,7 @@ python -m overnight.cost_report --days 30
 - [ ] **Rollback capability**: `git revert <tag>` or `git checkout <tag>^ -- <file>` restores pre-fix state.
 - [ ] **Quota hard limits**: OpenRouter 50 RPD enforced at client + server; Gemini/Groq free tiers monitored.
 - [ ] **Concurrency lock**: `overnight/.pipeline.lock` prevents overlapping runs (cron + manual).
-- [ ] **Secrets**: API keys in `/etc/local-soc-slm/llm_keys.env` (600, root:root); never in repo.
+- [ ] **Secrets**: API keys in `/etc/soc-autopilot/llm_keys.env` (600, root:root); never in repo.
 - [ ] **Git identity configured**: `git config --global user.email "pipeline@local-soc-slm" && git config --global user.name "Overnight Pipeline"` (or via systemd `Environment=`).
 - [ ] **Pre-commit hooks bypassed**: `git commit --no-verify` prevents external network calls or slow linters from breaking the 120s timeout.
 

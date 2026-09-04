@@ -34,7 +34,7 @@ except ImportError:
     print("FAIL: requests not installed. Run: pip install requests")
     sys.exit(2)
 
-BLUEPRINT_ROOT = Path("/home/swiig/Documents/soc-autopilot")
+PROJECT_ROOT = Path("/home/swiig/Documents/soc-autopilot")
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent"
 RATE_LIMIT_SLEEP = 7  # seconds between API calls
 MAX_RETRIES = 3
@@ -42,7 +42,7 @@ MAX_RETRIES = 3
 
 def load_env():
     """Load secrets from .env file. Never hardcode keys."""
-    env_path = BLUEPRINT_ROOT / ".env"
+    env_path = PROJECT_ROOT / ".env"
     if not env_path.exists():
         print("CONFIG ERROR: .env file not found")
         sys.exit(2)
@@ -129,7 +129,7 @@ FILE: {filename}
 
 def process_file(filepath: Path, api_key: str, dry_run: bool = False) -> bool:
     """Process a single file. Returns True if successful."""
-    rel_path = filepath.relative_to(BLUEPRINT_ROOT)
+    rel_path = filepath.relative_to(PROJECT_ROOT)
     print(f"\n  Processing: {rel_path}")
 
     # Read original
@@ -211,9 +211,9 @@ def main():
     for i, file_arg in enumerate(args.files):
         filepath = Path(file_arg)
         if not filepath.is_absolute():
-            # If relative, check CWD first, then fallback to blueprint root
+            # If relative, check CWD first, then fallback to project root
             if not filepath.exists():
-                filepath = BLUEPRINT_ROOT / file_arg
+                filepath = PROJECT_ROOT / file_arg
         filepath = filepath.resolve()  # Convert to absolute path
         
         if not filepath.exists():

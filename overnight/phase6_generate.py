@@ -22,14 +22,14 @@ except ImportError:
     print("FAIL: requests not installed")
     sys.exit(2)
 
-BLUEPRINT_ROOT = Path("/home/swiig/Documents/soc-autopilot")
+PROJECT_ROOT = Path("/home/swiig/Documents/soc-autopilot")
 import argparse as _ap
 from overnight.llm_client import generate_with_critique, load_api_keys, strip_fences
 _parser = _ap.ArgumentParser()
 _parser.add_argument("--tasks-file", default="overnight/tasks_phase6.json")
 _args, _ = _parser.parse_known_args()
-TASKS_FILE = BLUEPRINT_ROOT / _args.tasks_file
-EVIDENCE_DIR = BLUEPRINT_ROOT / "overnight" / "evidence"
+TASKS_FILE = PROJECT_ROOT / _args.tasks_file
+EVIDENCE_DIR = PROJECT_ROOT / "overnight" / "evidence"
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent"
 RATE_LIMIT_SLEEP = 7
 MAX_GENERATIONS_PER_TASK = 3
@@ -37,7 +37,7 @@ MAX_TASKS_DEFAULT = 10
 
 
 def load_env():
-    env_path = BLUEPRINT_ROOT / ".env"
+    env_path = PROJECT_ROOT / ".env"
     if env_path.exists():
         for line in env_path.read_text().splitlines():
             line = line.strip()
@@ -61,7 +61,7 @@ def validate_python(code: str) -> bool:
 
 
 def build_prompt(task: dict, critique: str = None) -> str:
-    prompt = f"""You are generating code for the LOCAL-SOC-SLM project.
+    prompt = f"""You are generating code for the soc-autopilot project.
 
 TASK: {task['prompt_hint']}
 
@@ -92,7 +92,7 @@ def run_tests_for_file(target: str) -> tuple:
         result = subprocess.run(
             [sys.executable, "-m", "pytest", target, "-v", "--tb=short"],
             capture_output=True, text=True, timeout=45,
-            cwd=str(BLUEPRINT_ROOT)
+            cwd=str(PROJECT_ROOT)
         )
         passed = result.returncode == 0
         output = result.stdout[-500:] if result.stdout else result.stderr[-500:]
@@ -102,7 +102,7 @@ def run_tests_for_file(target: str) -> tuple:
 
 
 def process_task(task: dict, api_key: str, dry_run: bool = False) -> bool:
-    target_path = BLUEPRINT_ROOT / task["target"]
+    target_path = PROJECT_ROOT / task["target"]
     print(f"\n  [{task['id']}] {task['target']}")
     
     if target_path.exists():

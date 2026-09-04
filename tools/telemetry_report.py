@@ -38,7 +38,7 @@ def generate_report(events):
             if e.get("issue_final_outcome") == "committed": models[model]["committed"] += 1
 
     print("\n" + "="*75)
-    print("LOCAL-SOC-SLM MODEL EFFICACY REPORT")
+    print("soc-autopilot MODEL EFFICACY REPORT")
     print("="*75)
     print(f"{'Model':<25} | {'Attempts':<8} | {'1st-Pass':<8} | {'Repaired':<8} | {'Pytest':<8} | {'Committed':<9}")
     print("-" * 75)

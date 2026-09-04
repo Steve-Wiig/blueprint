@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Dual-Model Code Reviewer for LOCAL-SOC-SLM.
+Dual-Model Code Reviewer for soc-autopilot.
 
 Uses NVIDIA Nemotron (via OpenRouter) to analyze code and suggest improvements,
 then Gemini (via Google) to validate, prioritize, and catch false positives.
@@ -58,7 +58,7 @@ IMPROVEMENT_CATEGORIES = [
     "performance",       # N+1 queries, inefficient loops, missing indexes
     "correctness",       # Logic bugs, off-by-one, race conditions
     "maintainability",   # Missing docstrings, type hints, naming
-    "blueprint_compliance",  # datetime.utcnow, sys.exit, sqlite mocking
+    "documentation_compliance",  # datetime.utcnow, sys.exit, sqlite mocking
     "test_coverage",     # Untested functions, weak assertions
 ]
 
@@ -161,7 +161,7 @@ PURPOSE: {context.get('purpose', 'SOC automation component')}
 SOURCE CODE:
 {content}
 
-BLUEPRINT REQUIREMENTS (from LOCAL-SOC-SLM v11.8):
+BLUEPRINT REQUIREMENTS (from soc-autopilot v11.8):
 - No datetime.utcnow() — use datetime.now(timezone.utc) instead [AMEND-63]
 - No sys.exit()/exit() in library code — use raise RuntimeError() [AMEND-64]
 - No mocking sqlite3.Connection methods — use real :memory: databases [AMEND-65]
@@ -176,7 +176,7 @@ REVIEW CATEGORIES (identify issues in each):
 3. performance: N+1 queries, inefficient loops, missing indexes, unnecessary allocations
 4. correctness: Logic bugs, off-by-one errors, type mismatches, edge cases
 5. maintainability: Missing docstrings, poor naming, code duplication, missing type hints
-6. blueprint_compliance: Violations of the specific blueprint requirements above
+6. documentation_compliance: Violations of the specific blueprint requirements above
 7. test_coverage: Untested code paths, weak assertions, missing edge case tests
 
 OUTPUT FORMAT:
@@ -475,7 +475,7 @@ REVIEWER'S ANALYSIS:
 
 Extract all improvement suggestions from the analysis above into a JSON array.
 Each object must have:
-- category: security | reliability | performance | correctness | maintainability | blueprint_compliance | test_coverage
+- category: security | reliability | performance | correctness | maintainability | documentation_compliance | test_coverage
 - severity: critical | high | medium | low | informational
 - line_start: integer
 - line_end: integer
@@ -711,7 +711,7 @@ def generate_summary():
                 })
     
     # Build summary markdown
-    md = f"""# LOCAL-SOC-SLM Code Review Summary
+    md = f"""# soc-autopilot Code Review Summary
 
 **Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  
 **Reviewer Models:** {GENERATOR_MODEL} (analysis) + {CRITIC_MODEL} (validation)

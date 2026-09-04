@@ -41,5 +41,5 @@ def test_thehive_sanitization_applied():
     """Verify the module imports the sanitizer for pre-writeback redaction."""
     import engine.writeback.thehive as thehive_module
     source = Path(thehive_module.__file__).read_text()
-    # The blueprint requires sanitization before writeback
+    # The project requires sanitization before writeback
     assert "sanitize" in source.lower() or "redact" in source.lower() or "import" in source

@@ -1,8 +1,8 @@
 import ast, hashlib, json, os, re, subprocess, sys
 from pathlib import Path
 
-BLUEPRINT_ROOT = Path("/home/swiig/Documents/soc-autopilot")
-EVIDENCE_DIR   = BLUEPRINT_ROOT / "overnight" / "evidence"
+PROJECT_ROOT = Path("/home/swiig/Documents/soc-autopilot")
+EVIDENCE_DIR   = PROJECT_ROOT / "overnight" / "evidence"
 EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
 
 class VerifierResult:

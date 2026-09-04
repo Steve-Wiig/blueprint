@@ -32,8 +32,8 @@ def load_env():
                 os.environ.setdefault(key.strip(), value.strip())
 
 
-BLUEPRINT_ROOT = Path("/home/swiig/Documents/soc-autopilot")
-OVERNIGHT_DIR = BLUEPRINT_ROOT / "overnight"
+PROJECT_ROOT = Path("/home/swiig/Documents/soc-autopilot")
+OVERNIGHT_DIR = PROJECT_ROOT / "overnight"
 REPORT_PATH = OVERNIGHT_DIR / "morning_report.md"
 TASKS_PATH = OVERNIGHT_DIR / "tasks_phase5.json"
 EVIDENCE_DIR = OVERNIGHT_DIR / "evidence"
@@ -57,7 +57,7 @@ def run_command(cmd, cwd=None, timeout=120):
             capture_output=True,
             text=True,
             timeout=timeout,
-            cwd=cwd or str(BLUEPRINT_ROOT),
+            cwd=cwd or str(PROJECT_ROOT),
             shell=isinstance(cmd, str)
         )
         return result.returncode, result.stdout, result.stderr
@@ -77,11 +77,11 @@ def phase1_verification():
     # 1a. Module imports
     log("  [1a] Checking module imports...")
     import sys
-    sys.path.insert(0, str(BLUEPRINT_ROOT))
+    sys.path.insert(0, str(PROJECT_ROOT))
     import importlib
 
     py_files = [
-        f for f in BLUEPRINT_ROOT.rglob("*.py")
+        f for f in PROJECT_ROOT.rglob("*.py")
         if ".venv" not in str(f)
         and "__pycache__" not in str(f)
         and "overnight" not in str(f)
@@ -90,11 +90,11 @@ def phase1_verification():
 
     import_failures = []
     for f in py_files:
-        module_name = str(f.relative_to(BLUEPRINT_ROOT)).replace("/", ".").replace(".py", "")
+        module_name = str(f.relative_to(PROJECT_ROOT)).replace("/", ".").replace(".py", "")
         try:
             importlib.import_module(module_name)
         except Exception as e:
-            import_failures.append({"file": str(f.relative_to(BLUEPRINT_ROOT)), "error": str(e)[:100]})
+            import_failures.append({"file": str(f.relative_to(PROJECT_ROOT)), "error": str(e)[:100]})
 
     results["module_imports"] = {
         "total": len(py_files),
@@ -123,7 +123,7 @@ def phase1_verification():
 
     # 1c. CI tool dry-runs
     log("  [1c] Running CI tool dry-runs...")
-    tools_dir = BLUEPRINT_ROOT / "tools"
+    tools_dir = PROJECT_ROOT / "tools"
     tool_results = []
     for tool in sorted(tools_dir.glob("*.py")):
         rc, stdout, stderr = run_command(
@@ -146,7 +146,7 @@ def phase1_verification():
     log("  [1d] Validating YAML files...")
     try:
         import yaml
-        yaml_files = list(BLUEPRINT_ROOT.rglob("*.yaml"))
+        yaml_files = list(PROJECT_ROOT.rglob("*.yaml"))
         yaml_results = []
         for yf in yaml_files:
             if ".venv" in str(yf):
@@ -154,9 +154,9 @@ def phase1_verification():
             try:
                 with open(yf) as f:
                     yaml.safe_load(f)
-                yaml_results.append({"file": str(yf.relative_to(BLUEPRINT_ROOT)), "status": "PASS"})
+                yaml_results.append({"file": str(yf.relative_to(PROJECT_ROOT)), "status": "PASS"})
             except Exception as e:
-                yaml_results.append({"file": str(yf.relative_to(BLUEPRINT_ROOT)), "status": "FAIL", "error": str(e)[:80]})
+                yaml_results.append({"file": str(yf.relative_to(PROJECT_ROOT)), "status": "FAIL", "error": str(e)[:80]})
         results["yaml"] = yaml_results
         log(f"    {sum(1 for y in yaml_results if y['status'] == 'PASS')}/{len(yaml_results)} YAML files valid")
     except ImportError:
@@ -166,7 +166,7 @@ def phase1_verification():
     # 1e. SQL syntax check
     log("  [1e] Checking SQL files...")
     import sqlite3
-    sql_files = list(BLUEPRINT_ROOT.rglob("*.sql"))
+    sql_files = list(PROJECT_ROOT.rglob("*.sql"))
     sql_results = []
     for sf in sql_files:
         if ".venv" in str(sf):
@@ -177,12 +177,12 @@ def phase1_verification():
             has_create = "CREATE" in content.upper()
             has_semicolons = ";" in content
             sql_results.append({
-                "file": str(sf.relative_to(BLUEPRINT_ROOT)),
+                "file": str(sf.relative_to(PROJECT_ROOT)),
                 "status": "PASS" if has_create and has_semicolons else "WARN",
                 "lines": len(content.splitlines())
             })
         except Exception as e:
-            sql_results.append({"file": str(sf.relative_to(BLUEPRINT_ROOT)), "status": "FAIL", "error": str(e)[:80]})
+            sql_results.append({"file": str(sf.relative_to(PROJECT_ROOT)), "status": "FAIL", "error": str(e)[:80]})
     results["sql"] = sql_results
     log(f"    {len(sql_results)} SQL files checked")
 
@@ -199,7 +199,7 @@ def phase2_gap_analysis(verification_results):
     gaps = []
 
     # Check for tools missing --dry-run
-    tools_dir = BLUEPRINT_ROOT / "tools"
+    tools_dir = PROJECT_ROOT / "tools"
     for tool in sorted(tools_dir.glob("*.py")):
         content = tool.read_text()
         if "dry-run" not in content and "dry_run" not in content:
@@ -222,7 +222,7 @@ def phase2_gap_analysis(verification_results):
 
     # Check for missing __init__.py files
     for pkg_dir in ["engine", "memory", "orchestrator", "tools", "tests"]:
-        init_path = BLUEPRINT_ROOT / pkg_dir / "__init__.py"
+        init_path = PROJECT_ROOT / pkg_dir / "__init__.py"
         if not init_path.exists():
             gaps.append({
                 "type": "add_init",
@@ -231,7 +231,7 @@ def phase2_gap_analysis(verification_results):
             })
 
     # Check for missing requirements.txt
-    req_path = BLUEPRINT_ROOT / "requirements.txt"
+    req_path = PROJECT_ROOT / "requirements.txt"
     if not req_path.exists():
         gaps.append({
             "type": "add_requirements",
@@ -240,7 +240,7 @@ def phase2_gap_analysis(verification_results):
         })
 
     # Check for missing .env.example
-    env_path = BLUEPRINT_ROOT / ".env.example"
+    env_path = PROJECT_ROOT / ".env.example"
     if not env_path.exists():
         gaps.append({
             "type": "add_env_example",
@@ -361,7 +361,7 @@ def phase5_morning_report(verification_results, gaps, tasks, loop_result):
     report_lines = [
         f"# Overnight Verification Report",
         f"**Generated:** {now}",
-        f"**Blueprint:** LOCAL-SOC-SLM v11.7.0",
+        f"**Project:** soc-autopilot",
         "",
         "---",
         "",
@@ -525,7 +525,7 @@ def main():
     log("=" * 60)
     log("OVERNIGHT VERIFICATION & DEVELOPMENT PIPELINE")
     log("=" * 60)
-    log(f"Blueprint root: {BLUEPRINT_ROOT}")
+    log(f"Blueprint root: {PROJECT_ROOT}")
     log(f"Run LLM loop: {RUN_LLM_LOOP}")
     log("")
 

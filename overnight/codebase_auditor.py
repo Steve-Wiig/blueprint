@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Comprehensive Codebase Auditor & Auto-Fixer.
-Scans the blueprint for systemic LLM generation errors and fixes/reports them.
+Scans the project for systemic LLM generation errors and fixes/reports them.
 """
 import ast
 import difflib

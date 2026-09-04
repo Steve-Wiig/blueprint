@@ -1,4 +1,4 @@
-# LOCAL-SOC-SLM: Autonomous Engineering Architecture
+# soc-autopilot: Autonomous Engineering Architecture
 
 This document outlines the cognitive architecture, safety gates, and operational topology of the autonomous self-improving pipeline.
 

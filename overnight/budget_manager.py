@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-API Budget Manager for LOCAL-SOC-SLM automation.
+API Budget Manager for soc-autopilot.
 
 Tracks per-minute, per-hour, and per-day API usage for both providers.
 Enforces free-tier limits and gracefully pauses/stops when budget is low.

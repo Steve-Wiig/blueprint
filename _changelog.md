@@ -1,5 +1,5 @@
 
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.11
+SOURCE: soc-autopilot
 BLOCK: CHANGELOG
 SHA256: ab8067b
 ────────────────────────────────────────────────────────────────────────
@@ -26,7 +26,7 @@ v11.10:
 v11.9:
 - Historical baseline (superseded by v11.10/v11.11)
 
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
+SOURCE: soc-autopilot (historical)
 BLOCK:  CHANGELOG
 SHA256: 515ec36919ce5b83
 ────────────────────────────────────────────────────────────────────────

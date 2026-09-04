@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import NoReturn, Optional, List, Tuple
 import hashlib
 
-# LOCAL-SOC-SLM Blueprint v11.6.0 - Wazuh Proposal Adapter
+# soc-autopilot - Wazuh Proposal Adapter
 # Appendix Q.3: Writeback Isolation Layer
 
 DB_PATH: str = os.environ.get("WAZUH_PROPOSALS_DB", "/var/lib/wazuh-slm/proposals.db")

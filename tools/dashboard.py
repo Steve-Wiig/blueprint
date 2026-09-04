@@ -53,6 +53,57 @@ def main():
     else:
         print("   No ledger entries yet.")
 
+    # 1c. SELF-IMPROVEMENT SCORECARD
+    h1("📈 SELF-IMPROVEMENT SCORECARD")
+    if ledger_path.exists():
+        import json
+        from collections import Counter, defaultdict
+        entries = []
+        for line in ledger_path.read_text().strip().split("\n"):
+            if line.strip():
+                try:
+                    entries.append(json.loads(line))
+                except Exception:
+                    pass
+        total = len(entries)
+        applied = sum(1 for e in entries if e.get("status") == "APPLIED")
+        rejected = sum(1 for e in entries if e.get("status") == "REJECTED")
+        rate = (applied / total) if total else 0.0
+        print(f"   Total decisions: {total}")
+        print(f"   Success rate:    {rate*100:.1f}% ({applied} applied / {total} actionable)")
+        proven_path = ROOT / "overnight" / "proven_fixes.jsonl"
+        proven_count = 0
+        if proven_path.exists():
+            proven_count = sum(1 for l in proven_path.read_text().strip().split("\n") if l.strip())
+        print(f"   Proven patterns: {proven_count} stored")
+        trend = "⏳ insufficient data"
+        if total >= 10:
+            half = total // 2
+            def _succ(es):
+                ap = sum(1 for e in es if e.get("status") == "APPLIED")
+                return (ap / len(es)) if es else 0.0
+            r_old = _succ(entries[:half])
+            r_new = _succ(entries[half:])
+            if r_new > r_old + 0.02:
+                trend = "📈 improving"
+            elif r_new < r_old - 0.02:
+                trend = "📉 degrading"
+            else:
+                trend = "➡️ stable"
+        print(f"   Trend:           {trend}")
+        cat_stats = defaultdict(Counter)
+        for e in entries:
+            cat_stats[e.get("category", "unknown")][e.get("status", "?")] += 1
+        print("   By category:")
+        for cat in sorted(cat_stats):
+            sc = cat_stats[cat]
+            ap = sc.get("APPLIED", 0); rj = sc.get("REJECTED", 0)
+            esc = sc.get("ESCALATED", 0)
+            tot = ap + rj + esc + sc.get("STALE", 0)
+            print(f"     {cat:20s}: {ap}✅ {rj}❌ {esc}🟡 ({tot} total)")
+    else:
+        print("   No scorecard data yet.")
+
     # 2. DRAIN PROCESS
     h1("🔄 DRAIN PROCESS")
     pids = run("pgrep -f 'self_improver.py'").split('\n')

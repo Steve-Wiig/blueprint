@@ -5,7 +5,7 @@ Use these prompts when routing heavy documentation forensics through high-contex
 ## Execution Strategy (From Gemini/ChatGPT Handoffs)
 1. **Staged Execution:** Do NOT request all deliverables in a single prompt. 
 2. **Phase 1 First:** Force the model to output the Audit Report and Status Snapshot first. Review it to ensure it correctly identified the v11.10 safety gates.
-3. **Phase 2 Second:** Once the audit is verified, prompt for the actual Master Blueprint rewrite.
+3. **Phase 2 Second:** Once the audit is verified, prompt for the actual Master Documentation rewrite.
 4. **API Routing:** Use high-context API endpoints for this read-heavy task. Reserve local GPU compute for the atomic auto-fix commits.
 
 ---
@@ -14,7 +14,7 @@ Use these prompts when routing heavy documentation forensics through high-contex
 **Input:** Paste the contents of `audit_context.txt` (generated via `cat docs/*.md > audit_context.txt`) at the bottom.
 
 You are an expert Technical Documentation Auditor and Systems Architect. 
-Your task is to perform a "documentation-forensics pass" on the LOCAL-SOC-SLM project. 
+Your task is to perform a "documentation-forensics pass" on the soc-autopilot project. 
 I have provided the current documentation corpus and the project file tree below.
 
 DO NOT rewrite the master blueprint yet. We are doing this in staged phases to ensure accuracy.
@@ -39,7 +39,7 @@ Write a short, highly accurate "What is this system TODAY?" section.
 
 ---
 
-## Phase 2: The Master Blueprint Rewrite
+## Phase 2: The Master Documentation Rewrite
 **Input:** Paste the output from Phase 1.
 
 Excellent work on the Audit Report and Current State Snapshot. The forensic analysis is approved. 

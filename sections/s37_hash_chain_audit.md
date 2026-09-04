@@ -1,4 +1,4 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
+SOURCE: soc-autopilot (historical)
 BLOCK:  SECTION 37: HASH-CHAINED AUDIT LEDGER
 SHA256: f0eb9aea4e67f81b
 ────────────────────────────────────────────────────────────────────────

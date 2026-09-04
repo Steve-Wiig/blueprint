@@ -131,7 +131,7 @@ def main():
         prompt = f"""{task['prompt_hint']}
 
 PROJECT CONTEXT:
-- This is LOCAL-SOC-SLM: a local SOC automation platform
+- This is soc-autopilot: a local SOC automation platform
 - Layers: engine (intake, sanitization, queue, enrichment, writeback), orchestrator (model routing, context), memory (embeddings, retention, RAG)
 - Target audience: SOC engineers setting up and operating the platform
 {context}

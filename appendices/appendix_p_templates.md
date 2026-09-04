@@ -1,4 +1,4 @@
-SOURCE: LOCAL_SOC_SLM_Blueprint_v11.6.0_master.txt
+SOURCE: soc-autopilot (historical)
 BLOCK:  APPENDIX P — PRODUCTION-HARDENING SQL
 SHA256: 675063beafd4ac6a
 ────────────────────────────────────────────────────────────────────────

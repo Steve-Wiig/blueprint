@@ -5,7 +5,7 @@ from sentence_transformers import SentenceTransformer
 
 class EmbeddingService:
     """
-    LOCAL-SOC-SLM v11.6.0 Embedding Service.
+    soc-autopilot Embedding Service.
 
     Enforces model-native vector space dimension and idempotent prefixing.
     Fail-closed on contract violation.

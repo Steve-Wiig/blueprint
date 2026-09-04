@@ -28,7 +28,7 @@ def generate_strategic_constraint(failed_code: str, traceback: str, original_pro
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
         "HTTP-Referer": "https://localhost",
-        "X-Title": "LOCAL-SOC-SLM Meta-Critic"
+        "X-Title": "soc-autopilot Meta-Critic"
     }
     payload = {
         "model": CRITIC_MODEL,
