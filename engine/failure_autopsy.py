@@ -36,7 +36,13 @@ def perform_autopsy(bad_code: str, error_message: str, api_keys: dict) -> str:
     Raises
     ------
     RuntimeError
-        If the LLM client call fails.
+        If the LLM client call fails or returns an empty response.
+
+    Notes
+    -----
+    No fallback behavior is implemented: if the LLM client returns an empty
+    response, a RuntimeError is raised immediately with no retry or alternative
+    model fallback.
     """
     prompt = AUTOPSY_PROMPT_TEMPLATE.format(
         error_message=error_message[:1500],
