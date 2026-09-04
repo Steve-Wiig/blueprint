@@ -143,3 +143,11 @@
 {"timestamp": "2026-09-04T02:52:06.865201", "file": "engine/hash_chain_sealer.py", "category": "blueprint_compliance", "status": "ESCALATED", "reason": "Lacks regression test"}
 {"timestamp": "2026-09-04T02:58:43.955946", "file": "engine/hash_chain_sealer.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
 {"timestamp": "2026-09-04T02:58:44.049004", "file": "engine/hash_chain_sealer.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-04T03:51:58.848095", "file": "engine/hash_chain_sealer.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-04T03:51:58.981946", "file": "engine/hash_chain_sealer.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-04T04:24:44.178999", "file": "engine/intake_wazuh.py", "category": "blueprint_compliance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-04T04:24:44.276032", "file": "engine/intake_wazuh.py", "category": "blueprint_compliance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-04T04:49:53.772738", "file": "engine/intake_wazuh.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-04T04:49:53.897414", "file": "engine/intake_wazuh.py", "category": "blueprint_compliance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-04T04:49:54.031561", "file": "engine/intake_wazuh.py", "category": "performance", "status": "ESCALATED", "reason": "Lacks regression test"}
+{"timestamp": "2026-09-04T04:49:54.184226", "file": "engine/intake_wazuh.py", "category": "maintainability", "status": "ESCALATED", "reason": "Lacks regression test"}
