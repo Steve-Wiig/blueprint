@@ -112,6 +112,27 @@ def main():
     else: print("   🔴 STOPPED")
     
     # 3. QUEUE STATUS
+    # 🍓 EDGE WORKER STATUS
+    h1("🍓 EDGE WORKER STATUS")
+    try:
+        gen_status = subprocess.run(["systemctl", "is-active", "pi-generator"], capture_output=True, text=True).stdout.strip()
+        gen_icon = "🟢" if gen_status == "active" else "🔴"
+        print(f"   {gen_icon} Generator: {gen_status}")
+        
+        crit_status = subprocess.run(["systemctl", "is-active", "pi-worker"], capture_output=True, text=True).stdout.strip()
+        crit_icon = "🟢" if crit_status == "active" else "🔴"
+        print(f"   {crit_icon} Critic:    {crit_status}")
+        
+        pi_patches = ROOT / "overnight" / "pi_patches.jsonl"
+        if pi_patches.exists():
+            count = sum(1 for l in pi_patches.read_text().strip().split('\n') if l.strip())
+            print(f"   📦 Pending Pi Patches: {count}")
+        else:
+            print("   📦 Pending Pi Patches: 0")
+    except Exception as e:
+        print(f"   ⚠️ Could not check Pi status: {e}")
+    
+
     h1("📥 QUEUE STATUS")
     backlog = json.loads((ROOT / "overnight/fix_backlog.json").read_text()) if (ROOT / "overnight/fix_backlog.json").exists() else []
     deferred = json.loads((ROOT / "overnight/fix_backlog_deferred.json").read_text()) if (ROOT / "overnight/fix_backlog_deferred.json").exists() else []
