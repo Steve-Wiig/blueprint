@@ -24,9 +24,8 @@ def perform_autopsy(bad_code: str, error_message: str, api_keys: dict) -> str:
 
     Raises
     ------
-    Exception
-        Any exception from the underlying LLM client call is caught and
-        a fallback constraint string is returned instead.
+    RuntimeError
+        If the LLM client call fails.
     """
     prompt = (
         "You are a senior software architect performing a failure autopsy.\n"
@@ -38,12 +37,8 @@ def perform_autopsy(bad_code: str, error_message: str, api_keys: dict) -> str:
         "Output ONLY the 2 sentences. No markdown, no preamble."
     )
     
-    try:
-        raw = overnight.llm_client._call_gemini(prompt, api_keys.get("gemini"), max_tokens=200, temperature=0.1)
-        if raw:
-            return raw.strip().replace('\n', ' ')
-    except Exception:
-        pass
-        
-    # Fallback if Gemini fails
-    return "Analyze your previous failure carefully and adhere strictly to the output format and exact file contents."
+    raw = overnight.llm_client._call_gemini(prompt, api_keys.get("gemini"), max_tokens=200, temperature=0.1)
+    if raw:
+        return raw.strip().replace('\n', ' ')
+    
+    raise RuntimeError("LLM client returned empty response for autopsy")
