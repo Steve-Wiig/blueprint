@@ -6,6 +6,28 @@ Analyzes a failed LLM output to generate a 2-sentence constraint for Attempt 2.
 import overnight.llm_client
 
 def perform_autopsy(bad_code: str, error_message: str, api_keys: dict) -> str:
+    """Analyze a failed LLM output to generate a 2-sentence constraint for retry.
+
+    Parameters
+    ----------
+    bad_code : str
+        The invalid code produced by the AI that caused the error.
+    error_message : str
+        The error message or traceback from the failed execution.
+    api_keys : dict
+        Mapping of model names to API keys for LLM calls.
+
+    Returns
+    -------
+    str
+        A 2-sentence explanation of the cognitive mistake made by the AI.
+
+    Raises
+    ------
+    Exception
+        Any exception from the underlying LLM client call is caught and
+        a fallback constraint string is returned instead.
+    """
     prompt = (
         "You are a senior software architect performing a failure autopsy.\n"
         "An AI was asked to write a patch, but it produced invalid code.\n"
