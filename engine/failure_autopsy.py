@@ -43,6 +43,10 @@ def perform_autopsy(bad_code: str, error_message: str, api_keys: dict) -> str:
     No fallback behavior is implemented: if the LLM client returns an empty
     response, a RuntimeError is raised immediately with no retry or alternative
     model fallback.
+
+    Side Effects
+    ------------
+    Makes an external LLM API call via the overnight.llm_client module.
     """
     prompt = AUTOPSY_PROMPT_TEMPLATE.format(
         error_message=error_message[:1500],
