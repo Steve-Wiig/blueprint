@@ -1,592 +1,200 @@
-# LOCAL-SOC-SLM
+# soc-autopilot
 
-## Local Security Operations Center · Small Language Model Platform
-
-**v11.11 — Current Documentation & Operational Baseline**
-**Status: Active / Experimental Infrastructure**
-
-LOCAL-SOC-SLM is a locally operated security-operations platform for ingesting, sanitizing, triaging, enriching, persisting, auditing, and acting on security telemetry with controlled Small Language Model (SLM) assistance.
-
-The project also contains a constrained overnight self-improvement pipeline that allows LLMs to **analyze the codebase and propose or attempt surgical fixes**, while enforcing multiple safety gates before generated code can become a Git commit.
-
-> **LLMs may propose changes. Safety gates, tests, Git history, and human operators decide what survives.**
+**A local Security Operations Center with LLM-assisted triage and a self-improving codebase.**
 
 ---
 
-## Current Version
+## What It Is
 
-### v11.11 — Documentation / Operational Baseline
+soc-autopilot is a **locally operated** security platform that:
+- Ingests and sanitizes security telemetry (Wazuh, Security Onion, Suricata)
+- Uses Small Language Models (SLMs) for triage, enrichment, and institutional knowledge
+- Maintains an **append-only audit ledger** for all actions
+- Includes a **constrained self-improvement pipeline** that proposes and tests its own fixes
 
-The v11.11 baseline incorporates the latest Aug. 29, 2026 operational state and the lessons learned while exercising the v11.10 hardened overnight pipeline.
-
-**Verified source baseline:**
-
-```text
-0f41f4d
-fix: eliminate all Python 3.12 datetime deprecation warnings
-```
-
-The current working tree also contains runtime state generated during overnight/Qwen analysis, including advisory-queue and backlog state.
-
-**Important:** the existence of an advisory does not mean the underlying issue has been accepted or fixed.
-
-The current v11.11 baseline therefore distinguishes between:
-
-* verified implementation;
-* runtime/queue state;
-* LLM-generated advisories;
-* deferred work;
-* human-approved fixes.
+**Core principle:** *LLMs propose, safety gates validate, tests verify, Git records, humans decide.*
 
 ---
 
-# What the System Does
+## Why It Exists
 
-At a high level:
-
-```text
-                    SECURITY TELEMETRY
-                           │
-              ┌────────────┴────────────┐
-              │                         │
-           Wazuh                       EVE
-              │                         │
-              └────────────┬────────────┘
-                           ▼
-                  Sanitization /
-                    Quarantine
-                           │
-                           ▼
-                    Queue Manager
-                           │
-                           ▼
-                       SLM Triage
-                           │
-             ┌─────────────┼─────────────┐
-             ▼             ▼             ▼
-           IOC         Enrichment      Context
-        Extraction      Scheduler      Stitching
-             │             │             │
-             └─────────────┼─────────────┘
-                           ▼
-                    Persistent Memory
-                           │
-              ┌────────────┼────────────┐
-              ▼            ▼            ▼
-          Embeddings    Retention    Audit Chain
-              │            │            │
-              └────────────┼────────────┘
-                           ▼
-                     Security Actions
-                           │
-          ┌────────────────┼────────────────┐
-          ▼                ▼                ▼
-        Wazuh           TheHive          Security Onion
-       Proposals        Writeback          / pfSense
-```
-
-The repository contains dedicated components for:
-
-* Wazuh ingestion;
-* EVE ingestion;
-* sanitization and redaction;
-* queue management and backpressure;
-* SLM triage;
-* IOC extraction;
-* enrichment;
-* context stitching;
-* model registration/routing;
-* embeddings;
-* retention;
-* hash-chain audit sealing;
-* Wazuh proposals;
-* TheHive writeback;
-* Security Onion cases;
-* pfSense aliases.
+Enterprise SOAR/XDR tools are expensive and often cloud-only. soc-autopilot provides:
+- **Tier 1 triage support** for defenders without enterprise budgets
+- **Local control** over data, models, and operations
+- **Continuous improvement** via a safe, gated self-improvement loop
+- **Open-source integration** with existing security tools (Wazuh, TheHive, pfSense)
 
 ---
 
-# Overnight Self-Improvement Pipeline
+## Key Components
 
-The overnight subsystem is deliberately constrained.
-
-It is **not** an unrestricted autonomous coding agent.
-
-The current conceptual flow is:
-
-```text
-Advisory Generation
-        │
-        ▼
- Advisory Queue
-        │
-        ▼
- Human / Pipeline Triage
-        │
-        ▼
-    Fix Backlog
-        │
-        ▼
-   LLM Code Proposal
-        │
-        ▼
-     Safety Gates
-        │
-        ▼
-      Pytest
-        │
-     ┌──┴──┐
-     │     │
-   FAIL   PASS
-     │     │
-  Restore  │
-     │     ▼
-     │   Local Git Commit
-     │
-     ▼
- Deferred / Manual Triage
-```
-
-### Advisory Queue
-
-The current queue is persisted under:
-
-```text
-overnight/advisory_queue/pending/
-```
-
-This makes findings inspectable and restartable.
-
-### Fix Backlog
-
-The active backlog is:
-
-```text
-overnight/fix_backlog.json
-```
-
-Deferred work is maintained separately.
-
-### Important distinction
-
-An advisory is an **observation**, not proof of a defect.
-
-Before implementing an advisory:
-
-1. verify the issue still exists;
-2. inspect the actual source;
-3. inspect the relevant tests;
-4. determine whether the issue is architectural or surgical;
-5. reject false-positive or cosmetic recommendations;
-6. apply the smallest safe change;
-7. run validation;
-8. review the Git diff.
+| Component | Purpose |
+|-----------|---------|
+| **Engine** | Ingestion, sanitization, queue management, SLM triage |
+| **Memory** | Orchestration memory (PostgreSQL + pgvector + SQLite) |
+| **Orchestrator** | Context stitching, model routing, action governance |
+| **Tools** | CI gates, audit checks, dashboard, and verification |
+| **Overnight Pipeline** | Self-improvement loop (advisory → fix → test → commit) |
 
 ---
 
-# Autonomous-Fix Safety Architecture
+## Self-Improvement Pipeline
 
-Generated code is treated as untrusted.
+The overnight pipeline is the project's defining feature. It closes the loop on autonomous engineering:
 
-The v11.10 hardening introduced and confirmed several active controls.
+1. **Analyze** the codebase for genuine logic bugs and improvements.
+2. **Validate** findings via cross-model critique (Gemini, Groq, OpenRouter).
+3. **Propose** surgical fixes using proven patterns and avoiding known failures.
+4. **Test** all changes via a rigorous pytest suite.
+5. **Commit** to a shadow branch, then merge if safe.
 
-## AST Gate
+### Safety Gates
 
-Generated Python is parsed with:
+Every proposed change must pass through this gauntlet:
 
-```python
-ast.parse(...)
-```
-
-before the candidate is accepted.
-
-This prevents malformed Python, Markdown, or other non-code output from silently becoming source code.
-
-## CoT / Reasoning Detector
-
-The `_looks_like_reasoning` detector identifies responses that contain reasoning prose rather than executable source.
-
-This protects against model output such as:
-
-```text
-Let me think about this...
-```
-
-being written into a Python file.
-
-## Pytest Gate
-
-Generated fixes must pass the project test suite before they can be accepted.
-
-Current verified suite:
-
-```text
-182 passed
-```
-
-## Truncation Guard
-
-Suspiciously short generated replacements are rejected rather than allowing an incomplete model response to destroy source code.
-
-## Backup / Rollback
-
-Candidate changes use an original-file backup/recovery mechanism before replacement.
-
-## Git Boundary
-
-Autonomous fixes are committed locally.
-
-The autonomous pipeline does **not** have authority to publish directly to GitHub.
-
-That leaves repository publication under human control.
+- ✅ **TDD Red Phase:** Rejects vacuous tests that pass without a fix.
+- ✅ **Ghost Name Gate:** AST validation catches hallucinated imports instantly.
+- ✅ **Lenient Fuzzy Matcher:** Tolerates indent/whitespace drift in SEARCH blocks.
+- ✅ **Delta Acceptance:** Rejects fixes that break previously-passing tests.
+- ✅ **Pi Critic:** Asynchronous edge-model review via Redis (quota-free).
+- ✅ **Shadow Canary:** Cyclomatic complexity + runtime safety checks.
+- ✅ **Memory Stores:** Retrieves proven fixes (few-shot) and failed patterns (AVOID).
+- ✅ **Git Boundary:** Commits locally, never auto-pushes to remote.
 
 ---
 
-# LLM Provider Architecture
+## Hybrid Compute Architecture
 
-The current provider architecture uses differentiated roles:
+soc-autopilot uses a decoupled **cloud + edge** architecture for resilience and cost control:
 
-```text
-                 ┌────────────────┐
-                 │     Gemini     │
-                 │ Analysis /     │
-                 │ Critique       │
-                 └───────┬────────┘
-                         │
-                         ▼
-                   Advisory / QA
-                         │
-                         ▼
-                 ┌────────────────┐
-                 │   OpenRouter   │
-                 │    Primary     │
-                 └───────┬────────┘
-                         │
-                   fallback
-                         ▼
-                 ┌────────────────┐
-                 │      Groq      │
-                 │    Fallback    │
-                 └────────────────┘
-```
-
-The v11.10 documentation identifies the funded OpenRouter allowance as **1000 requests/day**, with persistent quota/cooldown state.
-
-Runtime state includes:
-
-```text
-overnight/openrouter_quota.json
-overnight/api_usage.json
-overnight/model_fallback_cache.json
-```
-
-Provider credentials themselves must never be committed to Git.
+- **Cloud:** OpenRouter (primary), Groq, and Mistral with dynamic fallback and rate-limit pacing.
+- **Edge:** A Raspberry Pi 4B running Qwen2.5-Coder-3B as an asynchronous critic.
+- **Queue:** Redis job queue for decoupled, fault-tolerant reviews.
+- **Principle:** The edge worker can crash, lag, or reboot without ever blocking the main pipeline.
 
 ---
 
-# Human-in-the-Loop
+## Quick Start# soc-autopilot
 
-The overnight system deliberately retains human triage.
-
-The primary triage decisions are:
-
-| Decision    | Meaning                                                             |
-| ----------- | ------------------------------------------------------------------- |
-| **PHANTOM** | The reported issue is already resolved or no longer exists          |
-| **REJECT**  | The advisory is incorrect, inappropriate, or not worth implementing |
-| **FIX**     | The issue is real and warrants a surgical change                    |
-
-The operator should verify every recommendation rather than treating model output as authoritative.
+**A locally operated Security Operations Center with LLM-assisted triage and a self-improving codebase.**
 
 ---
 
-# Operational Workflow
+## What It Is
 
-### Check repository state
+soc-autopilot is a **self-hosted** security platform that:
+- Ingests and sanitizes telemetry from **Wazuh, Security Onion, and Suricata**
+- Uses **Small Language Models (SLMs)** for triage, enrichment, and institutional knowledge
+- Maintains an **append-only audit ledger** for all actions and state changes
+- Features a **constrained self-improvement pipeline** that autonomously proposes, tests, and commits fixes
+
+**Core principle:** *LLMs propose, safety gates validate, tests verify, Git records, humans decide.*
+
+---
+
+## Why It Exists
+
+Enterprise SOAR/XDR tools are expensive and often cloud-only. soc-autopilot provides:
+- **Tier 1 triage support** for defenders without enterprise budgets
+- **Local control** over data, models, and operations (no vendor lock-in)
+- **Continuous improvement** via a safe, gated self-improvement loop
+- **Open-source integration** with existing security tools (Wazuh, TheHive, pfSense, OpenSearch)
+
+---
+
+## Key Components
+
+| Component          | Purpose                                                                 |
+|--------------------|-------------------------------------------------------------------------|
+| **`engine/`**      | Telemetry ingestion, sanitization, queue management, SLM triage workers |
+| **`memory/`**      | Orchestration memory (PostgreSQL + pgvector + SQLite)                   |
+| **`orchestrator/`**| Context stitching, model routing, action governance                     |
+| **`tools/`**       | CI gates, audit checks, dashboard, and verification tools               |
+| **`overnight/`**   | Self-improvement pipeline (advisory → fix → test → commit)              |
+| **`lab/`**         | Dockerized test environments for Wazuh, PostgreSQL, etc.                |
+
+---
+
+## Self-Improvement Pipeline
+
+The overnight pipeline is soc-autopilot's **defining feature**. It closes the loop on autonomous engineering:
+
+1. **Analyze** the codebase for genuine logic bugs and architectural improvements.
+2. **Validate** findings via cross-model critique (Gemini, Groq, OpenRouter).
+3. **Propose** surgical fixes using proven patterns and avoiding known failure modes.
+4. **Test** all changes via a **268-test pytest suite** (must pass before commit).
+5. **Commit** to a **shadow branch**, then merge to `master` only if safe.
+
+### Safety Gates
+
+Every proposed change must pass this gauntlet:
+
+| Gate                     | Purpose                                                                 |
+|--------------------------|-------------------------------------------------------------------------|
+| **TDD Red Phase**        | Rejects vacuous tests that pass without a real fix                      |
+| **Ghost Name Gate**      | AST validation catches hallucinated imports instantly                   |
+| **Lenient Fuzzy Matcher**| Tolerates indent/whitespace drift in SEARCH/REPLACE blocks              |
+| **Delta Acceptance**     | Rejects fixes that break previously passing tests                       |
+| **Pi Critic**            | Async edge-model review via Redis (quota-free fallback)                 |
+| **Shadow Canary**        | Cyclomatic complexity + runtime safety checks                           |
+| **Memory Stores**        | Retrieves proven fixes (few-shot) and failed patterns (AVOID list)      |
+| **Git Boundary**         | Commits locally to `autofix-*` branches; **never auto-pushes to remote**|
+
+---
+
+## Hybrid Compute Architecture
+
+soc-autopilot uses a **decoupled cloud + edge architecture** for resilience and cost control:
+
+- **Cloud Models:**
+  OpenRouter (primary), Groq, Mistral.
+  *Dynamic fallback with rate-limit pacing and 24h lockout on exhaustion.*
+
+- **Edge Critic (Optional):**
+  Raspberry Pi 4B+ (8GB) running **Qwen2.5-Coder-3B** as an async reviewer.
+  *Uses a Redis job queue; edge can crash/lag without blocking the main pipeline.*
+
+- **Local Inference (Production):**
+  NVIDIA GPU with **16GB+ VRAM** for high-volume telemetry processing.
+
+**Principle:** The edge worker can **crash, lag, or reboot** without ever blocking the main pipeline.
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+#### 🧪 Development / Evaluation *(No GPU Required)*
+- Python 3.10+
+- API keys for LLM providers (Gemini, Groq, OpenRouter)
+- Optional: Raspberry Pi 4B+ (8GB) for edge critique worker
+
+#### 🏭 Production *(Full Telemetry Ingestion)*
+- Python 3.10+
+- **PostgreSQL + pgvector**
+- **NVIDIA GPU with 16GB+ VRAM** *(for local SLM inference)*
+- Wazuh / Security Onion / pfSense integration
+- API keys for LLM providers *(fallback and consensus voting)*
+
+### Installation & Testing
 
 ```bash
-git status
-```
+# Clone the repo
+git clone https://github.com/Steve-Wiig/soc-autopilot.git
+cd soc-autopilot
 
-### Inspect recent work
+# Install dependencies
+pip install -r requirements.txt
 
-```bash
-git log --oneline -20
-```
+# Configure environment
+cp .env.example .env
+# Edit .env with your API keys:
+# GEMINI_API_KEY=your_key_here
+# LAB_URL=https://127.0.0.1
+# WAZUH_USER=readonly_user
+# WAZUH_TOKEN=your_token
 
-### Run the test suite
-
-```bash
+# Verify the test suite
 python3 -m pytest tests/ -q
-```
-
-### Inspect overnight status
-
-```bash
-bash overnight/dashboard.sh
-```
-
-### Read the morning report
-
-```bash
-cat overnight/morning_report.md
-```
-
-### Review recent autonomous commits
-
-```bash
-git log --oneline --since="12 hours ago"
-```
-
----
-
-# Critical Operational Lessons
-
-These are operational rules learned from actual use of the overnight system.
-
-### Queue-file race condition
-
-The drain holds the backlog in memory and rewrites the JSON after each item. Editing `fix_backlog.json` or `fix_backlog_deferred.json` while the drain runs gets OVERWRITTEN on its next save.
-
-**Queue surgery requires: stop drain → edit → commit → relaunch.**
-
-### Configuration-class trap
-
-Wrapping `os.environ.get()` in a class with class attributes still evaluates the calls at class-definition time, which is still module load.
-
-**Environment variables that must reflect runtime configuration should be read inside functions/methods rather than relying on class-attribute initialization.**
-
-### Duplicate advisories
-
-Twin copies of an advisory can cause the drain to retry the same issue repeatedly and consume quota.
-
-Clear duplicates by matching their description/content rather than relying on list indexes.
-
-### Global replacement corruption
-
-Blind string replacement can modify unrelated identifiers, comments, or documentation.
-
-Prefer anchored replacements, word boundaries, or AST-based transformations.
-
-### Subprocess environment inheritance
-
-A subprocess does not automatically read variables from a `.env` file merely because the parent project contains one.
-
-The launch path must explicitly load the environment when required.
-
-### Silent background crashes
-
-A PID existing does not prove that the actual processing loop remains healthy.
-
-Use unbuffered output and inspect logs/dashboard state rather than relying only on `pgrep`.
-
-### Reuse proven entry points
-
-Prefer the project's tested CLI entry points over ad-hoc wrapper logic that can accidentally omit initialization or safety behavior.
-
----
-
-# v11.11 Advisory State
-
-The Aug. 29 Qwen analysis generated a persistent advisory queue containing findings across multiple project components.
-
-Examples include:
-
-```text
-memory/retention.py
-memory/embeddings.py
-orchestrator/context_stitcher.py
-orchestrator/model_registry.py
-engine/slm_triage_worker.py
-engine/writeback/*
-tools/*
-```
-
-These findings are retained as **pending analysis**, not represented as completed fixes.
-
-This distinction is intentional.
-
-The project should only claim a fix after:
-
-```text
-Issue verified
-    ↓
-Surgical change
-    ↓
-Validation
-    ↓
-Tests pass
-    ↓
-Git diff reviewed
-    ↓
-Commit
-```
-
----
-
-# Testing
-
-The current verified test result is:
-
-```text
-182 passed
-```
-
-Run:
-
-```bash
-python3 -m pytest tests/ -q
-```
-
-The test suite covers areas including:
-
-* queue management;
-* queue backpressure;
-* stale queue recovery;
-* sanitization;
-* redaction;
-* embeddings;
-* enrichment;
-* IOC extraction;
-* context stitching;
-* model registry;
-* retention;
-* audit-chain behavior;
-* hash-chain concurrency;
-* Wazuh proposals;
-* TheHive writeback;
-* Security Onion cases;
-* pfSense aliases;
-* autonomous-fix validation.
-
----
-
-# Repository Structure
-
-```text
-blueprint/
-├── engine/
-│   ├── intake_wazuh.py
-│   ├── intake_eve.py
-│   ├── sanitization_pipeline.py
-│   ├── queue_manager.py
-│   ├── slm_triage_worker.py
-│   ├── enrichment_scheduler.py
-│   ├── ioc_extractor.py
-│   ├── hash_chain_sealer.py
-│   └── writeback/
-│
-├── memory/
-│   ├── embeddings.py
-│   ├── retention.py
-│   └── schema/
-│
-├── orchestrator/
-│   ├── context_stitcher.py
-│   ├── model_registry.py
-│   └── routing.yaml
-│
-├── overnight/
-│   ├── self_improver.py
-│   ├── advisory_queue/
-│   ├── fix_backlog.json
-│   ├── dashboard.sh
-│   ├── morning_report.md
-│   ├── api_usage.json
-│   ├── openrouter_quota.json
-│   └── model_fallback_cache.json
-│
-├── tools/
-├── tests/
-└── docs/
-```
-
----
-
-# Known Limitations
-
-LOCAL-SOC-SLM remains experimental infrastructure.
-
-Known limitations include:
-
-* difficult architectural issues still require human intervention;
-* advisory queues can accumulate;
-* provider quotas can halt autonomous processing;
-* large files may exceed available model context;
-* fallback providers may have smaller context capabilities;
-* background processing requires monitoring;
-* LLM-generated recommendations can be false positives;
-* autonomous code generation remains probabilistic;
-* the current v11.11 baseline contains pending advisory findings rather than verified fixes for every finding.
-
-The project's safety model intentionally favors:
-
-> **A rejected change over a corrupted change.**
-
----
-
-# Version History
-
-## v11.8
-
-Historical development phase preceding the current hardened overnight architecture.
-
-## v11.9
-
-Historical baseline containing the earlier self-improvement architecture and documentation that was subsequently superseded.
-
-The v11.9 material is retained for historical reference but is **not the current operational architecture**.
-
-## v11.10
-
-Introduced the hardened overnight operating model, including:
-
-* synchronous advisory/fix processing;
-* persistent advisory and fix queues;
-* OpenRouter/Groq/Gemini provider architecture;
-* AST validation;
-* CoT detection;
-* truncation protection;
-* pytest gating;
-* backup/rollback behavior;
-* quota-aware execution;
-* operational dashboard/reporting;
-* documented queue/configuration failure modes.
-
-## v11.11
-
-**Current documentation and operational baseline — Aug. 29, 2026.**
-
-v11.11 incorporates the latest operational/Qwen analysis state and preserves the resulting advisory queue for human review.
-
-**Verified source HEAD remains:**
-
-```text
-0f41f4d
-```
-
-v11.11 should not be interpreted as claiming that every Aug. 29 advisory has been implemented or that a new source-code release exists.
-
----
-
-# Project Philosophy
-
-LOCAL-SOC-SLM is an experiment in building a security platform where language models can participate in operations and software maintenance without becoming an unrestricted authority.
-
-The central design rule is:
-
-```text
-AI proposes
-    ↓
-System validates
-    ↓
-Tests verify
-    ↓
-Git records
-    ↓
-Human decides
-```
-
-The objective is not maximum autonomy.
-
-The objective is **useful autonomy with bounded failure modes, recoverability, auditability, and human control**.
+# ✅ Expected: 268 passed, 1 skipped

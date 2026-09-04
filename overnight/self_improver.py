@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LOCAL-SOC-SLM: The Final Form
+soc-autopilot: Autonomous Engineering System
 A Staff-Level, Self-Healing, Test-Driven, Causal-Triage Autonomous Engineering System.
 """
 import sys, json, subprocess, time, argparse, ast, re, os, hashlib, uuid

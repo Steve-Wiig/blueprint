@@ -224,8 +224,8 @@ def _call_openrouter(prompt, api_key, model=None, system_prompt=None, max_tokens
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://local-soc-slm.lab",
-            "X-Title": "LOCAL-SOC-SLM Blueprint Automation",
+            "HTTP-Referer": "https://soc-autopilot.local",
+            "X-Title": "soc-autopilot Pipeline",
         }
         messages = []
         if system_prompt:
