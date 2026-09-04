@@ -41,10 +41,19 @@ graph TD
 
 This is not an "autonomous AI" that acts without oversight. It is a **bounded decision-support system** built on security engineering principles:
 
-* **Zero Trust for LLM Output:** All generated code must pass AST validation, ghost-name checks, and a 274+ test pytest suite before being considered.
-* **Negative Memory:** The system actively learns from failed patches and stores them as "AVOID" constraints for future attempts.
-* **Tamper-Evident Auditing:** Pipeline decisions are tracked in structured JSONL ledgers. A tamper-evident hash-chain audit ledger is prototyped but not yet in production use.
-* **Hybrid Verification Plane:** A decoupled Raspberry Pi edge worker acts as an independent, heterogeneous code-review node, ensuring failure isolation and quota-free fallback.
+**Development Phase (Current - Autonomous Code Improvement):**
+- **Zero Trust for LLM Output:** All generated code must pass AST validation, ghost-name checks, and a 274+ test pytest suite before being considered.
+- **Autonomous Merge:** Validated patches are automatically merged to master after passing the 10-stage safety pipeline and canary validation.
+- **Negative Memory:** The system stores proven and failed fix patterns to inform future generation.
+- **Tamper-Evident Auditing:** Pipeline decisions are tracked in structured JSONL ledgers. A tamper-evident hash-chain audit ledger is prototyped but not yet in production use.
+- **Hybrid Verification Plane:** A decoupled Raspberry Pi edge worker acts as an independent, heterogeneous code-review node, ensuring failure isolation and quota-free fallback.
+
+**Production Phase (Planned - Human-Gated Security Operations):**
+- **SOC Agent Proposals:** The system will propose security rules for Wazuh, pfSense, and Security Onion based on telemetry analysis.
+- **Human Approval Mandatory:** All security configuration changes require explicit operator approval before application to production systems.
+- **Automated Validation:** Proposed rules undergo syntax checks, policy validation, and impact analysis before presentation to operators.
+- **Audit Trail:** All proposals, approvals, rejections, and applications are recorded with full provenance.
+
 
 ---
 
