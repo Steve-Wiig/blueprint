@@ -13,11 +13,11 @@
 
 ```mermaid
 graph TD
-    A[Wazuh / Suricata / pfSense] -->|Telemetry| B(Engine: Ingestion & Sanitization)
+    A[Wazuh / pfSense] -->|Telemetry| B(Engine: Ingestion & Sanitization)
     B --> C{Orchestrator & Queue}
     C -->|Tier 1 Triage| D[Cloud LLMs: OpenRouter/Groq/Mistral]
     C -->|Async Patch Gen/Review| E[Edge: Raspberry Pi + Qwen 3B]
-    C -->|State & Memory| F[(PostgreSQL + pgvector + SQLite)]
+    C -->|State & Memory| F[(SQLite + planned pgvector)]
     C -->|Audit Ledger| G[Hash-Chain Append-Only Log]
     E -.->|Fallback / Quota-Free| C
     C -->|Safety Gates| H[Pytest 274+ Suite]
@@ -53,7 +53,7 @@ This is not an "autonomous AI" that acts without oversight. It is a **bounded de
 | Component                                  | Status          | Notes                                                         |
 | ------------------------------------------ | --------------- | ------------------------------------------------------------- |
 | Telemetry Sanitization & Queue Governance  | ✅ Implemented   | Two-pass regex + entropy sanitization; backpressure handling. |
-| Hash-Chain Audit Ledger                    | ✅ Implemented   | Append-only, tamper-evident logging.                          |
+| Hash-Chain Audit Ledger | △ Prototype | Concurrency tool exists; production ledger planned. |
 | Self-Improvement Pipeline (8 Safety Gates) | ✅ Implemented   | TDD Red Phase, Delta Acceptance, Shadow Canary, etc.          |
 | Negative/Proven Memory Stores              | ✅ Implemented   | System learns from past failures and successes.               |
 | Hybrid Edge/Cloud Compute                  | ✅ Implemented   | Async Pi worker (Qwen 3B) decoupled via Redis.                |
@@ -65,6 +65,7 @@ This is not an "autonomous AI" that acts without oversight. It is a **bounded de
 ### 🚀 Quick Start
 
 #### Prerequisites
+- Suricata integration (planned - architecture supports it)
 
 * Python 3.10+
 * API keys for LLM providers (OpenRouter, Groq, Mistral)
