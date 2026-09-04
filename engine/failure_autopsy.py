@@ -3,7 +3,7 @@ engine/failure_autopsy.py
 -------------------------
 Analyzes a failed LLM output to generate a 2-sentence constraint for Attempt 2.
 """
-from overnight.llm_client import _call_gemini
+import overnight.llm_client
 
 def perform_autopsy(bad_code: str, error_message: str, api_keys: dict) -> str:
     prompt = (
@@ -17,7 +17,7 @@ def perform_autopsy(bad_code: str, error_message: str, api_keys: dict) -> str:
     )
     
     try:
-        raw = _call_gemini(prompt, api_keys.get("gemini"), max_tokens=200, temperature=0.1)
+        raw = overnight.llm_client._call_gemini(prompt, api_keys.get("gemini"), max_tokens=200, temperature=0.1)
         if raw:
             return raw.strip().replace('\n', ' ')
     except Exception:
