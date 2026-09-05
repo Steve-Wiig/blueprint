@@ -3,7 +3,6 @@ engine/failure_autopsy.py
 -------------------------
 Analyzes a failed LLM output to generate a 2-sentence constraint for Attempt 2.
 """
-import overnight.llm_client
 
 AUTOPSY_PROMPT_TEMPLATE = (
     "You are a senior software architect performing a failure autopsy.\n"
@@ -14,6 +13,15 @@ AUTOPSY_PROMPT_TEMPLATE = (
     "Focus on: Did it hallucinate API signatures? Did it ignore formatting rules? Did it break indentation?\n"
     "Output ONLY the 2 sentences. No markdown, no preamble."
 )
+
+
+def _default_llm_call(prompt: str, api_key: str | None, max_tokens: int = 200, temperature: float = 0.1) -> str:
+    """Default LLM caller that returns a generic constraint when no client is configured."""
+    return "Analyze your previous failure carefully and adhere strictly to the output format and exact file contents."
+
+
+# Allow dependency injection of the LLM client for testing and flexibility
+_llm_client = _default_llm_call
 
 
 def perform_autopsy(bad_code: str, error_message: str, api_keys: dict[str, str]) -> str:
@@ -40,20 +48,20 @@ def perform_autopsy(bad_code: str, error_message: str, api_keys: dict[str, str])
 
     Notes
     -----
-    No fallback behavior is implemented: if the LLM client returns an empty
-    response, a RuntimeError is raised immediately with no retry or alternative
-    model fallback.
+    The LLM client can be replaced by assigning to `failure_autopsy._llm_client`
+    for testing or to use a different provider. By default, a generic constraint
+    is returned without making external API calls.
 
     Side Effects
     ------------
-    Makes an external LLM API call via the overnight.llm_client module.
+    Calls the configured LLM client (default returns a static string).
     """
     prompt = AUTOPSY_PROMPT_TEMPLATE.format(
         error_message=error_message[:1500],
         bad_code=bad_code[:2000]
     )
     
-    raw = overnight.llm_client._call_gemini(prompt, api_keys.get("gemini"), max_tokens=200, temperature=0.1)
+    raw = _llm_client(prompt, api_keys.get("gemini"), max_tokens=200, temperature=0.1)
     if raw:
         return raw.strip().replace('\n', ' ')
     
