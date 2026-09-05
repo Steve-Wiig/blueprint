@@ -24,7 +24,13 @@ def _default_llm_call(prompt: str, api_key: str | None, max_tokens: int = 200, t
 _llm_client = _default_llm_call
 
 
-def perform_autopsy(bad_code: str, error_message: str, api_keys: dict[str, str]) -> str:
+def perform_autopsy(
+    bad_code: str,
+    error_message: str,
+    api_keys: dict[str, str],
+    max_tokens: int = 200,
+    temperature: float = 0.1
+) -> str:
     """Analyze a failed LLM output to generate a 2-sentence constraint for retry.
 
     Parameters
@@ -35,6 +41,10 @@ def perform_autopsy(bad_code: str, error_message: str, api_keys: dict[str, str])
         The error message or traceback from the failed execution.
     api_keys : dict
         Mapping of model names to API keys for LLM calls.
+    max_tokens : int, optional
+        Maximum tokens for the LLM response (default: 200).
+    temperature : float, optional
+        Temperature for the LLM call (default: 0.1).
 
     Returns
     -------
@@ -61,7 +71,7 @@ def perform_autopsy(bad_code: str, error_message: str, api_keys: dict[str, str])
         bad_code=bad_code[:2000]
     )
     
-    raw = _llm_client(prompt, api_keys.get("gemini"), max_tokens=200, temperature=0.1)
+    raw = _llm_client(prompt, api_keys.get("gemini"), max_tokens=max_tokens, temperature=temperature)
     if raw:
         return raw.strip().replace('\n', ' ')
     
