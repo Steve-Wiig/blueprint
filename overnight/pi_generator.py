@@ -10,10 +10,10 @@ from datetime import datetime
 
 OLLAMA_URL = "http://192.168.1.31:11434"
 MODEL = "qwen2.5-coder:3b"
-BACKLOG = Path("/home/swiig/Documents/soc-autopilot/overnight/fix_backlog.json")
-PI_PATCHES = Path("/home/swiig/Documents/soc-autopilot/overnight/pi_patches.jsonl")
-ATTEMPTED_FILE = Path("/home/swiig/Documents/soc-autopilot/overnight/pi_attempted.json")
-ROOT = Path("/home/swiig/Documents/soc-autopilot")
+ROOT = Path(__file__).resolve().parent.parent
+BACKLOG = ROOT / "overnight" / "fix_backlog.json"
+PI_PATCHES = ROOT / "overnight" / "pi_patches.jsonl"
+ATTEMPTED_FILE = ROOT / "overnight" / "pi_attempted.json"
 MAX_ATTEMPTS_PER_ITEM = 3  # After 3 failures, permanently skip
 
 def load_attempted():

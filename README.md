@@ -121,7 +121,7 @@ For deep dives into the architecture, operations, and self-improvement mechanics
 
 ### ⚠️ Limitations
 
-* **Not a replacement for human analysts:** The system is designed to augment Tier 1 triage and propose *candidate* fixes. Human approval is mandatory for all merges.
+* **Not a replacement for human analysts:** The system is designed to augment Tier 1 triage and propose *candidate* fixes. Human approval is mandatory for all **production security configuration** changes. Codebase improvements merge autonomously after passing the 10-stage safety pipeline.
 * **Hardware constraints:** While the edge worker is resilient, high-volume local inference requires an NVIDIA GPU (16GB+ VRAM). The current default relies on free-tier cloud APIs + a Raspberry Pi for async review.
 
 ---

@@ -43,7 +43,7 @@ except ImportError: perform_autopsy = lambda *a, **k: ""
 # ============================================================
 def _load_json(path):
     try: return json.loads(path.read_text()) if path.exists() else []
-    except: return []
+    except Exception: return []
 
 def _save_json(path, data): path.write_text(json.dumps(data, indent=2))
 
@@ -269,7 +269,7 @@ def triage_backlog():
             tb = json.loads(line).get("traceback", "")
             for full_path, rel_path in re.findall(r'File "([^"]*blueprint/([^"]+\.py))"', tb):
                 if "/tests/" not in rel_path and "site-packages" not in full_path: suspects[rel_path] += 1
-        except: pass
+        except Exception: pass
     if not suspects: return
     root_file, count = suspects.most_common(1)[0]
     if count < 2: return
@@ -317,7 +317,7 @@ def run_pytest(targets, timeout=60):
                              cwd=ROOT, capture_output=True, timeout=timeout)
         if res.returncode == 0: return None
         return (res.stderr.decode(errors='replace') + res.stdout.decode(errors='replace'))[:2000]
-    except: return "Pytest execution error"
+    except Exception: return "Pytest execution error"
 
 # ============================================================
 # FORENSIC ANALYSIS (Improvement #5)
@@ -362,7 +362,7 @@ def _forensic_analysis(issue, source_code, baseline_tb, api_keys):
         import json as _json
         try:
             analysis = _json.loads(raw)
-        except:
+        except Exception:
             # Try to extract JSON from surrounding text
             start = raw.find("{")
             end = raw.rfind("}") + 1
@@ -436,7 +436,7 @@ def _retrieve_similar_fixes(issue, max_examples=2):
             if line.strip():
                 try:
                     entries.append(json.loads(line))
-                except:
+                except Exception:
                     pass
         
         if not entries:
@@ -511,7 +511,7 @@ def _retrieve_failed_patterns(issue, max_examples=2):
         for line in FAILED_FIXES_PATH.read_text().strip().split("\n"):
             if line.strip():
                 try: entries.append(json.loads(line))
-                except: pass
+                except Exception: pass
         if not entries:
             return ""
         target_category = issue.get("category", "").lower()
@@ -546,7 +546,7 @@ def _retrieve_failed_patterns(issue, max_examples=2):
 # ============================================================
 def apply_auto_fix(file_path, issue, api_keys):
     try: original = file_path.read_text()
-    except: return False
+    except Exception: return False
 
     if is_ast_defeated(original): return False
     if issue.get('category', '').lower() in ['style', 'documentation']: return False
@@ -590,7 +590,7 @@ def apply_auto_fix(file_path, issue, api_keys):
                 print(f"       🔴 TDD Red Phase CONFIRMED: Test fails as expected.")
                 tdd_block = f"ACCEPTANCE CRITERIA (Make this test pass):\n```python\n{tdd_test_code}\n```\n\n"
                 tdd_kept_path = test_path
-        except: pass
+        except Exception: pass
 
     # 3. GENERATION LOOP
     critic_constraint = ""
@@ -810,7 +810,7 @@ def compute_scorecard():
             scorecard["proven_fix_count"] = len([
                 l for l in proven_path.read_text().strip().split("\n") if l.strip()
             ])
-    except:
+    except Exception:
         pass
 
     # Count failed patterns (negative memory)
@@ -819,7 +819,7 @@ def compute_scorecard():
             scorecard["failed_pattern_count"] = len([
                 l for l in failed_path.read_text().strip().split("\n") if l.strip()
             ])
-    except:
+    except Exception:
         pass
     
     # Parse ledger
@@ -830,9 +830,9 @@ def compute_scorecard():
                 if line.strip():
                     try:
                         entries.append(json.loads(line))
-                    except:
+                    except Exception:
                         pass
-    except:
+    except Exception:
         return scorecard
     
     if not entries:
@@ -932,7 +932,7 @@ def prefill_advisory_queue(files, api_keys, budget):
             advisory = gemini_pre_analysis(f.relative_to(ROOT), f.read_text(), api_keys)
             if advisory:
                 qpath.write_text(json.dumps({"file_path": str(f.relative_to(ROOT)), "advisory_notes": advisory, "created_at": datetime.now().isoformat()}, indent=2))
-        except: pass
+        except Exception: pass
         time.sleep(1)
 
 def process_advisory_queue(api_keys, budget, state):

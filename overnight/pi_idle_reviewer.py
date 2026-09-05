@@ -6,13 +6,15 @@ This maximizes Pi utilization without blocking the main pipeline.
 import json, time
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent.parent
+
 def main():
     print("🍓 Pi Idle Reviewer started. Checking for historical patches...")
     
     while True:
         # Check if there are unreviewed patches in pi_patches.jsonl
-        patches_file = Path('/home/swiig/Documents/soc-autopilot/overnight/pi_patches.jsonl')
-        reviewed_file = Path('/home/swiig/Documents/soc-autopilot/overnight/pi_reviewed.jsonl')
+        patches_file = ROOT / 'overnight' / 'pi_patches.jsonl'
+        reviewed_file = ROOT / 'overnight' / 'pi_reviewed.jsonl'
         
         if not patches_file.exists():
             time.sleep(300)
@@ -51,7 +53,7 @@ def main():
                     job_id = f"review_{int(time.time())}_{patch['file'].replace('/', '_')}"
                     # Read original file content
                     original_content = ""
-                    full_path = Path('/home/swiig/Documents/soc-autopilot') / patch['file']
+                    full_path = ROOT / patch['file']
                     if full_path.exists():
                         original_content = full_path.read_text()
                     
