@@ -46,6 +46,9 @@ class ScanExit(RuntimeError):
         self.args = (self.message,)
 
 
+# Directories to skip during recursive scans
+EXCLUDE_DIRS = {'.git', '__pycache__', '.venv', 'node_modules', 'build', 'dist', '.pytest_cache'}
+
 def _get_default_log_path() -> Path:
     """Get platform-appropriate default log file path."""
     if sys.platform == "win32":
