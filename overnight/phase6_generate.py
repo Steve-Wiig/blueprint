@@ -46,11 +46,6 @@ def load_env():
                 os.environ.setdefault(key.strip(), value.strip())
 
 
-def strip_fences(text: str) -> str:
-    text = re.sub(r'^```(?:python)?\s*\n', '', text)
-    text = re.sub(r'\n```\s*$', '', text)
-    return text.strip()
-
 
 def validate_python(code: str) -> bool:
     try:
