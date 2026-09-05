@@ -5,6 +5,7 @@ tools/sanitize_tests.py
 Quarantines broken auto-generated TDD tests so they don't break pytest collection.
 """
 import subprocess
+import sys
 import shutil
 from pathlib import Path
 
@@ -33,5 +34,4 @@ def main():
         print(f"🧹 SANITIZER: Quarantined {quarantined} broken TDD tests to tests/quarantine/")
 
 if __name__ == "__main__":
-    import sys
     main()
