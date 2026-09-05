@@ -40,6 +40,8 @@ CACHE_TTL = 3600  # Refresh model list every hour
 
 # Ultimate fallback if discovery fails entirely
 DEFAULT_FALLBACK = ["nvidia/nemotron-3.5-lightning:free"]
+# Groq-specific fallback if discovery fails entirely
+GROQ_DEFAULT_MODELS = ["groq/compound", "groq/compound-mini", "openai/gpt-oss-120b", "openai/gpt-oss-20b"]
 _last_groq_call = 0.0
 
 
