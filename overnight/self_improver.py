@@ -55,26 +55,45 @@ def _save_json(path, data): path.write_text(json.dumps(data, indent=2))
 _baseline_cache = {"fingerprint": None, "result": None, "targets": None}
 
 def _get_repo_fingerprint():
-    """Hash committed files (git ls-tree HEAD) to detect repo state changes."""
+    """Hash relevant repo files (tracked + untracked) to detect state changes.
+    
+    Includes full file content (not truncated) and untracked files to prevent
+    false cache hits when test/engine code changes beyond the 4KB mark or
+    when new untracked test files are added.
+    """
     try:
-        result = subprocess.run(
+        # Get tracked files
+        res1 = subprocess.run(
             ["git", "ls-tree", "-r", "HEAD", "--name-only"],
             capture_output=True, text=True, cwd=ROOT, timeout=10
         )
-        if result.returncode != 0:
-            return None
-        files = result.stdout.strip().split("\n")
+        tracked = set(f.strip() for f in res1.stdout.splitlines() if f.strip()) if res1.returncode == 0 else set()
+
+        # Get untracked files (respecting .gitignore)
+        res2 = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            capture_output=True, text=True, cwd=ROOT, timeout=10
+        )
+        untracked = set(f.strip() for f in res2.stdout.splitlines() if f.strip()) if res2.returncode == 0 else set()
+
+        # Only hash relevant code directories to avoid invalidating cache on docs/README changes
+        relevant_prefixes = ("tests/", "engine/", "overnight/", "memory/", "orchestrator/", "tools/")
+        
         h = hashlib.sha256()
-        for f in sorted(files):
-            if not f: continue
+        for f in sorted(tracked | untracked):
+            if not any(f.startswith(p) for p in relevant_prefixes):
+                continue
+            h.update(f.encode())
             p_file = ROOT / f
             if p_file.exists():
-                h.update(f.encode())
-                with open(p_file, "rb") as fp:
-                    h.update(fp.read(4096))  # First 4KB per file
+                h.update(p_file.read_bytes())
+            else:
+                h.update(b"__DELETED__")
         return h.hexdigest()
     except Exception:
         return None
+
+
 
 def run_pytest_cached(targets, timeout=60):
     """Cached pytest for baseline checks. Sniper Scope must use uncached run_pytest."""
