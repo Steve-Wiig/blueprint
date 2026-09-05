@@ -1,3 +1,5 @@
+import hashlib
+import string
 #!/usr/bin/env python3
 """
 soc-autopilot: Autonomous Engineering System
@@ -935,6 +937,43 @@ def prefill_advisory_queue(files, api_keys, budget):
         except Exception: pass
         time.sleep(1)
 
+
+def normalize_advisory(text: str) -> str:
+    if not text: return ""
+    text = text.lower()
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    return ' '.join(text.split())
+
+def _check_cooldown(file_path: str, advisory_notes: str):
+    import json, hashlib, string
+    from datetime import datetime
+    from pathlib import Path
+    def norm(t):
+        if not t: return ""
+        return ' '.join(t.lower().translate(str.maketrans('', '', string.punctuation)).split())
+    try:
+        fixes_path = Path(__file__).parent / "failed_fixes.jsonl"
+        if not fixes_path.exists(): return False, ""
+        rel_path = str(file_path).replace(str(Path(__file__).parent.parent) + "/", "")
+        target_hash = hashlib.sha256(f"{rel_path}::{norm(advisory_notes)}".encode()).hexdigest()
+        now = datetime.now()
+        failures = 0
+        with open(fixes_path, 'r') as f:
+            for line in f:
+                if not line.strip(): continue
+                try: entry = json.loads(line)
+                except: continue
+                if entry.get("file") != rel_path: continue
+                stored_hash = hashlib.sha256(f"{rel_path}::{norm(entry.get('advisory', ''))}".encode()).hexdigest()
+                if stored_hash == target_hash:
+                    try:
+                        if (now - datetime.fromisoformat(entry["timestamp"])).total_seconds() <= 86400: failures += 1
+                    except: pass
+                if failures >= 3: return True, f"Death loop cooldown ({failures} failures in 24h)"
+        return False, ""
+    except Exception as e:
+        return True, f"Death loop cooldown (error: {type(e).__name__})"
+
 def process_advisory_queue(api_keys, budget, state):
     pending = sorted(QUEUE_DIR.glob("*.json")) if QUEUE_DIR.exists() else []
     print(f"======================================================================\nPHASE B: OPENROUTER PROCESSING ({len(pending)} pending advisories)\n======================================================================")
@@ -946,6 +985,17 @@ def process_advisory_queue(api_keys, budget, state):
             source_file = ROOT / data["file_path"]
             print(f"  [{i}/{len(pending)}] 🔍 {data['file_path']}")
             if not source_file.exists(): qpath.unlink(); continue
+
+            # --- STABILIZATION: COOLDOWN GATE ---
+            skip, reason = _check_cooldown(data["file_path"], data.get("advisory_notes", ""))
+            if skip:
+                print(f"       ⏸️ {reason}. Skipping to save tokens.")
+                dummy_issue = {"description": data.get("advisory_notes", "")[:200], "category": "maintainability"}
+                _record_ledger(source_file, dummy_issue, "STALE", reason)
+                if hasattr(qpath, 'unlink'): qpath.unlink(missing_ok=True)
+                continue
+            # --------------------------------------
+
             
             primary_response = generate(build_review_prompt(source_file, source_file.read_text(), get_file_context(source_file), advisory_notes=data["advisory_notes"]), api_keys, max_tokens=8192)
             if not primary_response: print("       ⚠️ Primary analysis failed"); continue
