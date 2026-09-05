@@ -43,6 +43,7 @@ def test_vacuous_tdd_test_rejected(tdd_env):
         return None  # Red phase check PASSES -> test is vacuous -> reject
 
     with patch("overnight.self_improver.ROOT", tmp_path), \
+         patch("overnight.self_improver._get_repo_fingerprint", return_value="unique-test-fp"), \
          patch("overnight.self_improver.run_pytest", side_effect=mock_run_pytest), \
          patch("overnight.self_improver.is_ast_defeated", return_value=False), \
          patch("overnight.self_improver._generate_tdd_test", return_value=fake_test):
@@ -74,6 +75,7 @@ def test_valid_tdd_test_accepted(tdd_env):
         return "AssertionError: expected failure"  # Red phase FAILS -> test is valid -> keep
 
     with patch("overnight.self_improver.ROOT", tmp_path), \
+         patch("overnight.self_improver._get_repo_fingerprint", return_value="unique-test-fp"), \
          patch("overnight.self_improver.run_pytest", side_effect=mock_run_pytest), \
          patch("overnight.self_improver.is_ast_defeated", return_value=False), \
          patch("overnight.self_improver._generate_tdd_test", return_value=fake_test), \
