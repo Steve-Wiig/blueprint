@@ -16,7 +16,7 @@ AUTOPSY_PROMPT_TEMPLATE = (
 )
 
 
-def perform_autopsy(bad_code: str, error_message: str, api_keys: dict) -> str:
+def perform_autopsy(bad_code: str, error_message: str, api_keys: dict[str, str]) -> str:
     """Analyze a failed LLM output to generate a 2-sentence constraint for retry.
 
     Parameters
