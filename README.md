@@ -12,6 +12,7 @@
 ### 🏗️ High-Level Architecture
 
 ```mermaid
+```mermaid
 graph TD
     A[Wazuh / pfSense] -->|Telemetry| B(Engine: Ingestion & Sanitization)
     B --> C{Orchestrator & Queue}
@@ -23,6 +24,7 @@ graph TD
     C -->|Safety Gates| H[Pytest 274+ Suite]
     H -->|Pass| I[Shadow Branch Commit]
     I -->|Human Approval| J[Master Merge]
+```
 ```
 
 ---
