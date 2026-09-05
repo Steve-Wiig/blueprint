@@ -39,6 +39,7 @@ def configure_logging() -> None:
 
 
 @contextmanager
+@contextmanager
 def transaction(conn: sqlite3.Connection) -> Generator[sqlite3.Cursor, None, None]:
     """Provide a transactional scope around a series of operations."""
     cursor = conn.cursor()
@@ -50,6 +51,7 @@ def transaction(conn: sqlite3.Connection) -> Generator[sqlite3.Cursor, None, Non
         raise
 
 
+@contextmanager
 def get_connection() -> Generator[sqlite3.Connection, None, None]:
     """Context manager for database connections with automatic cleanup."""
     if not logger.handlers:
