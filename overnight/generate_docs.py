@@ -11,8 +11,6 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-import sys
-from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from overnight.llm_client import generate_with_critique, load_api_keys, strip_fences
 
@@ -36,10 +34,6 @@ def load_env():
                 key, value = line.split("=", 1)
                 os.environ.setdefault(key.strip(), value.strip())
 
-def strip_fences(text):
-    text = re.sub(r'^```(?:markdown|yaml|sql|xml|python)?\s*\n', '', text)
-    text = re.sub(r'\n```\s*$', '', text)
-    return text.strip()
 
 def validate_output(content, file_type):
     """Validate output based on expected file type."""
