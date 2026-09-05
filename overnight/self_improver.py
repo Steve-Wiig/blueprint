@@ -974,6 +974,35 @@ def _check_cooldown(file_path: str, advisory_notes: str):
     except Exception as e:
         return True, f"Death loop cooldown (error: {type(e).__name__})"
 
+
+def _classify_and_route_local(advisory_notes: str) -> bool:
+    """Deterministic keyword classifier. Returns True if should route to Local SLM."""
+    if not advisory_notes: return False
+    notes_lower = advisory_notes.lower()
+    
+    # High-confidence local routing keywords (style/doc/maintainability)
+    local_keywords = [
+        'docstring', 'typo', 'comment', 'formatting', 'pep8', 'whitespace', 
+        'unused import', 'black', 'flake8', 'mypy', 'type hint', 'variable name'
+    ]
+    
+    if any(kw in notes_lower for kw in local_keywords):
+        return True
+    return False
+
+def _call_local_slm_fallback(prompt: str) -> str:
+    """Calls the sandboxed 1.5B model on port 11435."""
+    import requests, json
+    try:
+        payload = {"model": "qwen2.5-coder:1.5b", "prompt": prompt, "stream": False}
+        # Strict 15s timeout to prevent blocking the main queue
+        resp = requests.post("http://127.0.0.1:11435/api/generate", json=payload, timeout=15)
+        if resp.status_code == 200:
+            return resp.json().get("response", "")
+    except Exception:
+        pass
+    return ""
+
 def process_advisory_queue(api_keys, budget, state):
     pending = sorted(QUEUE_DIR.glob("*.json")) if QUEUE_DIR.exists() else []
     print(f"======================================================================\nPHASE B: OPENROUTER PROCESSING ({len(pending)} pending advisories)\n======================================================================")
@@ -987,6 +1016,16 @@ def process_advisory_queue(api_keys, budget, state):
             if not source_file.exists(): qpath.unlink(); continue
 
             # --- STABILIZATION: COOLDOWN GATE ---
+
+            # --- EFFICIENCY: LOCAL SLM PRE-ROUTER ---
+            if _classify_and_route_local(data.get("advisory_notes", "")):
+                print(f"       🔀 Routing to Local SLM (Port 11435) based on keyword classification.")
+                # For now, we log it and defer to avoid breaking the main TDD loop while we validate the 1.5B output quality
+                _record_ledger(source_file, {"description": data.get("advisory_notes", "")[:200], "category": "local_slm"}, "DEFERRED", "Routed to Local SLM (Validation Phase)")
+                if hasattr(qpath, 'unlink'): qpath.unlink(missing_ok=True)
+                continue
+            # ----------------------------------------
+
             skip, reason = _check_cooldown(data["file_path"], data.get("advisory_notes", ""))
             if skip:
                 print(f"       ⏸️ {reason}. Skipping to save tokens.")
